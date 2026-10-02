@@ -1,0 +1,23 @@
+import { Router } from 'express';
+import swaggerUi from 'swagger-ui-express';
+
+import { env } from '@/config/env';
+import { buildOpenApiDocument } from '@/config/swagger';
+import { usersModule } from '@/domains/users/users.module';
+import type { DomainModule } from '@/shared/types/domain-module';
+
+const API_PREFIX = '/api/v1';
+
+const domainModules: DomainModule[] = [usersModule];
+
+export const routes = Router();
+
+routes.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+domainModules.forEach(({ basePath, router }) => routes.use(`${API_PREFIX}${basePath}`, router));
+
+if (env.NODE_ENV !== 'production') {
+  routes.use('/docs', swaggerUi.serve, swaggerUi.setup(buildOpenApiDocument(domainModules)));
+}
