@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: cromocard-postgres
+    environment:
+      POSTGRES_USER: cromocard
+      POSTGRES_PASSWORD: cromocard
+      POSTGRES_DB: cromocard
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cromocard -d cromocard']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
