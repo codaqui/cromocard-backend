@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+src/generated
+database/migrations
+package-lock.json
