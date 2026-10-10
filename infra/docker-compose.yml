@@ -43,7 +43,8 @@ services:
     restart: "no"
     profiles: ["migrate"]
     image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-api:${BACKEND_TAG:?}
-    command: ["npx", "prisma", "migrate", "deploy"]
+    # A imagem não tem npm/npx; a CLI do Prisma está no PATH (ver Dockerfile).
+    command: ["prisma", "migrate", "deploy"]
     environment:
       <<: *database-url
     networks: [data]
