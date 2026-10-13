@@ -1,0 +1,28 @@
+# CromoCard — override de PRODUÇÃO
+# docker compose -p cromocard-prod -f docker-compose.yml -f compose.prod.yml <comando>
+# Limites do orçamento do ADR-019 (produção ~3,0 GB). CPUs: [SUPOSIÇÃO] valores
+# iniciais para 6 threads, a ajustar depois de medir.
+# Produção não tem sidecar do Tailscale: o banco de produção é inacessível à equipe.
+# Todos os serviços herdam restart e no-new-privileges da âncora do arquivo base.
+
+services:
+  postgres:
+    deploy: { resources: { limits: { cpus: "2.0", memory: 1536M } } }
+
+  migrate:
+    deploy: { resources: { limits: { cpus: "1.0", memory: 768M } } }
+
+  api:
+    deploy: { resources: { limits: { cpus: "1.5", memory: 768M } } }
+
+  ws:
+    deploy: { resources: { limits: { cpus: "1.0", memory: 384M } } }
+
+  web:
+    deploy: { resources: { limits: { cpus: "0.5", memory: 128M } } }
+
+  admin:
+    deploy: { resources: { limits: { cpus: "0.5", memory: 128M } } }
+
+  cloudflared:
+    deploy: { resources: { limits: { cpus: "0.5", memory: 64M } } }
