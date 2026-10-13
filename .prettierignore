@@ -4,3 +4,7 @@ coverage
 src/generated
 database/migrations
 package-lock.json
+infra
+.github
+docs
+*.md

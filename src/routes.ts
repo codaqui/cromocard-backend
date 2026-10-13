@@ -12,10 +12,6 @@ const domainModules: DomainModule[] = [usersModule];
 
 export const routes = Router();
 
-routes.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
-});
-
 domainModules.forEach(({ basePath, router }) => routes.use(`${API_PREFIX}${basePath}`, router));
 
 if (env.NODE_ENV !== 'production') {

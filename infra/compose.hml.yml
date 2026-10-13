@@ -1,0 +1,58 @@
+# CromoCard — override de HOMOLOGAÇÃO
+# docker compose -p cromocard-hml -f docker-compose.yml -f compose.hml.yml <comando>
+# Limites do orçamento do ADR-019 (homologação ~1,9 GB). CPUs: [SUPOSIÇÃO] valores
+# iniciais para 6 threads, a ajustar depois de medir.
+
+# Cópia da âncora: âncoras não atravessam arquivos, e o ts-hml-db só existe aqui.
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  postgres:
+    deploy: { resources: { limits: { cpus: "1.0", memory: 768M } } }
+
+  migrate:
+    deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
+
+  api:
+    deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
+
+  ws:
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+  web:
+    deploy: { resources: { limits: { cpus: "0.25", memory: 96M } } }
+
+  admin:
+    deploy: { resources: { limits: { cpus: "0.25", memory: 96M } } }
+
+  cloudflared:
+    deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
+
+  # Sidecar do Tailscale: o grupo "dev" acessa cromocard-hml-db:5432 pela VPN (etapa 4.3).
+  ts-hml-db:
+    <<: *hardening
+    image: tailscale/tailscale:${TAILSCALE_VERSION:?}
+    hostname: cromocard-hml-db
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve-db.json
+      TS_EXTRA_ARGS: --advertise-tags=tag:hml-db
+    volumes:
+      - ts-hml-db-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    # "data" é internal (sem internet) e o Tailscale precisa sair para a coordenação;
+    # por isso ele também entra numa rede própria com saída, separada da "edge".
+    networks: [data, ts-egress]
+    depends_on:
+      postgres: { condition: service_healthy }
+    deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
+
+networks:
+  ts-egress: {}
+
+volumes:
+  ts-hml-db-state: {}

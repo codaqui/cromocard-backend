@@ -2,5 +2,11 @@ node_modules/
 dist/
 coverage/
 src/generated/
-.env
 *.log
+
+# Variáveis de ambiente: nunca versionar valores reais.
+# O .env.example (valores fictícios) é a única exceção.
+.env
+.env.*
+*.env
+!.env.example

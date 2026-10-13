@@ -1,0 +1,192 @@
+name: CI
+
+# Roda em todo push (qualquer branch) e em todo pull request.
+on:
+  push:
+  pull_request:
+
+# Se chegar um commit novo no mesmo branch/PR, cancela a execução antiga.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  # Imagem do Trivy fixada por digest: a mesma versão sempre, sem risco de a tag ser trocada.
+  TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+  # Imagem do gitleaks: fixe também por digest (etapa 5.5 do plano).
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+
+jobs:
+  # 1) Qualidade do código: lint, checagem de tipos, prisma validate e testes unitários.
+  lint-and-unit:
+    name: Lint, prisma validate e testes unitários
+    runs-on: ubuntu-latest
+    env:
+      # O prisma validate só precisa que a variável exista; não conecta no banco.
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Prisma validate
+        run: npx prisma validate
+
+      - name: Gerar client Prisma
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Checagem de tipos
+        run: npm run typecheck
+
+      - name: Testes unitários
+        run: npm test
+
+  # 2) Testes de integração contra um PostgreSQL de verdade, rodando como container de serviço.
+  integration:
+    name: Testes de integração (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Mesma versão do infra/docker-compose.yml
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cromocard_test
+        ports:
+          - 5432:5432
+        # Espera o banco aceitar conexões antes de rodar os passos.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cromocard_test
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar client Prisma
+        run: npx prisma generate
+
+      - name: Aplicar migrations no banco de teste
+        run: npx prisma migrate deploy
+
+      - name: Testes de integração
+        run: npm run test:integration
+
+  # 3) Scan de segredos com o gitleaks em todo o histórico do repositório.
+  #    O repositório é público: um segredo que chega ao GitHub conta como vazado.
+  #    A gitleaks-action exige licença paga para organizações, por isso o job roda a imagem oficial.
+  secrets:
+    name: Scan de segredos (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # histórico completo: um segredo apagado num commit novo continua nos antigos
+
+      - name: gitleaks
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "${PWD}:/repo" \
+            "${GITLEAKS_IMAGE}" git /repo \
+              --redact \
+              --no-banner \
+              --verbose
+
+  # 4) Build das imagens Docker (api e ws), scan com Trivy e push ao GHCR com a tag do SHA.
+  #    Os nomes batem com infra/docker-compose.yml: ghcr.io/codaqui/cromocard-api e cromocard-ws.
+  docker:
+    name: Imagem ${{ matrix.image }} (build, Trivy, GHCR)
+    runs-on: ubuntu-latest
+    # Nenhuma imagem é publicada sem os testes e o scan de segredos.
+    needs: [lint-and-unit, integration, secrets]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, ws]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Definir nome e tag da imagem
+        id: meta
+        env:
+          # Em PR usa o SHA do último commit do PR (não o merge commit temporário).
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          IMAGE_NAME: cromocard-${{ matrix.image }}
+        run: |
+          # O GHCR exige nome em minúsculas.
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "tag=ghcr.io/${OWNER}/${IMAGE_NAME}:${SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.image }}
+          load: true
+          tags: ${{ steps.meta.outputs.tag }}
+          # Liga o pacote do GHCR a este repositório (herda as permissões dele).
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Conferir que a imagem roda como usuário não-root
+        run: |
+          USER_ID=$(docker run --rm --entrypoint id "${{ steps.meta.outputs.tag }}" -u)
+          echo "UID dentro do container: ${USER_ID}"
+          test "${USER_ID}" != "0"
+
+      - name: Scan de vulnerabilidades (Trivy)
+        # Falha o pipeline se houver vulnerabilidade HIGH/CRITICAL que já tenha correção disponível.
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${HOME}/.cache/trivy:/root/.cache/trivy" \
+            "${TRIVY_IMAGE}" image \
+              --severity CRITICAL,HIGH \
+              --ignore-unfixed \
+              --exit-code 1 \
+              --no-progress \
+              "${{ steps.meta.outputs.tag }}"
+
+      - name: Login no GHCR
+        # PRs vindos de forks não recebem permissão de escrita, então não fazem push.
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push ao GHCR
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        run: docker push "${{ steps.meta.outputs.tag }}"

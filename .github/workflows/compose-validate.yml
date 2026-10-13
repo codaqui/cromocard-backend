@@ -1,0 +1,24 @@
+name: compose-validate
+on:
+  pull_request:
+    paths: ["infra/**", ".github/workflows/compose-validate.yml"]
+  push:
+    branches: [main, develop]
+    paths: ["infra/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config -q (hml e prod)
+        working-directory: infra
+        run: |
+          for e in hml prod; do
+            docker compose -p cromocard-$e --env-file validacao.env.example \
+              -f docker-compose.yml -f compose.$e.yml config -q
+            echo "$e OK"
+          done

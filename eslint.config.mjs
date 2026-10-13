@@ -43,7 +43,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/config/env.ts', 'prisma.config.ts'],
+    files: ['src/config/env.ts', 'prisma.config.ts', 'vitest.config.ts'],
     rules: { 'no-restricted-properties': 'off' },
   },
   {

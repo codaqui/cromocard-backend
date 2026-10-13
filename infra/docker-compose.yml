@@ -1,0 +1,123 @@
+# CromoCard — base comum a homologação e produção (etapa 3.3 do plano de infraestrutura).
+#
+# Uso:  docker compose -p cromocard-<env> -f docker-compose.yml -f compose.<env>.yml <comando>
+# Os valores vêm do .env ao lado deste arquivo (gerado pelo deploy.yml).
+# Tags das imagens: cada repositório publica com o SHA do próprio commit, por isso são duas.
+#   BACKEND_TAG  → api, ws e migrate (cromocard-backend)
+#   FRONTEND_TAG → web e admin (repositório do frontend)
+# Limites de CPU e memória ficam nos overrides, porque mudam por ambiente.
+
+# Âncora de hardening: todo serviço deste arquivo usa "<<: *hardening".
+# Âncoras YAML só valem dentro do próprio arquivo; serviços novos de um override
+# precisam declarar a sua própria cópia (ver compose.hml.yml).
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+
+# URL de conexão do Prisma. As senhas são só hexadecimais, então não precisam de escape.
+x-database-url: &database-url
+  DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+
+services:
+  postgres:
+    <<: *hardening
+    # PostgreSQL 18: o schema usa uuidv7() (nativo a partir do 18). Desde o 18, a imagem
+    # guarda os dados em /var/lib/postgresql/<versão>/docker, por isso o volume monta a pasta-mãe.
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Roda só quando chamado: "docker compose ... run --rm migrate" (deploy.yml).
+  # O profile evita que um "up -d" rode as migrations de novo.
+  migrate:
+    <<: *hardening
+    restart: "no"
+    profiles: ["migrate"]
+    image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-api:${BACKEND_TAG:?}
+    # A imagem não tem npm/npx; a CLI do Prisma está no PATH (ver Dockerfile).
+    command: ["prisma", "migrate", "deploy"]
+    environment:
+      <<: *database-url
+    networks: [data]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-api:${BACKEND_TAG:?}
+    environment:
+      <<: *database-url
+      NODE_ENV: production
+      PORT: "3000"
+      JWT_SECRET: ${JWT_SECRET:?}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CORS_ORIGIN: ${CORS_ORIGIN:?}
+    networks: [edge, data]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  ws:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-ws:${BACKEND_TAG:?}
+    environment:
+      <<: *database-url
+      NODE_ENV: production
+      PORT: "3001"
+      JWT_SECRET: ${JWT_SECRET:?}
+      CORS_ORIGIN: ${CORS_ORIGIN:?}
+    networks: [edge, data]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-web:${FRONTEND_TAG:?}
+    environment:
+      API_URL: ${API_URL:?}
+      WS_URL: ${WS_URL:?}
+    networks: [edge]
+
+  admin:
+    <<: *hardening
+    image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-admin:${FRONTEND_TAG:?}
+    environment:
+      API_URL: ${API_URL:?}
+    networks: [edge]
+
+  # Um túnel por ambiente; os Public Hostnames apontam para web:8080, api:3000, ws:3001, admin:8080.
+  cloudflared:
+    <<: *hardening
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION:?}
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?}
+    networks: [edge]
+    depends_on: [web, api, ws, admin]
+
+networks:
+  edge: {}            # tem saída para a internet (cloudflared, APIs externas)
+  data:
+    internal: true    # sem internet; só api, ws, postgres e migrate (+ ts-hml-db em hml)
+
+volumes:
+  pgdata: {}
+
+# Nenhum serviço tem "ports:". Tráfego público entra pelo cloudflared; o banco de
+# homologação, pelo sidecar do Tailscale. O Docker ignora o ufw para portas publicadas.
