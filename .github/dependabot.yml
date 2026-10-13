@@ -1,0 +1,32 @@
+# Atualizações de versão do Dependabot (etapa 5.5 do plano de infraestrutura).
+# Os PRs vão para a develop e passam pelo CI como qualquer outro.
+# As atualizações de SEGURANÇA são ligadas nas configurações do repositório
+# e abrem PR na branch padrão.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-e-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(ci)"

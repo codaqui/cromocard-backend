@@ -17,6 +17,8 @@ env:
   NODE_VERSION: "22"
   # Imagem do Trivy fixada por digest: a mesma versão sempre, sem risco de a tag ser trocada.
   TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+  # Imagem do gitleaks: fixe também por digest (etapa 5.5 do plano).
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 
 jobs:
   # 1) Qualidade do código: lint, checagem de tipos, prisma validate e testes unitários.
@@ -94,12 +96,34 @@ jobs:
       - name: Testes de integração
         run: npm run test:integration
 
-  # 3) Build das imagens Docker (api e ws), scan com Trivy e push ao GHCR com a tag do SHA.
+  # 3) Scan de segredos com o gitleaks em todo o histórico do repositório.
+  #    O repositório é público: um segredo que chega ao GitHub conta como vazado.
+  #    A gitleaks-action exige licença paga para organizações, por isso o job roda a imagem oficial.
+  secrets:
+    name: Scan de segredos (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # histórico completo: um segredo apagado num commit novo continua nos antigos
+
+      - name: gitleaks
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "${PWD}:/repo" \
+            "${GITLEAKS_IMAGE}" git /repo \
+              --redact \
+              --no-banner \
+              --verbose
+
+  # 4) Build das imagens Docker (api e ws), scan com Trivy e push ao GHCR com a tag do SHA.
   #    Os nomes batem com infra/docker-compose.yml: ghcr.io/codaqui/cromocard-api e cromocard-ws.
   docker:
     name: Imagem ${{ matrix.image }} (build, Trivy, GHCR)
     runs-on: ubuntu-latest
-    needs: [lint-and-unit, integration]
+    # Nenhuma imagem é publicada sem os testes e o scan de segredos.
+    needs: [lint-and-unit, integration, secrets]
     permissions:
       contents: read
       packages: write
