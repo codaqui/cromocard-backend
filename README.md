@@ -41,3 +41,10 @@ lint, typecheck, `prisma validate`, testes unitários, testes de integração co
 PostgreSQL, build das imagens, scan com Trivy e push para
 `ghcr.io/codaqui/cromocard-api:<sha>` e `ghcr.io/codaqui/cromocard-ws:<sha>`
 (o `BACKEND_TAG` do compose).
+
+O job `secrets` roda o gitleaks em todo o histórico; nenhuma imagem é publicada sem ele.
+
+## Segredos
+
+Nenhum valor real vai para o repositório: só o `.env.example`, com valores fictícios.
+Onde cada segredo fica e como trocar: [docs/runbooks/segredos.md](docs/runbooks/segredos.md).

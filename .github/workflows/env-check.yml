@@ -1,0 +1,52 @@
+# Confere, sem o runner do servidor e sem imprimir valores, se os secrets e
+# variáveis de um Environment chegam ao job e se as regras dele funcionam.
+# Uso: gh workflow run env-check.yml -R codaqui/cromocard-backend --ref <branch> -f environment=<hml|prod>
+# Só aparece em Actions depois de chegar à branch padrão (main).
+name: env-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment a conferir
+        type: choice
+        options: [hml, prod]
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Conferir ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Conferir nomes (sem imprimir valores)
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+          REGISTRY: ${{ vars.REGISTRY }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ vars.JWT_EXPIRES_IN }}
+          CORS_ORIGIN: ${{ vars.CORS_ORIGIN }}
+          API_URL: ${{ vars.API_URL }}
+          WS_URL: ${{ vars.WS_URL }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+          CLOUDFLARED_VERSION: ${{ vars.CLOUDFLARED_VERSION }}
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+          TAILSCALE_VERSION: ${{ vars.TAILSCALE_VERSION }}
+        run: |
+          NOMES="REGISTRY POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD JWT_SECRET JWT_EXPIRES_IN CORS_ORIGIN API_URL WS_URL HEALTH_URL TUNNEL_TOKEN CLOUDFLARED_VERSION"
+          if [ "$ENV_NAME" = hml ]; then NOMES="$NOMES TS_AUTHKEY TAILSCALE_VERSION"; fi
+          falta=0
+          for v in $NOMES; do
+            if [ -n "${!v}" ]; then echo "ok     $v"; else echo "FALTA  $v"; falta=1; fi
+          done
+          if ! printf '%s' "$POSTGRES_PASSWORD" | grep -Eq '^[0-9a-f]+$'; then
+            echo "POSTGRES_PASSWORD não é hexadecimal (quebraria a URL do Prisma)"; falta=1
+          fi
+          exit $falta

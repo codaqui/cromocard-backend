@@ -1,0 +1,8 @@
+# Falsos positivos do gitleaks: valores FICTICIOS de arquivos de exemplo.
+# Cada linha e a impressao digital (fingerprint) de um achado; adicione so com justificativa no PR.
+# Nunca repita o valor do achado neste arquivo: o proprio gitleaks reprovaria.
+#
+# infra/validacao.env.example: senha ficticia usada so para validar a sintaxe do Compose
+eef7e0920e6598c63a2829485fc1f86ac09f8fda:infra/validacao.env.example:generic-api-key:8
+# .env.example do esqueleto (branch feature/esqueleto-backend): valor de exemplo do JWT
+b66f29bce87bc2cbf799bf2b61fa9111e9352f68:.env.example:generic-api-key:6
