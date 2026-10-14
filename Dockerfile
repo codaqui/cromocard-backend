@@ -4,30 +4,30 @@
 #   docker build --target api -t ghcr.io/codaqui/cromocard-api:<sha> .
 #   docker build --target ws  -t ghcr.io/codaqui/cromocard-ws:<sha>  .
 # A imagem api também roda o serviço "migrate" do compose ("prisma migrate deploy"),
-# por isso a CLI do Prisma fica na imagem final e node_modules/.bin está no PATH.
+# por isso a CLI do Prisma, o prisma.config.ts e a pasta database/ ficam na imagem final.
 
-# ---- Estágio 1: dependências completas + build ----
-FROM node:22-alpine AS build
+# ---- Estágio 1: dependências completas + build (tsup) ----
+FROM node:24-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+# O schema e o prisma.config.ts entram antes do npm ci: o postinstall roda "prisma generate"
+COPY package.json package-lock.json prisma.config.ts ./
+COPY database ./database
 RUN npm ci
-COPY prisma ./prisma
-RUN npx prisma generate
-COPY tsconfig.json tsconfig.build.json ./
+COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
 # ---- Estágio 2: só as dependências de produção ----
-FROM node:22-alpine AS prod-deps
+FROM node:24-alpine AS prod-deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-# Sem --ignore-scripts: o postinstall do Prisma baixa o schema engine usado pelo migrate
+COPY package.json package-lock.json prisma.config.ts ./
+COPY database ./database
+# Sem --ignore-scripts: o postinstall do Prisma baixa o schema engine usado pelo migrate,
+# que roda na rede "data", sem internet
 RUN npm ci --omit=dev && npm cache clean --force
-# Client Prisma gerado no estágio de build
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 
 # ---- Estágio 3: base comum das imagens finais ----
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PATH=/app/node_modules/.bin:$PATH
@@ -36,9 +36,10 @@ ENV NODE_ENV=production \
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
        /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
        /opt/yarn-* /usr/local/bin/yarn /usr/local/bin/yarnpkg
-COPY --from=prod-deps --chown=node:node /app/package.json ./
+COPY --from=prod-deps --chown=node:node /app/package.json /app/prisma.config.ts ./
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/prisma ./prisma
+COPY --from=prod-deps --chown=node:node /app/database ./database
+# O client do Prisma (src/generated) vai embutido no dist pelo tsup
 COPY --from=build --chown=node:node /app/dist ./dist
 # Usuário não-root que já vem na imagem oficial do Node (uid 1000)
 USER node

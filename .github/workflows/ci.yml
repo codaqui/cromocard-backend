@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "22"
+  NODE_VERSION: "24"
   # Imagem do Trivy fixada por digest: a mesma versão sempre, sem risco de a tag ser trocada.
   TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
   # Imagem do gitleaks: fixe também por digest (etapa 5.5 do plano).
@@ -61,7 +61,7 @@ jobs:
     services:
       postgres:
         # Mesma versão do infra/docker-compose.yml
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -75,7 +75,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cromocard_test?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cromocard_test
     steps:
       - uses: actions/checkout@v5
 

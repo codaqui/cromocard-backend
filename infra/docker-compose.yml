@@ -21,13 +21,15 @@ x-database-url: &database-url
 services:
   postgres:
     <<: *hardening
-    image: postgres:16-alpine
+    # PostgreSQL 18: o schema usa uuidv7() (nativo a partir do 18). Desde o 18, a imagem
+    # guarda os dados em /var/lib/postgresql/<versão>/docker, por isso o volume monta a pasta-mãe.
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:?}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     networks: [data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]

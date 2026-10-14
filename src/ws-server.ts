@@ -1,20 +1,19 @@
-// Esqueleto do serviço de tempo real (imagem cromocard-ws). Por enquanto só expõe
-// /health na porta 3001; o servidor WebSocket da equipe entra aqui.
-import { createApp } from "./app.js";
-import { pingDatabase, prisma } from "./db.js";
+// Esqueleto do serviço de tempo real (imagem cromocard-ws). Por enquanto só expõe /health e
+// /health/db; o servidor WebSocket da equipe entra aqui (código de apoio em src/socket/).
+// Em homologação e produção o Compose define PORT=3001. Localmente: PORT=3001 npm run dev:ws
+import { createApp } from '@/app';
+import { env } from '@/config/env';
+import { logger } from '@/config/logger';
+import { pingDatabase, prisma } from '@/lib/prisma';
 
-const port = Number(process.env.PORT ?? 3001);
-const app = createApp({ pingDatabase });
-
-const server = app.listen(port, () => {
-  console.log(`cromocard-ws ouvindo na porta ${port}`);
+const server = createApp({ pingDatabase }).listen(env.PORT, () => {
+  logger.info(`WS rodando em http://localhost:${env.PORT}`);
 });
 
-function shutdown(): void {
-  server.close(() => {
-    void prisma.$disconnect().finally(() => process.exit(0));
-  });
+function shutdown(signal: NodeJS.Signals): void {
+  logger.info(`${signal} recebido, encerrando o WS`);
+  server.close(() => void prisma.$disconnect());
 }
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

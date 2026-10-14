@@ -6,3 +6,6 @@ coverage
 .env
 tests
 *.md
+src/generated
+*.log
+.env.*

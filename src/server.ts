@@ -1,18 +1,16 @@
-import { createApp } from "./app.js";
-import { pingDatabase, prisma } from "./db.js";
+import { createApp } from '@/app';
+import { env } from '@/config/env';
+import { logger } from '@/config/logger';
+import { pingDatabase, prisma } from '@/lib/prisma';
 
-const port = Number(process.env.PORT ?? 3000);
-const app = createApp({ pingDatabase });
-
-const server = app.listen(port, () => {
-  console.log(`cromocard-backend ouvindo na porta ${port}`);
+const server = createApp({ pingDatabase }).listen(env.PORT, () => {
+  logger.info(`API rodando em http://localhost:${env.PORT}`);
 });
 
-function shutdown(): void {
-  server.close(() => {
-    void prisma.$disconnect().finally(() => process.exit(0));
-  });
+function shutdown(signal: NodeJS.Signals): void {
+  logger.info(`${signal} recebido, encerrando a API`);
+  server.close(() => void prisma.$disconnect());
 }
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
