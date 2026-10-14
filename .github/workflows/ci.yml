@@ -5,10 +5,11 @@ on:
   push:
   pull_request:
 
-# Se chegar um commit novo no mesmo branch/PR, cancela a execução antiga.
+# Se chegar um commit novo no mesmo PR, cancela a execução antiga.
+# Em push não cancela: a execução pode estar no meio de um deploy (migrations).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -190,3 +191,18 @@ jobs:
       - name: Push ao GHCR
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         run: docker push "${{ steps.meta.outputs.tag }}"
+
+  # 4) Deploy em homologação: só em push na develop, depois das imagens no GHCR.
+  #    O job em si fica no deploy.yml (o único que usa o runner do servidor).
+  deploy-hml:
+    name: Deploy em hml
+    needs: [docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: hml
+      tag: ${{ github.sha }}
+    secrets: inherit           # TEAM_WEBHOOK; os secrets do Environment hml chegam pelo próprio Environment
