@@ -1,0 +1,284 @@
+name: deploy
+
+# Deploy do backend (api, ws e migrate) no servidor cromocard-srv (T7).
+#
+# Como cada evento vira um deploy:
+#   - CI verde num push em develop    -> hml,  tag = SHA desse push
+#     (o ci.yml chama este arquivo no job "Deploy em hml", depois das imagens)
+#   - push em main (merge de release) -> prod, tag = HEAD^2 do merge commit (o SHA testado em hml)
+#   - execução manual (rollback)      -> ambiente e tag escolhidos
+#
+# IMPORTANTE:
+#   - O deploy de hml roda no contexto da develop, então funciona assim que este
+#     arquivo chega na develop (não depende da main).
+#   - Este é o ÚNICO arquivo com job no runner self-hosted. Ele não pode ter gatilho
+#     pull_request nem pull_request_target: o repositório é público.
+#   - Os logs são públicos: nunca imprimir o .env nem rodar "docker compose config" sem -q.
+on:
+  workflow_call:             # chamado pelo ci.yml depois de um push em develop
+    inputs:
+      environment:
+        type: string
+        required: true
+      tag:
+        type: string
+        required: true
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente"
+        type: choice
+        options: [hml, prod]
+        required: true
+      tag:
+        description: "SHA completo (40 caracteres) da imagem do backend"
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  # 1) Descobre o ambiente e a tag. Roda no GitHub, não no servidor.
+  resolve:
+    name: Definir ambiente e tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      env: ${{ steps.r.outputs.env }}
+      tag: ${{ steps.r.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        if: inputs.environment == ''     # só o push em main precisa do histórico
+        with:
+          fetch-depth: 2           # o merge commit e os dois pais
+          persist-credentials: false
+
+      - id: r
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          IN_ENV: ${{ inputs.environment }}
+          IN_TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "$IN_ENV" ]; then
+            # Chamado pelo ci.yml (hml) ou executado à mão (rollback): ambiente e tag vêm prontos.
+            ENV="$IN_ENV"; TAG="$IN_TAG"
+          elif [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
+            ENV=prod
+            # O PR de develop para main precisa usar "Create a merge commit".
+            # O segundo pai (HEAD^2) é o commit de develop que já foi buildado e testado.
+            TAG=$(git rev-parse --verify --quiet 'HEAD^2') || {
+              echo "::error::O push em main não é um merge commit. Use 'Create a merge commit' no PR de develop para main."
+              exit 1
+            }
+          else
+            echo "::error::Evento não esperado: $EVENT em $REF"; exit 1
+          fi
+
+          if ! grep -Eq '^[0-9a-f]{40}$' <<< "$TAG"; then
+            echo "::error::Tag inválida: use o SHA completo do commit (40 caracteres)."
+            exit 1
+          fi
+
+          # Produção só recebe código que já passou pela develop (e, portanto, por hml).
+          if [ "$ENV" = prod ]; then
+            STATUS=$(gh api "repos/$REPO/compare/develop...$TAG" --jq .status)
+            case "$STATUS" in
+              behind|identical) ;;
+              *) echo "::error::O commit $TAG não está na develop (status: $STATUS). Produção só recebe o que passou por hml."
+                 exit 1 ;;
+            esac
+          fi
+
+          echo "Ambiente: $ENV · tag: $TAG"
+          { echo "env=$ENV"; echo "tag=$TAG"; } >> "$GITHUB_OUTPUT"
+
+  # 2) Deploy no servidor, pelo runner self-hosted.
+  deploy:
+    name: Deploy em ${{ needs.resolve.outputs.env }}
+    needs: resolve
+    runs-on: [self-hosted, cromocard-deploy]
+    environment: ${{ needs.resolve.outputs.env }}     # prod espera aprovação de QA ou PO
+    concurrency:
+      group: deploy-${{ needs.resolve.outputs.env }}
+      cancel-in-progress: false
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read            # pull dos pacotes privados do GHCR
+    env:
+      ENV_NAME: ${{ needs.resolve.outputs.env }}
+      BACKEND_TAG: ${{ needs.resolve.outputs.tag }}
+      REGISTRY: ${{ vars.REGISTRY || 'ghcr.io/codaqui' }}
+      DIR: /srv/cromocard/${{ needs.resolve.outputs.env }}
+      # Com isso, todo "docker compose" abaixo usa o projeto certo sem repetir o -p.
+      COMPOSE_PROJECT_NAME: cromocard-${{ needs.resolve.outputs.env }}
+    steps:
+      # Pega a pasta infra/ do MESMO commit que vai subir, para os arquivos Compose
+      # baterem com a versão da imagem (também vale para o rollback manual).
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          sparse-checkout: infra
+          persist-credentials: false
+
+      - name: Copiar Compose e gerar .env
+        env:
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ vars.JWT_EXPIRES_IN }}
+          CORS_ORIGIN: ${{ vars.CORS_ORIGIN }}
+          API_URL: ${{ vars.API_URL }}
+          WS_URL: ${{ vars.WS_URL }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+          CLOUDFLARED_VERSION: ${{ vars.CLOUDFLARED_VERSION }}
+          TAILSCALE_VERSION: ${{ vars.TAILSCALE_VERSION }}
+        run: |
+          set -euo pipefail
+          cp infra/docker-compose.yml "infra/compose.$ENV_NAME.yml" infra/compose.sem-frontend.yml "$DIR/"
+          if [ "$ENV_NAME" = hml ]; then
+            mkdir -p "$DIR/tailscale" && cp -r infra/tailscale/. "$DIR/tailscale/"
+          fi
+
+          # A tag do frontend pertence ao deploy do outro repositório: preservar.
+          FRONTEND_TAG=$(grep -s '^FRONTEND_TAG=' "$DIR/.env" | tail -n 1 | cut -d= -f2- || true)
+          if [ -z "$FRONTEND_TAG" ]; then
+            # Primeiro deploy, antes de existir imagem do frontend: sobe sem web e admin.
+            FRONTEND_TAG=sem-frontend
+          fi
+          FILES="docker-compose.yml:compose.$ENV_NAME.yml"
+          if [ "$FRONTEND_TAG" = sem-frontend ]; then
+            echo "::warning::Sem imagem do frontend no .env: subindo sem web e admin (infra/compose.sem-frontend.yml)."
+            FILES="$FILES:compose.sem-frontend.yml"
+          fi
+          echo "COMPOSE_FILE=$FILES" >> "$GITHUB_ENV"
+
+          # .env só legível pelo usuário deploy (600). Grava num arquivo novo e troca de uma vez.
+          umask 077
+          cat > "$DIR/.env.novo" <<EOF
+          REGISTRY=$REGISTRY
+          BACKEND_TAG=$BACKEND_TAG
+          FRONTEND_TAG=$FRONTEND_TAG
+          POSTGRES_USER=$POSTGRES_USER
+          POSTGRES_DB=$POSTGRES_DB
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          JWT_SECRET=$JWT_SECRET
+          JWT_EXPIRES_IN=$JWT_EXPIRES_IN
+          CORS_ORIGIN=$CORS_ORIGIN
+          API_URL=$API_URL
+          WS_URL=$WS_URL
+          TUNNEL_TOKEN=$TUNNEL_TOKEN
+          TS_AUTHKEY=$TS_AUTHKEY
+          CLOUDFLARED_VERSION=$CLOUDFLARED_VERSION
+          TAILSCALE_VERSION=$TAILSCALE_VERSION
+          EOF
+          mv "$DIR/.env.novo" "$DIR/.env"
+
+      - name: Validar Compose (sem imprimir nada)
+        working-directory: ${{ env.DIR }}
+        run: docker compose config -q
+
+      # Pacotes privados: login com o GITHUB_TOKEN, que só vale enquanto o job roda.
+      # Se os pacotes ficarem públicos, este passo continua funcionando.
+      - name: Login no GHCR
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+      - name: Baixar imagens do backend
+        working-directory: ${{ env.DIR }}
+        run: docker compose pull --quiet api ws
+
+      - name: Conferir imagens
+        run: |
+          for s in api ws; do
+            docker image inspect "$REGISTRY/cromocard-$s:$BACKEND_TAG" > /dev/null
+          done
+
+      - name: Migrations e subida
+        id: subida
+        working-directory: ${{ env.DIR }}
+        run: |
+          set -euo pipefail
+          # Guarda a versão que estava no ar, para o rollback automático.
+          if [ -f .deployed-tag ]; then cp .deployed-tag .previous-tag; fi
+          docker compose up -d postgres
+          docker compose run --rm migrate
+          docker compose up -d --remove-orphans
+
+      - name: Healthcheck
+        id: health
+        working-directory: ${{ env.DIR }}
+        env:
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+        run: |
+          set -uo pipefail
+          if [ -z "$HEALTH_URL" ]; then echo "::error::Variável HEALTH_URL não cadastrada no Environment."; exit 1; fi
+          for i in $(seq 1 30); do
+            # O container novo precisa estar "healthy" e o /health público precisa responder 200.
+            ESTADO=$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q api)" 2>/dev/null || true)
+            if [ "$ESTADO" = healthy ] && curl -fsS -o /dev/null --max-time 5 "$HEALTH_URL"; then
+              echo "$BACKEND_TAG" > .deployed-tag
+              echo "Healthcheck OK na tentativa $i"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Healthcheck falhou (api: ${ESTADO:-sem container}; $HEALTH_URL)."
+          exit 1
+
+      - name: Rollback automático
+        if: failure() && (steps.subida.outcome == 'failure' || steps.health.outcome == 'failure')
+        working-directory: ${{ env.DIR }}
+        run: |
+          set -euo pipefail
+          PREV=$(cat .previous-tag 2>/dev/null || true)
+          if [ -z "$PREV" ] || [ "$PREV" = "$BACKEND_TAG" ]; then
+            echo "::error::Não existe versão anterior para voltar (primeiro deploy?). Nada foi revertido."
+            exit 1
+          fi
+          echo "::warning::Voltando o backend para a versão anterior: $PREV"
+          umask 077
+          sed -i "s/^BACKEND_TAG=.*/BACKEND_TAG=$PREV/" .env
+          docker compose pull --quiet api ws
+          docker compose up -d --remove-orphans
+          echo "Rollback feito. Lembre: a imagem voltou, mas migrations já aplicadas não voltam."
+
+      - name: Limpar imagens antigas não usadas (mais de 7 dias)
+        if: success()
+        run: docker image prune -a -f --filter "until=168h"
+
+      - name: Logout do GHCR
+        if: always()
+        run: docker logout ghcr.io
+
+  # 3) Aviso no canal da equipe quando algo falha (inclui o rollback automático).
+  avisar:
+    name: Avisar falha no canal
+    needs: [resolve, deploy]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Enviar aviso (TEAM_WEBHOOK)
+        env:
+          TEAM_WEBHOOK: ${{ secrets.TEAM_WEBHOOK }}
+          MSG: "❌ Deploy do backend falhou · ambiente: ${{ needs.resolve.outputs.env || '?' }} · tag: ${{ needs.resolve.outputs.tag || '?' }} · ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: |
+          if [ -z "$TEAM_WEBHOOK" ]; then
+            echo "::warning::Secret TEAM_WEBHOOK não cadastrado: aviso não enviado."
+            exit 0
+          fi
+          # "text" é lido pelo Slack e "content" pelo Discord; cada um ignora o outro.
+          jq -n --arg m "$MSG" '{text: $m, content: $m}' \
+            | curl -fsS -X POST -H 'Content-Type: application/json' --data @- "$TEAM_WEBHOOK" > /dev/null

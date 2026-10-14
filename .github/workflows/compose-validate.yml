@@ -14,11 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: docker compose config -q (hml e prod)
+      - name: docker compose config -q (hml e prod, com e sem frontend)
         working-directory: infra
         run: |
           for e in hml prod; do
             docker compose -p cromocard-$e --env-file validacao.env.example \
               -f docker-compose.yml -f compose.$e.yml config -q
             echo "$e OK"
+            docker compose -p cromocard-$e --env-file validacao.env.example \
+              -f docker-compose.yml -f compose.$e.yml -f compose.sem-frontend.yml config -q
+            echo "$e sem frontend OK"
           done
