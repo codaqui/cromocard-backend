@@ -61,14 +61,13 @@ Crie com *Add New Monitor*. Em todos: *Retries* `2` (evita alerta por uma falha 
 | API prod | HTTP(s) | `https://api.cromocard.com.br/health` | 60 s |
 | WS prod | HTTP(s) | `https://ws.cromocard.com.br/health` | 120 s |
 | Web prod | HTTP(s) | `https://cromocard.com.br` | 60 s |
-| Admin prod | HTTP(s) | `https://admin.cromocard.com.br` | 120 s |
 | API hml | HTTP(s) | `https://hml-api.cromocard.com.br/health` | 120 s |
 | WS hml | HTTP(s) | `https://hml-ws.cromocard.com.br/health` | 120 s |
 | Backup diário | Push | URL gerada pelo Kuma (abaixo) | 90000 s (25 h) |
 
 O serviço `ws` responde `/health` na própria porta, por isso o monitor usa esse caminho com status 200, e não uma conexão WebSocket.
 
-**Monitores que vão ficar vermelhos no começo:** os de produção, até o primeiro release; `Web prod` e `Admin prod`, até o frontend publicar as imagens. Crie e use **Pause** neles, para não acostumar o canal a alertas falsos. Tire a pausa quando o serviço existir.
+**Monitores que vão ficar vermelhos no começo:** os de produção, até o primeiro release, e `Web prod`, até o frontend publicar a imagem. Crie e use **Pause** neles, para não acostumar o canal a alertas falsos. Tire a pausa quando o serviço existir.
 
 **Página de status:** *Status Pages → New Status Page*, nome `CromoCard`, slug `cromocard`. Adicione os monitores, separados em *Produção*, *Homologação* e *Rotinas*. É ela que a equipe consulta, sem login.
 

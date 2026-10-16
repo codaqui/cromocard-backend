@@ -75,7 +75,7 @@ Tudo que entra na `develop` vai para homologação sozinho. Use para testar e pa
 | --- | --- | --- |
 | API | `https://hml-api.cromocard.com.br` (`/health` responde `{"status":"ok"}`) | Não |
 | WebSocket | `wss://hml-ws.cromocard.com.br` | Não |
-| Site e admin | `https://hml.cromocard.com.br` e `https://hml-admin.cromocard.com.br` (quando o frontend publicar as imagens) | Não |
+| Site (o admin é uma tela do site) | `https://hml.cromocard.com.br` (quando o frontend publicar a imagem) | Não |
 | Logs (Dozzle) | `http://cromocard-ops:8080` | Sim |
 | Status (Uptime Kuma) | `http://cromocard-ops:3001/status/cromocard` | Sim |
 | Banco | `cromocard-hml-db:5432` | Sim |

@@ -8,6 +8,8 @@ Arquivos que o pipeline de deploy copia para `/srv/cromocard/<env>/` no servidor
 | `compose.hml.yml` | Limites de homologação e sidecar `ts-hml-db` (banco de homologação pela VPN) |
 | `compose.prod.yml` | Limites de produção; sem sidecar |
 | `compose.sem-frontend.yml` | Override temporário: sobe sem o `web` enquanto não existe imagem do frontend (usado sozinho pelo `deploy.yml` quando `FRONTEND_TAG=sem-frontend`) |
+| `compose.ops.yml` | Projeto `cromocard-ops` (T9): Dozzle e Uptime Kuma, só pela VPN; fora do pipeline (ver *Ferramentas internas*) |
+| `ops.env.example` | Valores fictícios para validar o `compose.ops.yml` |
 | `tailscale/serve-db.json` | Repassa a 5432 do sidecar para o `postgres` |
 | `validacao.env.example` | Valores fictícios, só para validar a sintaxe |
 

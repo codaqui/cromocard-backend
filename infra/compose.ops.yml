@@ -34,7 +34,8 @@ services:
     # "default" dá saída para a internet (coordenação do Tailscale e os monitores HTTPS);
     # "socket" é interna e só alcança o proxy do Docker.
     networks: [default, socket]
-    deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
+    # 128M, como o ts-hml-db: com 64M ele chegou a 90% do limite em homologação.
+    deploy: { resources: { limits: { cpus: "0.25", memory: 128M } } }
 
   # O Dozzle não recebe o docker.sock: "ro" no socket não impede escrita na API do Docker.
   # Este proxy só libera leitura (GET) de containers, eventos e informações do sistema.
