@@ -4,17 +4,15 @@
 # FRONTEND_TAG=sem-frontend (valor que ele grava no primeiro deploy, se não achar a tag).
 # Quando o deploy do frontend gravar a tag real no .env, este arquivo deixa de ser usado.
 #
-# O que muda: web e admin ficam num profile que ninguém ativa (não sobem e não são
-# baixados) e o cloudflared deixa de depender deles. Os hostnames do web e do admin
-# respondem erro até o frontend subir; api e ws funcionam normalmente.
+# O que muda: web fica num profile que ninguém ativa (não sobe e não é
+# baixado) e o cloudflared deixa de depender deles. O hostname do web
+# responde erro até o frontend subir; api e ws funcionam normalmente.
 #
 # Uso manual no servidor enquanto estiver nesse modo:
 #   docker compose -p cromocard-<env> -f docker-compose.yml -f compose.<env>.yml -f compose.sem-frontend.yml <comando>
 
 services:
   web:
-    profiles: ["frontend"]
-  admin:
     profiles: ["frontend"]
   cloudflared:
     depends_on: !override [api, ws]

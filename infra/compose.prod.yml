@@ -21,8 +21,6 @@ services:
   web:
     deploy: { resources: { limits: { cpus: "0.5", memory: 128M } } }
 
-  admin:
-    deploy: { resources: { limits: { cpus: "0.5", memory: 128M } } }
 
   cloudflared:
     deploy: { resources: { limits: { cpus: "0.5", memory: 64M } } }
