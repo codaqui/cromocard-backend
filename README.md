@@ -2,6 +2,8 @@
 
 API do CromoCard em Node.js 24 + TypeScript + Express 5 + Prisma 7 (PostgreSQL 18).
 
+Chegou agora na equipe? Comece pelo [guia da equipe](docs/ONBOARDING.md): acessos, fluxo de trabalho, homologação, release e rollback.
+
 ## Rodando localmente
 
 ```bash

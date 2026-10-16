@@ -1,0 +1,93 @@
+# CromoCard — ferramentas internas: logs (Dozzle) e status (Uptime Kuma) · T9
+#
+# Fica fora do pipeline: sobe uma vez no servidor, em /srv/cromocard/ops, como o usuário deploy:
+#   docker compose --env-file .env -f compose.ops.yml up -d
+# O .env dessa pasta (permissão 600) tem TS_AUTHKEY_OPS e TAILSCALE_VERSION (etapa 4.3).
+#
+# Acesso só pela VPN: Dozzle e Uptime Kuma usam a rede do container ts-ops, que entra no
+# Tailscale como o nó "cromocard-ops" (tag:ops). Nenhuma porta é publicada no servidor.
+#   Dozzle       http://cromocard-ops:8080   (só containers de homologação)
+#   Uptime Kuma  http://cromocard-ops:3001
+#
+# Nunca rode "down -v": apaga a identidade do nó no Tailscale e os monitores do Uptime Kuma.
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+
+name: cromocard-ops
+
+services:
+  ts-ops:
+    <<: *hardening
+    image: tailscale/tailscale:${TAILSCALE_VERSION:?}
+    hostname: cromocard-ops
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY_OPS:?}
+      TS_STATE_DIR: /var/lib/tailscale
+      # Modo userspace: sem /dev/net/tun nem NET_ADMIN. As conexões que chegam pela VPN
+      # são entregues no 127.0.0.1 deste container, onde o Dozzle e o Kuma escutam.
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: --advertise-tags=tag:ops
+    volumes:
+      - ts-ops-state:/var/lib/tailscale
+    # "default" dá saída para a internet (coordenação do Tailscale e os monitores HTTPS);
+    # "socket" é interna e só alcança o proxy do Docker.
+    networks: [default, socket]
+    # 128M, como o ts-hml-db: com 64M ele chegou a 90% do limite em homologação.
+    deploy: { resources: { limits: { cpus: "0.25", memory: 128M } } }
+
+  # O Dozzle não recebe o docker.sock: "ro" no socket não impede escrita na API do Docker.
+  # Este proxy só libera leitura (GET) de containers, eventos e informações do sistema.
+  # Ele fica só na rede interna "socket", fora da VPN.
+  docker-socket-proxy:
+    <<: *hardening
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    environment:
+      CONTAINERS: 1
+      INFO: 1
+      EVENTS: 1
+      POST: 0
+      # As redes do Docker no servidor são só IPv4 (10.200.0.0/16).
+      DISABLE_IPV6: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [socket]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 32M } } }
+
+  dozzle:
+    <<: *hardening
+    image: amir20/dozzle:v11.3.2
+    network_mode: service:ts-ops
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      DOZZLE_ADDR: ":8080"
+      DOZZLE_HOSTNAME: cromocard-srv
+      # Só homologação. Logs de produção podem ter dados pessoais (LGPD): ficam com
+      # Lucas e Duarte, por "docker logs" no servidor.
+      DOZZLE_FILTER: label=com.docker.compose.project=cromocard-hml
+      DOZZLE_NO_ANALYTICS: "true"
+      # Já são "false" por padrão; ficam explícitos para ninguém ligar sem querer.
+      DOZZLE_ENABLE_ACTIONS: "false"
+      DOZZLE_ENABLE_SHELL: "false"
+    depends_on: [ts-ops, docker-socket-proxy]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
+
+  uptime-kuma:
+    <<: *hardening
+    # "slim": sem MariaDB embutido nem Chromium (usar SQLite no primeiro acesso).
+    # "rootless": roda como o usuário node (uid 1000).
+    image: louislam/uptime-kuma:2.5.6-slim-rootless
+    network_mode: service:ts-ops
+    volumes:
+      - kuma-data:/app/data
+    depends_on: [ts-ops]
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+networks:
+  socket:
+    internal: true
+
+volumes:
+  ts-ops-state: {}
+  kuma-data: {}

@@ -8,6 +8,8 @@ Arquivos que o pipeline de deploy copia para `/srv/cromocard/<env>/` no servidor
 | `compose.hml.yml` | Limites de homologação e sidecar `ts-hml-db` (banco de homologação pela VPN) |
 | `compose.prod.yml` | Limites de produção; sem sidecar |
 | `compose.sem-frontend.yml` | Override temporário: sobe sem o `web` enquanto não existe imagem do frontend (usado sozinho pelo `deploy.yml` quando `FRONTEND_TAG=sem-frontend`) |
+| `compose.ops.yml` | Projeto `cromocard-ops` (T9): Dozzle e Uptime Kuma, só pela VPN; fora do pipeline (ver *Ferramentas internas*) |
+| `ops.env.example` | Valores fictícios para validar o `compose.ops.yml` |
 | `tailscale/serve-db.json` | Repassa a 5432 do sidecar para o `postgres` |
 | `validacao.env.example` | Valores fictícios, só para validar a sintaxe |
 
@@ -32,7 +34,11 @@ for e in hml prod; do
 done
 ```
 
-Para conferir também o modo sem frontend, acrescente `-f compose.sem-frontend.yml`.
+Para conferir também o modo sem frontend, acrescente `-f compose.sem-frontend.yml`. O projeto `ops`:
+
+```bash
+docker compose --env-file ops.env.example -f compose.ops.yml config -q && echo "ops OK"
+```
 
 O mesmo teste roda no CI (`.github/workflows/compose-validate.yml`) em todo PR que altera `infra/`.
 
@@ -59,3 +65,16 @@ Arquivos que o deploy mantém no servidor, em `/srv/cromocard/<env>/`:
 - `.previous-tag`: SHA que estava no ar antes do último deploy.
 
 Rollback manual: veja a tag anterior (`cat /srv/cromocard/prod/.previous-tag`, ou o SHA de um deploy anterior em *Actions*), abra *Actions → deploy → Run workflow*, escolha a branch `main`, o ambiente e a tag, e aprove. Atenção: voltar a imagem não desfaz migrations; elas precisam ser compatíveis com a versão anterior.
+
+## Ferramentas internas (`compose.ops.yml`)
+
+Logs e status ficam no projeto `cromocard-ops`, que **não passa pelo pipeline**: sobe uma vez no servidor, em `/srv/cromocard/ops`, e só muda quando uma versão de imagem muda.
+
+| Serviço | Para quê | Endereço (só pela VPN) |
+| --- | --- | --- |
+| `ts-ops` | Nó `cromocard-ops` (`tag:ops`) no Tailscale; os outros dois usam a rede dele | — |
+| `dozzle` | Logs dos containers de **homologação** (`DOZZLE_FILTER`) | `http://cromocard-ops:8080` |
+| `uptime-kuma` | Monitores e alertas no canal da equipe | `http://cromocard-ops:3001` |
+| `docker-socket-proxy` | Dá ao Dozzle só leitura da API do Docker; fica numa rede interna, fora da VPN | — |
+
+Nenhuma porta é publicada no servidor. Instalação, monitores e alertas: [docs/runbooks/observabilidade.md](../docs/runbooks/observabilidade.md).

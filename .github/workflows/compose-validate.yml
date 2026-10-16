@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: docker compose config -q (hml e prod, com e sem frontend)
+      - name: docker compose config -q (hml e prod, com e sem frontend; ops)
         working-directory: infra
         run: |
           for e in hml prod; do
@@ -25,3 +25,5 @@ jobs:
               -f docker-compose.yml -f compose.$e.yml -f compose.sem-frontend.yml config -q
             echo "$e sem frontend OK"
           done
+          docker compose --env-file ops.env.example -f compose.ops.yml config -q
+          echo "ops OK"
