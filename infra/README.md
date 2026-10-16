@@ -4,12 +4,10 @@ Arquivos que o pipeline de deploy copia para `/srv/cromocard/<env>/` no servidor
 
 | Arquivo | Conteúdo |
 | --- | --- |
-| `docker-compose.yml` | Base comum: `postgres`, `migrate`, `api`, `ws`, `web`, `admin`, `cloudflared`; redes `edge` e `data` (interna, sem internet); volume `pgdata` |
+| `docker-compose.yml` | Base comum: `postgres`, `migrate`, `api`, `ws`, `web`, `cloudflared`; redes `edge` e `data` (interna, sem internet); volume `pgdata` |
 | `compose.hml.yml` | Limites de homologação e sidecar `ts-hml-db` (banco de homologação pela VPN) |
 | `compose.prod.yml` | Limites de produção; sem sidecar |
-| `compose.sem-frontend.yml` | Override temporário: sobe sem `web` e `admin` enquanto não existe imagem do frontend (usado sozinho pelo `deploy.yml` quando `FRONTEND_TAG=sem-frontend`) |
-| `compose.ops.yml` | Projeto `cromocard-ops` (T9): Dozzle e Uptime Kuma, só pela VPN; fora do pipeline (ver *Ferramentas internas*) |
-| `ops.env.example` | Valores fictícios para validar o `compose.ops.yml` |
+| `compose.sem-frontend.yml` | Override temporário: sobe sem o `web` enquanto não existe imagem do frontend (usado sozinho pelo `deploy.yml` quando `FRONTEND_TAG=sem-frontend`) |
 | `tailscale/serve-db.json` | Repassa a 5432 do sidecar para o `postgres` |
 | `validacao.env.example` | Valores fictícios, só para validar a sintaxe |
 
@@ -20,7 +18,7 @@ Regras: todos os serviços têm `restart: unless-stopped` e `no-new-privileges` 
 O backend e o frontend estão em repositórios separados, cada um publica as imagens com o SHA do próprio commit:
 
 - `BACKEND_TAG`: `api`, `ws` e `migrate`
-- `FRONTEND_TAG`: `web` e `admin`
+- `FRONTEND_TAG`: `web` (o admin é uma tela do web)
 
 O deploy de um repositório atualiza só a sua tag no `.env` e mantém a outra.
 

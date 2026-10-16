@@ -24,8 +24,6 @@ services:
   web:
     deploy: { resources: { limits: { cpus: "0.25", memory: 96M } } }
 
-  admin:
-    deploy: { resources: { limits: { cpus: "0.25", memory: 96M } } }
 
   cloudflared:
     deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
@@ -49,7 +47,7 @@ services:
     networks: [data, ts-egress]
     depends_on:
       postgres: { condition: service_healthy }
-    deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
+    deploy: { resources: { limits: { cpus: "0.25", memory: 128M } } }
 
 networks:
   ts-egress: {}
