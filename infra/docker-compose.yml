@@ -4,7 +4,7 @@
 # Os valores vêm do .env ao lado deste arquivo (gerado pelo deploy.yml).
 # Tags das imagens: cada repositório publica com o SHA do próprio commit, por isso são duas.
 #   BACKEND_TAG  → api, ws e migrate (cromocard-backend)
-#   FRONTEND_TAG → web e admin (repositório do frontend)
+#   FRONTEND_TAG → web (repositório do frontend; o admin é uma tela do web)
 # Limites de CPU e memória ficam nos overrides, porque mudam por ambiente.
 
 # Âncora de hardening: todo serviço deste arquivo usa "<<: *hardening".
@@ -94,14 +94,8 @@ services:
       WS_URL: ${WS_URL:?}
     networks: [edge]
 
-  admin:
-    <<: *hardening
-    image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-admin:${FRONTEND_TAG:?}
-    environment:
-      API_URL: ${API_URL:?}
-    networks: [edge]
 
-  # Um túnel por ambiente; os Public Hostnames apontam para web:8080, api:3000, ws:3001, admin:8080.
+  # Um túnel por ambiente; os Public Hostnames apontam para web:8080, api:3000, ws:3001.
   cloudflared:
     <<: *hardening
     image: cloudflare/cloudflared:${CLOUDFLARED_VERSION:?}
@@ -109,7 +103,7 @@ services:
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?}
     networks: [edge]
-    depends_on: [web, api, ws, admin]
+    depends_on: [web, api, ws]
 
 networks:
   edge: {}            # tem saída para a internet (cloudflared, APIs externas)

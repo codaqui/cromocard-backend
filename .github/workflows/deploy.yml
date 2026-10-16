@@ -152,12 +152,12 @@ jobs:
           # A tag do frontend pertence ao deploy do outro repositório: preservar.
           FRONTEND_TAG=$(grep -s '^FRONTEND_TAG=' "$DIR/.env" | tail -n 1 | cut -d= -f2- || true)
           if [ -z "$FRONTEND_TAG" ]; then
-            # Primeiro deploy, antes de existir imagem do frontend: sobe sem web e admin.
+            # Primeiro deploy, antes de existir imagem do frontend: sobe sem o web.
             FRONTEND_TAG=sem-frontend
           fi
           FILES="docker-compose.yml:compose.$ENV_NAME.yml"
           if [ "$FRONTEND_TAG" = sem-frontend ]; then
-            echo "::warning::Sem imagem do frontend no .env: subindo sem web e admin (infra/compose.sem-frontend.yml)."
+            echo "::warning::Sem imagem do frontend no .env: subindo sem o web (infra/compose.sem-frontend.yml)."
             FILES="$FILES:compose.sem-frontend.yml"
           fi
           echo "COMPOSE_FILE=$FILES" >> "$GITHUB_ENV"
