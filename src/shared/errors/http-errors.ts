@@ -35,3 +35,9 @@ export class BusinessRuleError extends AppError {
     super({ statusCode: 422, code, message });
   }
 }
+
+export class NotImplementedError extends AppError {
+  constructor(message = 'Funcionalidade em construção') {
+    super({ statusCode: 501, code: 'NOT_IMPLEMENTED', message });
+  }
+}

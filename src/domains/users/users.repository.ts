@@ -1,16 +1,26 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { UserStatus } from '@/generated/prisma/enums';
+import { NotImplementedError } from '@/shared/errors/http-errors';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
 
-import type { ListUsersQuery, UpdateUserInput } from './users.validator';
+import type {
+  CreateUserByAdminInput,
+  ListUsersQuery,
+  UpdateUserByAdminInput,
+  UpdateUserInput,
+} from './users.validator';
 
 const userSummarySelect = {
   id: true,
   name: true,
   email: true,
+  username: true,
+  phone: true,
   role: true,
   status: true,
   emailVerified: true,
+  lastLoginAt: true,
   createdAt: true,
 } satisfies Prisma.UserSelect;
 
@@ -21,11 +31,34 @@ export interface UsersPage {
   total: number;
 }
 
+export interface UniqueFieldCheck {
+  value: string;
+  ignoreUserId?: string;
+}
+
+export interface PasswordSetupToken {
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
 export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserSummary | null>;
   update(id: string, input: UpdateUserInput): Promise<UserSummary>;
   softDelete(id: string): Promise<void>;
+}
+
+export interface UsersAdminRepository {
+  existsEmail(check: UniqueFieldCheck): Promise<boolean>;
+  existsUsername(check: UniqueFieldCheck): Promise<boolean>;
+  create(input: CreateUserByAdminInput): Promise<UserSummary>;
+  updateByAdmin(id: string, input: UpdateUserByAdminInput): Promise<UserSummary>;
+  setStatus(id: string, status: UserStatus): Promise<UserSummary>;
+  findDeletedById(id: string): Promise<UserSummary | null>;
+  restore(id: string): Promise<UserSummary>;
+  countActiveAdmins(): Promise<number>;
+  createPasswordSetupToken(token: PasswordSetupToken): Promise<void>;
 }
 
 function buildSearchFilter(search?: string): Prisma.UserWhereInput {
@@ -39,7 +72,7 @@ function buildSearchFilter(search?: string): Prisma.UserWhereInput {
   };
 }
 
-export class PrismaUsersRepository implements UsersRepository {
+export class PrismaUsersRepository implements UsersRepository, UsersAdminRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async findPage({ search, ...pagination }: ListUsersQuery): Promise<UsersPage> {
@@ -68,5 +101,41 @@ export class PrismaUsersRepository implements UsersRepository {
 
   async softDelete(id: string): Promise<void> {
     await this.prisma.user.update({ where: { id }, data: softDeleteData() });
+  }
+
+  existsEmail(_check: UniqueFieldCheck): Promise<boolean> {
+    throw new NotImplementedError();
+  }
+
+  existsUsername(_check: UniqueFieldCheck): Promise<boolean> {
+    throw new NotImplementedError();
+  }
+
+  create(_input: CreateUserByAdminInput): Promise<UserSummary> {
+    throw new NotImplementedError();
+  }
+
+  updateByAdmin(_id: string, _input: UpdateUserByAdminInput): Promise<UserSummary> {
+    throw new NotImplementedError();
+  }
+
+  setStatus(_id: string, _status: UserStatus): Promise<UserSummary> {
+    throw new NotImplementedError();
+  }
+
+  findDeletedById(_id: string): Promise<UserSummary | null> {
+    throw new NotImplementedError();
+  }
+
+  restore(_id: string): Promise<UserSummary> {
+    throw new NotImplementedError();
+  }
+
+  countActiveAdmins(): Promise<number> {
+    throw new NotImplementedError();
+  }
+
+  createPasswordSetupToken(_token: PasswordSetupToken): Promise<void> {
+    throw new NotImplementedError();
   }
 }

@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { UserNotFoundError } from './users.errors';
 import type { UserSummary, UsersPage, UsersRepository } from './users.repository';
-import { UsersService } from './users.service';
+import { type UsersAdminDeps, UsersService } from './users.service';
 import type { UpdateUserInput } from './users.validator';
+
+const adminDepsNotUsedHere = {} as UsersAdminDeps;
 
 interface StoredUser extends UserSummary {
   deletedAt: Date | null;
@@ -14,9 +16,12 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     id: crypto.randomUUID(),
     name: 'Ana Colecionadora',
     email: 'ana@cromocard.dev',
+    username: 'ana.colecionadora',
+    phone: null,
     role: 'CUSTOMER',
     status: 'ACTIVE',
     emailVerified: true,
+    lastLoginAt: null,
     createdAt: new Date(),
     deletedAt: null,
     ...overrides,
@@ -54,7 +59,7 @@ describe('UsersService', () => {
 
   beforeEach(() => {
     repository = new InMemoryUsersRepository();
-    service = new UsersService(repository);
+    service = new UsersService(repository, adminDepsNotUsedHere);
   });
 
   it('lista os usuários com os dados de paginação', async () => {
@@ -100,5 +105,38 @@ describe('UsersService', () => {
 
     expect(repository.users[0]?.deletedAt).toBeInstanceOf(Date);
     await expect(service.findById(user.id)).rejects.toBeInstanceOf(UserNotFoundError);
+  });
+});
+
+describe('UsersService (administração, CCD059)', () => {
+  describe('list', () => {
+    it.todo('filtra por papel e por status, além da busca por nome, e-mail ou @');
+  });
+
+  describe('createByAdmin', () => {
+    it.todo('cria o usuário sem senha e envia o e-mail com o link de definir senha (RN02)');
+    it.todo('grava só o hash do token do link, com validade de 24 horas');
+    it.todo('lança EmailTakenError quando o e-mail já existe');
+    it.todo('lança UsernameTakenError quando o @ já existe');
+    it.todo('registra USER_CREATED no log de auditoria');
+  });
+
+  describe('updateByAdmin', () => {
+    it.todo('atualiza os dados e registra USER_UPDATED');
+    it.todo('registra USER_ROLE_CHANGED quando o papel muda');
+    it.todo('lança SelfManagementError quando o admin rebaixa a própria conta (RN05)');
+    it.todo('lança LastAdminError ao rebaixar o último administrador ativo (RN05)');
+  });
+
+  describe('suspend / reactivate', () => {
+    it.todo('suspende (status SUSPENDED) e registra USER_SUSPENDED (RN04)');
+    it.todo('reativa (status ACTIVE) e registra USER_REACTIVATED');
+    it.todo('lança SelfManagementError ao suspender a própria conta');
+  });
+
+  describe('removeByAdmin / restore', () => {
+    it.todo('faz soft delete e registra USER_DELETED (RN03)');
+    it.todo('restaura o usuário excluído e registra USER_RESTORED');
+    it.todo('lança LastAdminError ao excluir o último administrador ativo');
   });
 });
