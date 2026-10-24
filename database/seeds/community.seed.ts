@@ -29,7 +29,6 @@ const groups: Prisma.GroupCreateManyInput[] = [
     name: 'Mestres Pokémon',
     description: 'Colecionadores de cartas Pokémon antigas.',
     accessType: 'CLOSED',
-    status: 'WARNED',
   },
   {
     id: SeedGroup.magicVeterans,
@@ -98,6 +97,10 @@ const messages: Prisma.GroupMessageCreateManyInput[] = [
   },
 ];
 
+export const SeedReport = {
+  dismissed: reportId(4),
+} as const;
+
 const reports: Prisma.ReportCreateManyInput[] = [
   {
     id: reportId(1),
@@ -123,7 +126,7 @@ const reports: Prisma.ReportCreateManyInput[] = [
     reason: 'Comportamento abusivo',
   },
   {
-    id: reportId(4),
+    id: SeedReport.dismissed,
     reporterId: SeedUser.ana,
     moderatorId: SeedUser.admin,
     groupMessageId: messageId(6),

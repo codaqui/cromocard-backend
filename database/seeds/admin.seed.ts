@@ -1,11 +1,19 @@
+import { env } from '@/config/env';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { StorageProvider } from '@/providers/storage/storage.provider';
 
 import { SeedAlbum, SeedCategory } from './catalog.seed';
+import { SeedReport } from './community.seed';
+import { solidColorPng } from './sample-image';
 import { SeedNamespace, seedId } from './seed-id';
 import { SeedUser } from './users.seed';
 
 const requestId = (index: number) => seedId(SeedNamespace.catalogRequests, index);
 const settingId = (index: number) => seedId(SeedNamespace.globalSettings, index);
+const auditLogId = (index: number) => seedId(SeedNamespace.auditLogs, index);
+
+const rejectedRequest = requestId(4);
+const rejectionReason = 'A carta já existe no álbum.';
 
 const catalogRequests: Prisma.CatalogRequestCreateManyInput[] = [
   {
@@ -32,7 +40,7 @@ const catalogRequests: Prisma.CatalogRequestCreateManyInput[] = [
     data: { name: 'Fórmula 1', type: 'ALBUM' },
   },
   {
-    id: requestId(4),
+    id: rejectedRequest,
     requesterId: SeedUser.elisa,
     reviewedById: SeedUser.admin,
     type: 'CARD',
@@ -42,19 +50,28 @@ const catalogRequests: Prisma.CatalogRequestCreateManyInput[] = [
       albumId: SeedAlbum.worldCup2026,
       number: '10',
       name: 'Neymar Jr. (repetida)',
-      rejectionReason: 'A carta já existe no álbum.',
+      rejectionReason,
     },
   },
 ];
 
-const homeBanner = {
+const DEVELOPMENT_FRONTEND_URL = 'http://localhost:5173';
+const frontendUrl = env.CORS_ORIGIN[0] ?? DEVELOPMENT_FRONTEND_URL;
+
+const sampleBanner = {
+  key: 'banners/seed-home-banner.png',
+  content: solidColorPng({ width: 1200, height: 400, rgb: [79, 70, 229] }),
+  contentType: 'image/png',
+};
+
+const buildHomeBanner = (imageUrl: string) => ({
   enabled: true,
   title: 'Complete seu álbum da Copa 2026',
   subtitle: 'Encontre colecionadores e troque suas figurinhas repetidas.',
   ctaText: 'Começar agora',
-  ctaUrl: 'http://localhost:5173/cadastro',
-  imageUrl: 'http://localhost:3000/uploads/banners/home.png',
-};
+  ctaUrl: `${frontendUrl}/cadastro`,
+  imageUrl,
+});
 
 const notificationTemplates = [
   {
@@ -69,11 +86,11 @@ const notificationTemplates = [
   },
 ];
 
-const globalSettings: Prisma.GlobalSettingCreateManyInput[] = [
+const buildGlobalSettings = (bannerImageUrl: string): Prisma.GlobalSettingCreateManyInput[] => [
   {
     id: settingId(1),
     key: 'home.banner',
-    value: JSON.stringify(homeBanner),
+    value: JSON.stringify(buildHomeBanner(bannerImageUrl)),
     description: 'Banner da página inicial',
   },
   {
@@ -84,7 +101,28 @@ const globalSettings: Prisma.GlobalSettingCreateManyInput[] = [
   },
 ];
 
-export async function seedAdmin(prisma: PrismaClient): Promise<void> {
+const auditLogs: Prisma.AuditLogCreateManyInput[] = [
+  {
+    id: auditLogId(1),
+    adminId: SeedUser.admin,
+    action: 'CATALOG_REQUEST_REJECTED',
+    entityType: 'CATALOG_REQUEST',
+    entityId: rejectedRequest,
+    details: { reason: rejectionReason },
+    createdAt: new Date('2026-10-02T15:00:00Z'),
+  },
+  {
+    id: auditLogId(2),
+    adminId: SeedUser.admin,
+    action: 'REPORT_DISMISSED',
+    entityType: 'REPORT',
+    entityId: SeedReport.dismissed,
+    details: { reason: 'A mensagem não viola as regras do grupo.' },
+    createdAt: new Date('2026-10-01T12:00:00Z'),
+  },
+];
+
+export async function seedAdmin(prisma: PrismaClient, storage: StorageProvider): Promise<void> {
   for (const request of catalogRequests) {
     await prisma.catalogRequest.upsert({
       where: { id: request.id },
@@ -92,7 +130,15 @@ export async function seedAdmin(prisma: PrismaClient): Promise<void> {
       update: request,
     });
   }
-  for (const setting of globalSettings) {
+  const banner = await storage.upload(sampleBanner);
+  for (const setting of buildGlobalSettings(banner.url)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
+  }
+  for (const auditLog of auditLogs) {
+    await prisma.auditLog.upsert({
+      where: { id: auditLog.id },
+      create: auditLog,
+      update: auditLog,
+    });
   }
 }

@@ -11,6 +11,7 @@ export const SeedNamespace = {
   reports: 10,
   catalogRequests: 11,
   globalSettings: 12,
+  auditLogs: 13,
 } as const;
 
 type SeedNamespaceValue = (typeof SeedNamespace)[keyof typeof SeedNamespace];
