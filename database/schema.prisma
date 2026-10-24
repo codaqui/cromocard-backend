@@ -40,3 +40,121 @@ model User {
 
   @@map("users")
 }
+
+enum CategoryType {
+  ALBUM
+  CARD
+
+  @@map("category_type")
+}
+
+model Category {
+  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  parentCategoryId String?      @map("parent_category_id") @db.Uuid
+  name             String       @db.VarChar(90)
+  type             CategoryType
+  description      String?      @db.VarChar(255)
+  isDefault        Boolean      @default(false) @map("is_default")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: NoAction, map: "fk_categories_parent_category_id")
+  subcategories  Category[] @relation("CategoryHierarchy")
+  albums         Album[]
+  cards          Card[]
+
+  @@map("categories")
+}
+
+model Rarity {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name      String    @unique @db.VarChar(60)
+  sortOrder Int       @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  cards Card[]
+
+  @@map("rarities")
+}
+
+model Language {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name      String    @db.VarChar(60)
+  code      String    @unique @db.VarChar(5)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  cards Card[]
+
+  @@map("languages")
+}
+
+enum AlbumStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("album_status")
+}
+
+model Album {
+  id          String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  categoryId  String?     @map("category_id") @db.Uuid
+  title       String      @db.VarChar(160)
+  publisher   String?     @db.VarChar(120)
+  year        Int?        @db.SmallInt
+  description String?
+  coverUrl    String?     @map("cover_url") @db.VarChar(255)
+  totalCards  Int         @default(0) @map("total_cards")
+  status      AlbumStatus @default(ACTIVE)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: NoAction, map: "fk_albums_category_id")
+  cards    Card[]
+
+  @@map("albums")
+}
+
+model Card {
+  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  albumId       String?   @map("album_id") @db.Uuid
+  categoryId    String?   @map("category_id") @db.Uuid
+  rarityId      String?   @map("rarity_id") @db.Uuid
+  languageId    String?   @map("language_id") @db.Uuid
+  name          String    @db.VarChar(160)
+  number        String?   @db.VarChar(20)
+  description   String?
+  frontImageUrl String?   @map("front_image_url") @db.VarChar(255)
+  backImageUrl  String?   @map("back_image_url") @db.VarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  album    Album?      @relation(fields: [albumId], references: [id], onDelete: NoAction, map: "fk_cards_album_id")
+  category Category?   @relation(fields: [categoryId], references: [id], onDelete: NoAction, map: "fk_cards_category_id")
+  rarity   Rarity?     @relation(fields: [rarityId], references: [id], onDelete: NoAction, map: "fk_cards_rarity_id")
+  language Language?   @relation(fields: [languageId], references: [id], onDelete: NoAction, map: "fk_cards_language_id")
+  photos   CardPhoto[]
+
+  @@unique([albumId, number])
+  @@map("cards")
+}
+
+model CardPhoto {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  cardId    String    @map("card_id") @db.Uuid
+  url       String    @db.VarChar(255)
+  sortOrder Int       @default(0) @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, map: "fk_card_photos_card_id")
+
+  @@map("card_photos")
+}
