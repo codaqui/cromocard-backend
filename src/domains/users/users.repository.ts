@@ -28,13 +28,13 @@ export interface UsersRepository {
   softDelete(id: string): Promise<void>;
 }
 
-function buildSearchFilter(search?: string): Prisma.UserWhereInput {
-  if (!search) return {};
+function buildSearchFilter(q?: string): Prisma.UserWhereInput {
+  if (!q) return {};
 
   return {
     OR: [
-      { name: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
+      { name: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } },
     ],
   };
 }
@@ -42,8 +42,8 @@ function buildSearchFilter(search?: string): Prisma.UserWhereInput {
 export class PrismaUsersRepository implements UsersRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async findPage({ search, ...pagination }: ListUsersQuery): Promise<UsersPage> {
-    const where: Prisma.UserWhereInput = { ...notDeleted, ...buildSearchFilter(search) };
+  async findPage({ q, ...pagination }: ListUsersQuery): Promise<UsersPage> {
+    const where: Prisma.UserWhereInput = { ...notDeleted, ...buildSearchFilter(q) };
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
