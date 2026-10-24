@@ -9,6 +9,8 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'silent']).default('info'),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
+  API_PUBLIC_URL: z.url().default('http://localhost:3000'),
+  STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
