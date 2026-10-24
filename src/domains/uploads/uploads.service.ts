@@ -14,7 +14,7 @@ export interface ImageUpload {
 export class UploadsService {
   constructor(private readonly storageProvider: StorageProvider) {}
 
-  uploadImage({ folder, content }: ImageUpload): Promise<StoredFile> {
+  async uploadImage({ folder, content }: ImageUpload): Promise<StoredFile> {
     const imageType = detectImageType(content);
 
     if (!imageType) {

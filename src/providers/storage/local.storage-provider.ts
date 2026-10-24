@@ -1,17 +1,19 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import express, { type RequestHandler } from 'express';
-
+import { LOCAL_UPLOADS_PATH } from './local-uploads.static';
+import { InvalidStorageKeyError } from './storage.errors';
 import type { FileToStore, StorageProvider, StoredFile } from './storage.provider';
 
-export const LOCAL_UPLOADS_PATH = '/uploads';
-
 export class LocalStorageProvider implements StorageProvider {
+  private readonly rootDir: string;
+
   constructor(
-    private readonly rootDir: string,
+    rootDir: string,
     private readonly publicBaseUrl: string,
-  ) {}
+  ) {
+    this.rootDir = path.resolve(rootDir);
+  }
 
   async upload({ key, content }: FileToStore): Promise<StoredFile> {
     const filePath = this.resolvePath(key);
@@ -29,14 +31,12 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   private resolvePath(key: string): string {
-    return path.join(path.resolve(this.rootDir), path.normalize(key));
-  }
-}
+    const filePath = path.resolve(this.rootDir, key);
 
-// O helmet bloqueia por padrão o carregamento de recursos por outra origem (Cross-Origin-Resource-Policy);
-// as imagens são abertas pelo frontend, que roda em outra origem.
-export function serveLocalUploads(rootDir: string): RequestHandler {
-  return express.static(path.resolve(rootDir), {
-    setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
-  });
+    if (!filePath.startsWith(this.rootDir + path.sep)) {
+      throw new InvalidStorageKeyError(key);
+    }
+
+    return filePath;
+  }
 }

@@ -87,6 +87,24 @@ describe('POST /api/v1/uploads', () => {
     expect((res.body as ErrorResponse).details?.[0]?.field).toBe('folder');
   });
 
+  it('recusa requisição sem pasta com 400', async () => {
+    const res = await postUpload(adminToken).attach('file', pngImage(), 'carta.png');
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorResponse).details?.[0]?.field).toBe('folder');
+  });
+
+  it('recusa arquivo em outro campo com 400 e mensagem em português', async () => {
+    const res = await postUpload(adminToken)
+      .field('folder', 'cards')
+      .attach('imagem', pngImage(), 'carta.png');
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorResponse).details).toEqual([
+      { field: 'imagem', message: 'Envie o arquivo no campo file' },
+    ]);
+  });
+
   it('recusa requisição sem arquivo com 400', async () => {
     const res = await postUpload(adminToken).field('folder', 'cards');
 

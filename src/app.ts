@@ -4,7 +4,7 @@ import helmet from 'helmet';
 
 import { env } from '@/config/env';
 import { httpLogger } from '@/config/logger';
-import { LOCAL_UPLOADS_PATH, serveLocalUploads } from '@/providers/storage/local.storage-provider';
+import { LOCAL_UPLOADS_PATH, serveLocalUploads } from '@/providers/storage/local-uploads.static';
 import { routes } from '@/routes';
 import { errorHandler, notFoundHandler } from '@/shared/errors/error-handler';
 import { createHealthRoutes, type PingDatabase } from '@/shared/health/health.routes';
@@ -23,7 +23,9 @@ export function createApp(deps: AppDeps = {}): Express {
   app.use(express.json());
   app.use(httpLogger);
   app.use(createHealthRoutes(deps.pingDatabase));
-  app.use(LOCAL_UPLOADS_PATH, serveLocalUploads(env.STORAGE_LOCAL_DIR));
+  if (env.STORAGE_DRIVER === 'local') {
+    app.use(LOCAL_UPLOADS_PATH, serveLocalUploads(env.STORAGE_LOCAL_DIR));
+  }
   app.use(routes);
   app.use(notFoundHandler);
   app.use(errorHandler);

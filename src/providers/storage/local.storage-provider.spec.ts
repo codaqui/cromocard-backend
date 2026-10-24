@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { LocalStorageProvider } from './local.storage-provider';
+import { InvalidStorageKeyError } from './storage.errors';
 
 describe('LocalStorageProvider', () => {
   let rootDir: string;
@@ -41,5 +42,16 @@ describe('LocalStorageProvider', () => {
     await provider.delete('cards/b.png');
 
     await expect(readFile(path.join(rootDir, 'cards/b.png'))).rejects.toThrow();
+  });
+
+  it('recusa chave que sai da pasta do storage', async () => {
+    await expect(provider.delete('../fora.png')).rejects.toThrow(InvalidStorageKeyError);
+    await expect(
+      provider.upload({
+        key: 'cards/../../fora.png',
+        content: Buffer.from('x'),
+        contentType: 'image/png',
+      }),
+    ).rejects.toThrow(InvalidStorageKeyError);
   });
 });

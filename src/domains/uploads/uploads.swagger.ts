@@ -1,6 +1,6 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
-import { uploadImageFormSchema } from './uploads.validator';
+import { MAX_UPLOAD_SIZE_IN_MEGABYTES, uploadImageFormSchema } from './uploads.validator';
 
 const uploadsPaths: RouteConfig[] = [
   {
@@ -15,7 +15,7 @@ const uploadsPaths: RouteConfig[] = [
       400: { description: 'Tipo de arquivo, pasta ou arquivo ausente' },
       401: { description: 'Autenticação necessária' },
       403: { description: 'Apenas administradores' },
-      413: { description: 'Arquivo acima de 4 MB' },
+      413: { description: `Arquivo acima de ${MAX_UPLOAD_SIZE_IN_MEGABYTES} MB` },
     },
   },
 ];

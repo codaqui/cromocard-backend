@@ -58,8 +58,8 @@ describe('UploadsService', () => {
     expect(webp.key).toMatch(/^banners\/.+\.webp$/);
   });
 
-  it('recusa um arquivo que não é PNG, JPG nem WEBP', () => {
-    expect(() => service.uploadImage({ folder: 'cards', content: textFile() })).toThrow(
+  it('recusa um arquivo que não é PNG, JPG nem WEBP', async () => {
+    await expect(service.uploadImage({ folder: 'cards', content: textFile() })).rejects.toThrow(
       InvalidImageTypeError,
     );
     expect(storage.files).toHaveLength(0);

@@ -63,6 +63,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
+      API_PUBLIC_URL: ${API_URL:?}
     networks: [edge, data]
     depends_on:
       postgres: { condition: service_healthy }
@@ -82,6 +83,7 @@ services:
       PORT: "3001"
       JWT_SECRET: ${JWT_SECRET:?}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
+      API_PUBLIC_URL: ${API_URL:?}
     networks: [edge, data]
     depends_on:
       postgres: { condition: service_healthy }
