@@ -21,13 +21,13 @@ CREATE TABLE "cards" (
 CREATE UNIQUE INDEX "cards_album_id_number_key" ON "cards"("album_id", "number");
 
 -- AddForeignKey
-ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_album_id" FOREIGN KEY ("album_id") REFERENCES "albums"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_album_id" FOREIGN KEY ("album_id") REFERENCES "albums"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_category_id" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_category_id" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_rarity_id" FOREIGN KEY ("rarity_id") REFERENCES "rarities"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_rarity_id" FOREIGN KEY ("rarity_id") REFERENCES "rarities"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_language_id" FOREIGN KEY ("language_id") REFERENCES "languages"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "cards" ADD CONSTRAINT "fk_cards_language_id" FOREIGN KEY ("language_id") REFERENCES "languages"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

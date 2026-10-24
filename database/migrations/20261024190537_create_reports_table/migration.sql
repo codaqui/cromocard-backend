@@ -25,13 +25,13 @@ CREATE TABLE "reports" (
 );
 
 -- AddForeignKey
-ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_reporter_id" FOREIGN KEY ("reporter_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_reporter_id" FOREIGN KEY ("reporter_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_moderator_id" FOREIGN KEY ("moderator_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_moderator_id" FOREIGN KEY ("moderator_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_target_user_id" FOREIGN KEY ("target_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_target_user_id" FOREIGN KEY ("target_user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_group_message_id" FOREIGN KEY ("group_message_id") REFERENCES "group_messages"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "reports" ADD CONSTRAINT "fk_reports_group_message_id" FOREIGN KEY ("group_message_id") REFERENCES "group_messages"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

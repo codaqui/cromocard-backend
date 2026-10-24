@@ -12,4 +12,4 @@ CREATE TABLE "card_photos" (
 );
 
 -- AddForeignKey
-ALTER TABLE "card_photos" ADD CONSTRAINT "fk_card_photos_card_id" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "card_photos" ADD CONSTRAINT "fk_card_photos_card_id" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

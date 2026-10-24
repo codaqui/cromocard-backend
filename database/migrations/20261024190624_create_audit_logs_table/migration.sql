@@ -14,4 +14,4 @@ CREATE TABLE "audit_logs" (
 );
 
 -- AddForeignKey
-ALTER TABLE "audit_logs" ADD CONSTRAINT "fk_audit_logs_admin_id" FOREIGN KEY ("admin_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "audit_logs" ADD CONSTRAINT "fk_audit_logs_admin_id" FOREIGN KEY ("admin_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

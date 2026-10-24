@@ -17,4 +17,4 @@ CREATE TABLE "categories" (
 );
 
 -- AddForeignKey
-ALTER TABLE "categories" ADD CONSTRAINT "fk_categories_parent_category_id" FOREIGN KEY ("parent_category_id") REFERENCES "categories"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "categories" ADD CONSTRAINT "fk_categories_parent_category_id" FOREIGN KEY ("parent_category_id") REFERENCES "categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

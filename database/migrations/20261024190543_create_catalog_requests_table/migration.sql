@@ -23,13 +23,13 @@ CREATE TABLE "catalog_requests" (
 );
 
 -- AddForeignKey
-ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_requester_id" FOREIGN KEY ("requester_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_requester_id" FOREIGN KEY ("requester_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_reviewed_by_id" FOREIGN KEY ("reviewed_by_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_reviewed_by_id" FOREIGN KEY ("reviewed_by_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_card_id" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_card_id" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_album_id" FOREIGN KEY ("album_id") REFERENCES "albums"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "catalog_requests" ADD CONSTRAINT "fk_catalog_requests_album_id" FOREIGN KEY ("album_id") REFERENCES "albums"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

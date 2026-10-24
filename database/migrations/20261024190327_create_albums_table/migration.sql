@@ -20,4 +20,4 @@ CREATE TABLE "albums" (
 );
 
 -- AddForeignKey
-ALTER TABLE "albums" ADD CONSTRAINT "fk_albums_category_id" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "albums" ADD CONSTRAINT "fk_albums_category_id" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

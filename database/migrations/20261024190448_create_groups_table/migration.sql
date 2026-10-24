@@ -2,7 +2,7 @@
 CREATE TYPE "group_access_type" AS ENUM ('OPEN', 'CLOSED');
 
 -- CreateEnum
-CREATE TYPE "group_status" AS ENUM ('ACTIVE', 'WARNED', 'SUSPENDED');
+CREATE TYPE "group_status" AS ENUM ('ACTIVE', 'SUSPENDED');
 
 -- CreateTable
 CREATE TABLE "groups" (
@@ -21,4 +21,4 @@ CREATE TABLE "groups" (
 );
 
 -- AddForeignKey
-ALTER TABLE "groups" ADD CONSTRAINT "fk_groups_creator_id" FOREIGN KEY ("creator_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "groups" ADD CONSTRAINT "fk_groups_creator_id" FOREIGN KEY ("creator_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

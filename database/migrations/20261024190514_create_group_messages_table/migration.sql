@@ -21,13 +21,13 @@ CREATE TABLE "group_messages" (
 );
 
 -- AddForeignKey
-ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_group_id" FOREIGN KEY ("group_id") REFERENCES "groups"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_group_id" FOREIGN KEY ("group_id") REFERENCES "groups"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_author_id" FOREIGN KEY ("author_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_author_id" FOREIGN KEY ("author_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_reply_to_id" FOREIGN KEY ("reply_to_id") REFERENCES "group_messages"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_reply_to_id" FOREIGN KEY ("reply_to_id") REFERENCES "group_messages"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
-ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_card_id" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "group_messages" ADD CONSTRAINT "fk_group_messages_card_id" FOREIGN KEY ("card_id") REFERENCES "cards"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;

@@ -13,4 +13,4 @@ CREATE TABLE "global_notifications" (
 );
 
 -- AddForeignKey
-ALTER TABLE "global_notifications" ADD CONSTRAINT "fk_global_notifications_admin_id" FOREIGN KEY ("admin_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE "global_notifications" ADD CONSTRAINT "fk_global_notifications_admin_id" FOREIGN KEY ("admin_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
