@@ -30,14 +30,31 @@ export const AUDIT_ACTIONS = [
   'DEFAULT_CATEGORIES_UPDATED',
 ] as const;
 
-export const recordAuditLogSchema = z.object({
-  adminId: z.uuid(),
-  action: z.enum(AUDIT_ACTIONS),
-  entityType: z.string().trim().min(1).max(60),
-  entityId: z.uuid().optional(),
-  reason: reasonSchema.optional(),
-  details: z.record(z.string(), z.json()).optional(),
-});
+export const ACTIONS_REQUIRING_REASON: readonly AuditAction[] = [
+  'USER_SUSPENDED',
+  'USER_REACTIVATED',
+  'USER_DELETED',
+  'GROUP_SUSPENDED',
+  'GROUP_REACTIVATED',
+  'GROUP_DELETED',
+  'GROUP_MESSAGE_REMOVED',
+  'REPORT_DISMISSED',
+  'CATALOG_REQUEST_REJECTED',
+];
+
+export const recordAuditLogSchema = z
+  .object({
+    adminId: z.uuid(),
+    action: z.enum(AUDIT_ACTIONS),
+    entityType: z.string().trim().min(1).max(60),
+    entityId: z.uuid().optional(),
+    reason: reasonSchema.optional(),
+    details: z.record(z.string(), z.json()).optional(),
+  })
+  .refine(({ action, reason }) => reason || !ACTIONS_REQUIRING_REASON.includes(action), {
+    path: ['reason'],
+    message: 'Esta ação exige motivo',
+  });
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type RecordAuditLogInput = z.input<typeof recordAuditLogSchema>;

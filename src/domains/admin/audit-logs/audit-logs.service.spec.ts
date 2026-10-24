@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ZodError } from 'zod';
 
-import type { AuditLogEntry, AuditLogRepository, NewAuditLog } from './audit-log.repository';
-import { AuditLogService } from './audit-log.service';
+import { InvalidAuditLogError } from './audit-logs.errors';
+import type { AuditLogEntry, AuditLogRepository, NewAuditLog } from './audit-logs.repository';
+import { AuditLogService } from './audit-logs.service';
 import type { RecordAuditLogInput } from './audit-logs.validator';
 
 class InMemoryAuditLogRepository implements AuditLogRepository {
@@ -88,22 +88,32 @@ describe('AuditLogService', () => {
     expect(entry.details).toEqual({ reason: 'Conteúdo ofensivo' });
   });
 
-  it('recusa gravar sem adminId', () => {
-    expect(() => service.record(buildInput({ adminId: '' }))).toThrow(ZodError);
+  it('recusa gravar sem adminId', async () => {
+    await expect(service.record(buildInput({ adminId: '' }))).rejects.toThrow(InvalidAuditLogError);
     expect(repository.auditLogs).toHaveLength(0);
   });
 
-  it('recusa motivo com menos de 3 caracteres', () => {
-    expect(() => service.record(buildInput({ reason: 'ok' }))).toThrow(ZodError);
+  it('recusa ação que exige motivo sem o motivo', async () => {
+    await expect(
+      service.record(buildInput({ action: 'GROUP_DELETED', reason: undefined })),
+    ).rejects.toThrow(InvalidAuditLogError);
   });
 
-  it('recusa motivo com mais de 500 caracteres', () => {
-    expect(() => service.record(buildInput({ reason: 'a'.repeat(501) }))).toThrow(ZodError);
+  it('recusa motivo com menos de 3 caracteres', async () => {
+    await expect(service.record(buildInput({ reason: 'ok' }))).rejects.toThrow(
+      InvalidAuditLogError,
+    );
   });
 
-  it('recusa ação fora da lista fechada', () => {
+  it('recusa motivo com mais de 500 caracteres', async () => {
+    await expect(service.record(buildInput({ reason: 'a'.repeat(501) }))).rejects.toThrow(
+      InvalidAuditLogError,
+    );
+  });
+
+  it('recusa ação fora da lista fechada', async () => {
     const input = { ...buildInput(), action: 'USER_HACKED' } as unknown as RecordAuditLogInput;
 
-    expect(() => service.record(input)).toThrow(ZodError);
+    await expect(service.record(input)).rejects.toThrow(InvalidAuditLogError);
   });
 });
