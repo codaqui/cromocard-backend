@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { UserNotFoundError } from './users.errors';
-import type { UserSummary, UsersPage, UsersRepository } from './users.repository';
+import type { UserCredentials, UserSummary, UsersPage, UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
 import type { UpdateUserInput } from './users.validator';
 
 interface StoredUser extends UserSummary {
+  passwordHash: string | null;
   deletedAt: Date | null;
 }
 
@@ -18,6 +19,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     status: 'ACTIVE',
     emailVerified: true,
     createdAt: new Date(),
+    passwordHash: null,
     deletedAt: null,
     ...overrides,
   };
@@ -45,6 +47,14 @@ class InMemoryUsersRepository implements UsersRepository {
       user.id === id ? { ...user, deletedAt: new Date() } : user,
     );
     return Promise.resolve();
+  }
+
+  findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null> {
+    return Promise.resolve(this.users.find((user) => user.email === email) ?? null);
+  }
+
+  findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null> {
+    return Promise.resolve(this.users.find((user) => user.id === id) ?? null);
   }
 }
 
@@ -100,5 +110,22 @@ describe('UsersService', () => {
 
     expect(repository.users[0]?.deletedAt).toBeInstanceOf(Date);
     await expect(service.findById(user.id)).rejects.toBeInstanceOf(UserNotFoundError);
+  });
+
+  it('busca as credenciais pelo e-mail, inclusive de conta excluída', async () => {
+    const user = buildUser({ deletedAt: new Date() });
+    repository.users = [user];
+
+    await expect(service.findCredentialsByEmail(user.email)).resolves.toMatchObject({
+      id: user.id,
+      deletedAt: user.deletedAt,
+    });
+  });
+
+  it('busca as credenciais pelo id, inclusive de conta excluída', async () => {
+    const user = buildUser({ deletedAt: new Date() });
+    repository.users = [user];
+
+    await expect(service.findCredentialsById(user.id)).resolves.toMatchObject({ id: user.id });
   });
 });

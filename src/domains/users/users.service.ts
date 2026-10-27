@@ -1,7 +1,7 @@
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
 import { UserNotFoundError } from './users.errors';
-import type { UserSummary, UsersRepository } from './users.repository';
+import type { UserCredentials, UserSummary, UsersRepository } from './users.repository';
 import type { ListUsersQuery, UpdateUserInput } from './users.validator';
 
 export class UsersService {
@@ -25,6 +25,14 @@ export class UsersService {
   async update(id: string, input: UpdateUserInput): Promise<UserSummary> {
     await this.findById(id);
     return this.usersRepository.update(id, input);
+  }
+
+  findCredentialsByEmail(email: string): Promise<UserCredentials | null> {
+    return this.usersRepository.findCredentialsByEmailIncludingDeleted(email);
+  }
+
+  findCredentialsById(id: string): Promise<UserCredentials | null> {
+    return this.usersRepository.findCredentialsByIdIncludingDeleted(id);
   }
 
   async remove(id: string): Promise<void> {
