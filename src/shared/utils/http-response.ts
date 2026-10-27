@@ -10,6 +10,10 @@ export function created<T>(res: Response, data: T): void {
   res.status(201).json({ data });
 }
 
+export function accepted(res: Response): void {
+  res.status(202).end();
+}
+
 export function noContent(res: Response): void {
   res.status(204).end();
 }

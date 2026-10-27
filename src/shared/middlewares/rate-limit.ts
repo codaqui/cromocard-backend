@@ -7,7 +7,8 @@ import { TooManyRequestsError } from '@/shared/errors/http-errors';
 const ONE_MINUTE_IN_MS = 60 * 1000;
 
 export interface RateLimitOptions {
-  limitPerMinute: number;
+  limit: number;
+  windowInMinutes?: number;
   keyByBodyField?: string;
   enabled?: boolean;
 }
@@ -19,14 +20,15 @@ function clientKey(req: Request, bodyField?: string): string {
   return typeof fieldValue === 'string' ? `${ip}:${fieldValue.trim().toLowerCase()}` : ip;
 }
 
-export function rateLimitPerMinute({
-  limitPerMinute,
+export function rateLimitRequests({
+  limit,
+  windowInMinutes = 1,
   keyByBodyField,
   enabled = env.NODE_ENV !== 'test',
 }: RateLimitOptions): RequestHandler {
   return rateLimit({
-    windowMs: ONE_MINUTE_IN_MS,
-    limit: limitPerMinute,
+    windowMs: windowInMinutes * ONE_MINUTE_IN_MS,
+    limit,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     skip: () => !enabled,
