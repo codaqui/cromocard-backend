@@ -14,6 +14,7 @@ const envSchema = z.object({
   REFRESH_TTL_REMEMBER: z.coerce.number().int().positive(),
   GOOGLE_CLIENT_ID: z.string().min(1),
   COOKIE_SECURE: z.stringbool().default(true),
+  JOBS_ENABLED: z.stringbool().default(false),
   API_PUBLIC_URL: z.url().optional(),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),

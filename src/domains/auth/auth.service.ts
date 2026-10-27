@@ -140,6 +140,10 @@ export class AuthService {
     }
   }
 
+  deleteExpiredTokens(): Promise<number> {
+    return this.deps.authRepository.deleteExpiredRefreshTokens();
+  }
+
   private async findRefreshToken(refreshToken?: string): Promise<RefreshTokenRecord | null> {
     if (!refreshToken) return null;
     return this.deps.authRepository.findRefreshTokenByHash(hashOpaqueToken(refreshToken));

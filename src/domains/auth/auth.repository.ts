@@ -21,6 +21,7 @@ export interface AuthRepository {
   findRefreshTokenByHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
   revokeRefreshToken(id: string): Promise<boolean>;
   revokeAllRefreshTokens(userId: string): Promise<void>;
+  deleteExpiredRefreshTokens(): Promise<number>;
 }
 
 const refreshTokenSelect = { id: true, userId: true, expiresAt: true, revokedAt: true };
@@ -52,5 +53,12 @@ export class PrismaAuthRepository implements AuthRepository {
       where: { userId, revokedAt: null, expiresAt: { gt: new Date() }, ...notDeleted },
       data: { revokedAt: new Date() },
     });
+  }
+
+  async deleteExpiredRefreshTokens(): Promise<number> {
+    const { count } = await this.prisma.refreshToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    return count;
   }
 }

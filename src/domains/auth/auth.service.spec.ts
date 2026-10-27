@@ -49,6 +49,12 @@ class InMemoryAuthRepository implements AuthRepository {
     return Promise.resolve(Boolean(token));
   }
 
+  deleteExpiredRefreshTokens(): Promise<number> {
+    const before = this.tokens.length;
+    this.tokens = this.tokens.filter((token) => token.expiresAt.getTime() > Date.now());
+    return Promise.resolve(before - this.tokens.length);
+  }
+
   revokeAllRefreshTokens(userId: string): Promise<void> {
     this.tokens
       .filter((token) => token.userId === userId && !token.revokedAt)

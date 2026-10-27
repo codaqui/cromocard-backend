@@ -42,6 +42,7 @@ Os nomes seguem o contrato da infraestrutura: os mesmos do `.env.example`, do `i
 | `REFRESH_TTL_REMEMBER` | Sim | Validade do refresh token com "lembrar de mim", em segundos (2592000 = 30 dias) |
 | `GOOGLE_CLIENT_ID` | Sim | Client ID do Google Identity Services, o mesmo do frontend |
 | `COOKIE_SECURE` | Não | Padrão `true`; `false` só no ambiente local, em http |
+| `JOBS_ENABLED` | Não | Padrão `false`; `true` liga os jobs agendados (só numa instância da API) |
 | `PORT` | Não | Padrão 3000 (API); o serviço ws usa 3001 |
 | `NODE_ENV` | Não | `development`, `test` ou `production` |
 | `LOG_LEVEL` | Não | Padrão `info` |
