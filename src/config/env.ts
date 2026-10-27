@@ -16,9 +16,11 @@ const envSchema = z.object({
 
 const DEVELOPMENT_API_PUBLIC_URL = 'http://localhost:3000';
 
-// Em produção a URL pública monta os links das imagens enviadas: sem ela, a API devolveria links quebrados.
+const requirePublicUrlInProduction = ({ NODE_ENV, API_PUBLIC_URL }: z.infer<typeof envSchema>) =>
+  NODE_ENV !== 'production' || Boolean(API_PUBLIC_URL);
+
 const envWithPublicUrlSchema = envSchema
-  .refine(({ NODE_ENV, API_PUBLIC_URL }) => NODE_ENV !== 'production' || API_PUBLIC_URL, {
+  .refine(requirePublicUrlInProduction, {
     path: ['API_PUBLIC_URL'],
     message: 'Obrigatória em produção',
   })
