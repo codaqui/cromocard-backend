@@ -65,3 +65,33 @@ export class RefreshTokenReusedError extends AppError {
     });
   }
 }
+
+export class EmailAlreadyRegisteredError extends AppError {
+  constructor() {
+    super({
+      statusCode: 409,
+      code: 'EMAIL_ALREADY_REGISTERED',
+      message: 'Este e-mail já tem cadastro. Entre na sua conta ou reenvie a confirmação.',
+    });
+  }
+}
+
+export class DeletedAccountEmailError extends AppError {
+  constructor() {
+    super({
+      statusCode: 409,
+      code: 'ACCOUNT_DELETED',
+      message: 'Este e-mail é de uma conta excluída. Você pode pedir a reativação.',
+    });
+  }
+}
+
+export class InvalidVerificationTokenError extends AppError {
+  constructor() {
+    super({
+      statusCode: 400,
+      code: 'INVALID_VERIFICATION_TOKEN',
+      message: 'Link de confirmação inválido ou expirado. Peça um novo.',
+    });
+  }
+}
