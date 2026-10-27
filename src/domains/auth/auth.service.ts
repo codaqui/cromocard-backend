@@ -10,8 +10,10 @@ import {
   EmailNotVerifiedError,
   InvalidCredentialsError,
   InvalidGoogleTokenError,
+  InvalidRefreshTokenError,
+  RefreshTokenReusedError,
 } from './auth.errors';
-import type { AuthRepository } from './auth.repository';
+import type { AuthRepository, RefreshTokenRecord } from './auth.repository';
 import type { GoogleLoginInput, LoginInput } from './auth.validator';
 
 export interface AccountCredentials {
@@ -42,6 +44,11 @@ export interface AuthServiceDeps {
   users: AuthUsers;
   googleVerifier: GoogleIdTokenVerifier;
   refreshTokenTtl: RefreshTokenTtl;
+  logger: AuthLogger;
+}
+
+export interface AuthLogger {
+  warn(details: object, message: string): void;
 }
 
 export interface SessionContext {
@@ -63,6 +70,10 @@ function assertCanSignIn(account: AccountCredentials): void {
   if (account.deletedAt) throw new AccountDeletedError();
   if (account.status === 'SUSPENDED') throw new AccountSuspendedError();
   if (!account.emailVerified) throw new EmailNotVerifiedError();
+}
+
+function isActive(account: AccountCredentials | null): account is AccountCredentials {
+  return Boolean(account && !account.deletedAt && account.status !== 'SUSPENDED');
 }
 
 async function passwordMatches(account: AccountCredentials | null, password: string) {
@@ -99,6 +110,48 @@ export class AuthService {
     const account = await this.findOrLinkGoogleAccount(profile);
     assertCanSignIn(account);
     return this.startSession(account, this.refreshExpiry(rememberMe), context);
+  }
+
+  async refresh(refreshToken: string | undefined, context: SessionContext): Promise<AuthSession> {
+    const stored = await this.findRefreshToken(refreshToken);
+
+    if (!stored || stored.expiresAt.getTime() <= Date.now()) {
+      throw new InvalidRefreshTokenError();
+    }
+
+    if (stored.revokedAt) {
+      return this.rejectReusedToken(stored);
+    }
+
+    const account = await this.deps.users.findCredentialsById(stored.userId);
+    if (!isActive(account)) throw new InvalidRefreshTokenError();
+
+    const revokedNow = await this.deps.authRepository.revokeRefreshToken(stored.id);
+    if (!revokedNow) return this.rejectReusedToken(stored);
+
+    return this.startSession(account, stored.expiresAt, context);
+  }
+
+  async logout(refreshToken: string | undefined): Promise<void> {
+    const stored = await this.findRefreshToken(refreshToken);
+
+    if (stored) {
+      await this.deps.authRepository.revokeRefreshToken(stored.id);
+    }
+  }
+
+  private async findRefreshToken(refreshToken?: string): Promise<RefreshTokenRecord | null> {
+    if (!refreshToken) return null;
+    return this.deps.authRepository.findRefreshTokenByHash(hashOpaqueToken(refreshToken));
+  }
+
+  private async rejectReusedToken({ userId }: RefreshTokenRecord): Promise<never> {
+    await this.deps.authRepository.revokeAllRefreshTokens(userId);
+    this.deps.logger.warn(
+      { userId },
+      'Refresh token reutilizado: todas as sessões foram revogadas',
+    );
+    throw new RefreshTokenReusedError();
   }
 
   private async findOrLinkGoogleAccount(profile: GoogleProfile): Promise<AccountCredentials> {

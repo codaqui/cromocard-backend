@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
 import { verifyAccessToken } from '@/lib/jwt';
@@ -11,9 +11,16 @@ import {
   EmailNotVerifiedError,
   InvalidCredentialsError,
   InvalidGoogleTokenError,
+  InvalidRefreshTokenError,
+  RefreshTokenReusedError,
 } from './auth.errors';
 import type { AuthRepository, NewRefreshToken, RefreshTokenRecord } from './auth.repository';
-import { type AccountCredentials, AuthService, type AuthUsers } from './auth.service';
+import {
+  type AccountCredentials,
+  type AuthLogger,
+  AuthService,
+  type AuthUsers,
+} from './auth.service';
 
 const DAY_IN_SECONDS = 24 * 60 * 60;
 const PASSWORD = 'Senha@Forte1';
@@ -110,6 +117,7 @@ describe('AuthService', () => {
   let authRepository: InMemoryAuthRepository;
   let users: InMemoryUsers;
   let service: AuthService;
+  let logger: { warn: Mock<AuthLogger['warn']> };
 
   beforeAll(async () => {
     passwordHash = await hashPassword(PASSWORD);
@@ -118,7 +126,9 @@ describe('AuthService', () => {
   beforeEach(() => {
     authRepository = new InMemoryAuthRepository();
     users = new InMemoryUsers();
+    logger = { warn: vi.fn<AuthLogger['warn']>() };
     service = new AuthService({
+      logger,
       authRepository,
       users,
       googleVerifier: new FakeGoogleVerifier(),
@@ -280,6 +290,112 @@ describe('AuthService', () => {
 
       await expect(loginWithGoogle()).rejects.toBeInstanceOf(AccountDeletedError);
       expect(users.accounts[0]?.googleId).toBeUndefined();
+    });
+  });
+
+  describe('refresh', () => {
+    async function loggedInSession(overrides: Partial<StoredAccount> = {}, rememberMe = false) {
+      const account = buildAccount(overrides);
+      users.accounts = [account];
+      return service.login({ email: account.email, password: PASSWORD, rememberMe }, context);
+    }
+
+    it('CA12: emite novo access token, revoga o refresh usado e grava um novo', async () => {
+      const session = await loggedInSession();
+
+      const renewed = await service.refresh(session.refreshToken, context);
+
+      expect(verifyAccessToken(renewed.accessToken).id).toBe(session.user.id);
+      expect(renewed.refreshToken).not.toBe(session.refreshToken);
+      expect(authRepository.tokens).toHaveLength(2);
+      expect(authRepository.tokens[0]?.revokedAt).toBeInstanceOf(Date);
+      expect(authRepository.tokens[1]).toMatchObject({
+        tokenHash: hashOpaqueToken(renewed.refreshToken),
+        revokedAt: null,
+      });
+    });
+
+    it('CA12: o refresh rotacionado herda a validade e o "lembrar de mim"', async () => {
+      const session = await loggedInSession({}, true);
+
+      const renewed = await service.refresh(session.refreshToken, context);
+
+      expect(renewed.refreshExpiresAt).toEqual(session.refreshExpiresAt);
+      expect(renewed.persistent).toBe(true);
+    });
+
+    it('CA13: refresh já revogado responde 401, revoga todas as sessões e registra warn', async () => {
+      const session = await loggedInSession();
+      const renewed = await service.refresh(session.refreshToken, context);
+
+      await expect(service.refresh(session.refreshToken, context)).rejects.toBeInstanceOf(
+        RefreshTokenReusedError,
+      );
+
+      await expect(service.refresh(renewed.refreshToken, context)).rejects.toBeInstanceOf(
+        RefreshTokenReusedError,
+      );
+      expect(authRepository.tokens.every((token) => token.revokedAt)).toBe(true);
+      expect(logger.warn).toHaveBeenCalledWith(
+        { userId: session.user.id },
+        expect.stringContaining('reutilizado'),
+      );
+    });
+
+    it('CA14: refresh expirado responde 401', async () => {
+      const session = await loggedInSession();
+      const [stored] = authRepository.tokens;
+      if (stored) stored.expiresAt = new Date(Date.now() - 1000);
+
+      await expect(service.refresh(session.refreshToken, context)).rejects.toBeInstanceOf(
+        InvalidRefreshTokenError,
+      );
+    });
+
+    it('CA14: refresh desconhecido ou ausente responde 401', async () => {
+      await expect(service.refresh('nao-existe', context)).rejects.toBeInstanceOf(
+        InvalidRefreshTokenError,
+      );
+      await expect(service.refresh(undefined, context)).rejects.toBeInstanceOf(
+        InvalidRefreshTokenError,
+      );
+    });
+
+    it('CA14: usuário suspenso depois do login não renova', async () => {
+      const session = await loggedInSession();
+      users.accounts[0]!.status = 'SUSPENDED';
+
+      await expect(service.refresh(session.refreshToken, context)).rejects.toBeInstanceOf(
+        InvalidRefreshTokenError,
+      );
+    });
+
+    it('CA14: usuário excluído depois do login não renova', async () => {
+      const session = await loggedInSession();
+      users.accounts[0]!.deletedAt = new Date();
+
+      await expect(service.refresh(session.refreshToken, context)).rejects.toBeInstanceOf(
+        InvalidRefreshTokenError,
+      );
+    });
+  });
+
+  describe('logout', () => {
+    it('CA15: revoga o refresh token da sessão', async () => {
+      users.accounts = [buildAccount()];
+      const session = await login();
+
+      await service.logout(session.refreshToken);
+
+      expect(authRepository.tokens[0]?.revokedAt).toBeInstanceOf(Date);
+      await expect(service.refresh(session.refreshToken, context)).rejects.toBeInstanceOf(
+        RefreshTokenReusedError,
+      );
+    });
+
+    it('termina sem erro sem cookie ou com refresh desconhecido', async () => {
+      await expect(service.logout(undefined)).resolves.toBeUndefined();
+      await expect(service.logout('nao-existe')).resolves.toBeUndefined();
     });
   });
 });
