@@ -1,4 +1,5 @@
 import type { UserRole, UserStatus } from '@/generated/prisma/enums';
+import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
 import { signAccessToken } from '@/lib/jwt';
 import { generateOpaqueToken, hashOpaqueToken } from '@/lib/opaque-token';
 import { verifyPassword } from '@/lib/password';
@@ -8,9 +9,10 @@ import {
   AccountSuspendedError,
   EmailNotVerifiedError,
   InvalidCredentialsError,
+  InvalidGoogleTokenError,
 } from './auth.errors';
 import type { AuthRepository } from './auth.repository';
-import type { LoginInput } from './auth.validator';
+import type { GoogleLoginInput, LoginInput } from './auth.validator';
 
 export interface AccountCredentials {
   id: string;
@@ -25,6 +27,9 @@ export interface AccountCredentials {
 export interface AuthUsers {
   findCredentialsByEmail(email: string): Promise<AccountCredentials | null>;
   findCredentialsById(id: string): Promise<AccountCredentials | null>;
+  findCredentialsByGoogleId(sub: string): Promise<AccountCredentials | null>;
+  createGoogleAccount(profile: GoogleProfile): Promise<AccountCredentials>;
+  linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials>;
 }
 
 export interface RefreshTokenTtl {
@@ -35,6 +40,7 @@ export interface RefreshTokenTtl {
 export interface AuthServiceDeps {
   authRepository: AuthRepository;
   users: AuthUsers;
+  googleVerifier: GoogleIdTokenVerifier;
   refreshTokenTtl: RefreshTokenTtl;
 }
 
@@ -78,6 +84,33 @@ export class AuthService {
 
     assertCanSignIn(account);
     return this.startSession(account, this.refreshExpiry(rememberMe), context);
+  }
+
+  async loginWithGoogle(
+    { idToken, rememberMe }: GoogleLoginInput,
+    context: SessionContext,
+  ): Promise<AuthSession> {
+    const profile = await this.deps.googleVerifier.verify(idToken);
+
+    if (!profile) {
+      throw new InvalidGoogleTokenError();
+    }
+
+    const account = await this.findOrLinkGoogleAccount(profile);
+    assertCanSignIn(account);
+    return this.startSession(account, this.refreshExpiry(rememberMe), context);
+  }
+
+  private async findOrLinkGoogleAccount(profile: GoogleProfile): Promise<AccountCredentials> {
+    const { users } = this.deps;
+    const linked = await users.findCredentialsByGoogleId(profile.sub);
+    if (linked) return linked;
+
+    const existing = await users.findCredentialsByEmail(profile.email);
+    if (!existing) return users.createGoogleAccount(profile);
+
+    assertCanSignIn({ ...existing, emailVerified: true });
+    return users.linkGoogleAccount(existing.id, profile.sub);
   }
 
   private refreshExpiry(rememberMe: boolean): Date {

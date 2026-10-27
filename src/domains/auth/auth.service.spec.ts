@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
 import { verifyAccessToken } from '@/lib/jwt';
 import { hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword } from '@/lib/password';
@@ -9,6 +10,7 @@ import {
   AccountSuspendedError,
   EmailNotVerifiedError,
   InvalidCredentialsError,
+  InvalidGoogleTokenError,
 } from './auth.errors';
 import type { AuthRepository, NewRefreshToken, RefreshTokenRecord } from './auth.repository';
 import { type AccountCredentials, AuthService, type AuthUsers } from './auth.service';
@@ -48,8 +50,10 @@ class InMemoryAuthRepository implements AuthRepository {
   }
 }
 
+type StoredAccount = AccountCredentials & { email: string; googleId?: string };
+
 class InMemoryUsers implements AuthUsers {
-  accounts: (AccountCredentials & { email: string })[] = [];
+  accounts: StoredAccount[] = [];
 
   findCredentialsByEmail(email: string): Promise<AccountCredentials | null> {
     return Promise.resolve(this.accounts.find((account) => account.email === email) ?? null);
@@ -58,9 +62,33 @@ class InMemoryUsers implements AuthUsers {
   findCredentialsById(id: string): Promise<AccountCredentials | null> {
     return Promise.resolve(this.accounts.find((account) => account.id === id) ?? null);
   }
+
+  findCredentialsByGoogleId(sub: string): Promise<AccountCredentials | null> {
+    return Promise.resolve(this.accounts.find((account) => account.googleId === sub) ?? null);
+  }
+
+  createGoogleAccount({ sub, email, name }: GoogleProfile): Promise<AccountCredentials> {
+    const account = buildAccount({ email, name, googleId: sub, passwordHash: null });
+    this.accounts.push(account);
+    return Promise.resolve(account);
+  }
+
+  linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials> {
+    const account = this.accounts.find((stored) => stored.id === id) as StoredAccount;
+    Object.assign(account, { googleId: sub, emailVerified: true });
+    return Promise.resolve(account);
+  }
 }
 
-function buildAccount(overrides: Partial<AccountCredentials> = {}) {
+const googleProfile: GoogleProfile = { sub: 'google-sub', email: 'ana@cromocard.dev', name: 'Ana' };
+
+class FakeGoogleVerifier implements GoogleIdTokenVerifier {
+  verify(idToken: string): Promise<GoogleProfile | null> {
+    return Promise.resolve(idToken === 'id-token-valido' ? googleProfile : null);
+  }
+}
+
+function buildAccount(overrides: Partial<StoredAccount> = {}): StoredAccount {
   return {
     id: crypto.randomUUID(),
     name: 'Ana Colecionadora',
@@ -93,6 +121,7 @@ describe('AuthService', () => {
     service = new AuthService({
       authRepository,
       users,
+      googleVerifier: new FakeGoogleVerifier(),
       refreshTokenTtl: {
         defaultInSeconds: DAY_IN_SECONDS,
         rememberMeInSeconds: 30 * DAY_IN_SECONDS,
@@ -188,6 +217,69 @@ describe('AuthService', () => {
 
       await expect(login()).rejects.toBeInstanceOf(EmailNotVerifiedError);
       expect(authRepository.tokens).toHaveLength(0);
+    });
+  });
+
+  describe('loginWithGoogle', () => {
+    function loginWithGoogle(idToken = 'id-token-valido') {
+      return service.loginWithGoogle({ idToken, rememberMe: false }, context);
+    }
+
+    it('CA9: conta Google já vinculada recebe os mesmos tokens do login com senha', async () => {
+      const account = buildAccount({ googleId: googleProfile.sub, email: 'outro@gmail.com' });
+      users.accounts = [account];
+
+      const session = await loginWithGoogle();
+
+      expect(verifyAccessToken(session.accessToken)).toEqual({ id: account.id, role: 'CUSTOMER' });
+      expect(authRepository.tokens[0]?.tokenHash).toBe(hashOpaqueToken(session.refreshToken));
+      expect(daysFromNow(session.refreshExpiresAt)).toBe(1);
+    });
+
+    it('CA10: e-mail sem conta cria um Cliente com o nome do Google e entra', async () => {
+      const session = await loginWithGoogle();
+
+      expect(users.accounts).toHaveLength(1);
+      expect(users.accounts[0]).toMatchObject({
+        email: googleProfile.email,
+        name: googleProfile.name,
+        googleId: googleProfile.sub,
+        role: 'CUSTOMER',
+        emailVerified: true,
+      });
+      expect(session.user.id).toBe(users.accounts[0]?.id);
+    });
+
+    it('CA11: id_token inválido ou expirado responde 401 sem criar conta', async () => {
+      await expect(loginWithGoogle('id-token-expirado')).rejects.toBeInstanceOf(
+        InvalidGoogleTokenError,
+      );
+      expect(users.accounts).toHaveLength(0);
+      expect(authRepository.tokens).toHaveLength(0);
+    });
+
+    it('vincula o Google à conta com senha do mesmo e-mail e confirma o e-mail', async () => {
+      const account = buildAccount({ emailVerified: false });
+      users.accounts = [account];
+
+      const session = await loginWithGoogle();
+
+      expect(session.user.id).toBe(account.id);
+      expect(users.accounts[0]).toMatchObject({ googleId: googleProfile.sub, emailVerified: true });
+    });
+
+    it('não vincula nem entra em conta suspensa', async () => {
+      users.accounts = [buildAccount({ status: 'SUSPENDED' })];
+
+      await expect(loginWithGoogle()).rejects.toBeInstanceOf(AccountSuspendedError);
+      expect(users.accounts[0]?.googleId).toBeUndefined();
+    });
+
+    it('não vincula nem entra em conta excluída', async () => {
+      users.accounts = [buildAccount({ deletedAt: new Date() })];
+
+      await expect(loginWithGoogle()).rejects.toBeInstanceOf(AccountDeletedError);
+      expect(users.accounts[0]?.googleId).toBeUndefined();
     });
   });
 });

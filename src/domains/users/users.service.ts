@@ -4,6 +4,14 @@ import { UserNotFoundError } from './users.errors';
 import type { UserCredentials, UserSummary, UsersRepository } from './users.repository';
 import type { ListUsersQuery, UpdateUserInput } from './users.validator';
 
+const GOOGLE_PROVIDER = 'google';
+
+export interface GoogleAccount {
+  sub: string;
+  email: string;
+  name: string;
+}
+
 export class UsersService {
   constructor(private readonly usersRepository: UsersRepository) {}
 
@@ -33,6 +41,26 @@ export class UsersService {
 
   findCredentialsById(id: string): Promise<UserCredentials | null> {
     return this.usersRepository.findCredentialsByIdIncludingDeleted(id);
+  }
+
+  findCredentialsByGoogleId(sub: string): Promise<UserCredentials | null> {
+    return this.usersRepository.findCredentialsByOauthIncludingDeleted({
+      provider: GOOGLE_PROVIDER,
+      oauthId: sub,
+    });
+  }
+
+  createGoogleAccount({ sub, email, name }: GoogleAccount): Promise<UserCredentials> {
+    return this.usersRepository.createOauthAccount({
+      provider: GOOGLE_PROVIDER,
+      oauthId: sub,
+      email,
+      name,
+    });
+  }
+
+  linkGoogleAccount(id: string, sub: string): Promise<UserCredentials> {
+    return this.usersRepository.linkOauthAccount(id, { provider: GOOGLE_PROVIDER, oauthId: sub });
   }
 
   async remove(id: string): Promise<void> {
