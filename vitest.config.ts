@@ -15,6 +15,7 @@ const testEnv = {
   REFRESH_TTL_REMEMBER: '2592000',
   GOOGLE_CLIENT_ID: 'cliente-de-teste.apps.googleusercontent.com',
   COOKIE_SECURE: 'false',
+  MAIL_DRIVER: 'memory',
   DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://teste:teste@localhost:5432/teste',
   STORAGE_LOCAL_DIR: path.join(os.tmpdir(), 'cromocard-test-uploads'),
 };

@@ -67,6 +67,11 @@ services:
       REFRESH_TTL_REMEMBER: ${REFRESH_TTL_REMEMBER:-2592000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?}
       JOBS_ENABLED: ${JOBS_ENABLED:-true}
+      MAIL_DRIVER: ${MAIL_DRIVER:-ethereal}
+      MAIL_FROM: ${MAIL_FROM:-CromoCard <nao-responda@cromocard.com.br>}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
       API_PUBLIC_URL: ${API_URL:?}
     networks: [edge, data]
