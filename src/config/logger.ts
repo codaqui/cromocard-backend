@@ -7,9 +7,30 @@ import { env } from '@/config/env';
 
 const prettyTransport = { target: 'pino-pretty', options: { colorize: true } };
 
+const SENSITIVE_KEYS = [
+  'password',
+  'passwordHash',
+  'token',
+  'tokenHash',
+  'accessToken',
+  'refreshToken',
+  'idToken',
+  'email',
+  'cookie',
+  'authorization',
+];
+
+export const LOG_REDACT_PATHS = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'res.headers["set-cookie"]',
+  ...SENSITIVE_KEYS,
+  ...SENSITIVE_KEYS.map((key) => `*.${key}`),
+];
+
 export const logger = pino({
   level: env.LOG_LEVEL,
-  redact: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token'],
+  redact: LOG_REDACT_PATHS,
   transport: env.NODE_ENV === 'development' ? prettyTransport : undefined,
 });
 

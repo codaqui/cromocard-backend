@@ -37,6 +37,11 @@ Os nomes seguem o contrato da infraestrutura: os mesmos do `.env.example`, do `i
 | `DATABASE_URL` | Sim | Em homologação e produção, montada pelo Compose |
 | `JWT_SECRET` | Sim | Mínimo de 32 caracteres |
 | `CORS_ORIGIN` | Sim | Lista separada por vírgula |
+| `JWT_ACCESS_TTL` | Sim | Validade do access token, em segundos (900 = 15 min) |
+| `REFRESH_TTL` | Sim | Validade do refresh token sem "lembrar de mim", em segundos (86400 = 1 dia) |
+| `REFRESH_TTL_REMEMBER` | Sim | Validade do refresh token com "lembrar de mim", em segundos (2592000 = 30 dias) |
+| `GOOGLE_CLIENT_ID` | Sim | Client ID do Google Identity Services, o mesmo do frontend |
+| `COOKIE_SECURE` | Não | Padrão `true`; `false` só no ambiente local, em http |
 | `PORT` | Não | Padrão 3000 (API); o serviço ws usa 3001 |
 | `NODE_ENV` | Não | `development`, `test` ou `production` |
 | `LOG_LEVEL` | Não | Padrão `info` |

@@ -135,6 +135,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           JWT_EXPIRES_IN: ${{ vars.JWT_EXPIRES_IN }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           CORS_ORIGIN: ${{ vars.CORS_ORIGIN }}
           API_URL: ${{ vars.API_URL }}
           WS_URL: ${{ vars.WS_URL }}
@@ -173,6 +174,7 @@ jobs:
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
           JWT_SECRET=$JWT_SECRET
           JWT_EXPIRES_IN=$JWT_EXPIRES_IN
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
           CORS_ORIGIN=$CORS_ORIGIN
           API_URL=$API_URL
           WS_URL=$WS_URL
