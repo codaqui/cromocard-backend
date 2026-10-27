@@ -3,6 +3,7 @@ import { logger } from '@/config/logger';
 import { usersService } from '@/domains/users/users.module';
 import { GoogleAuthLibraryVerifier } from '@/lib/google';
 import { prisma } from '@/lib/prisma';
+import { mailProvider } from '@/providers/mail/mail.factory';
 import type { DomainModule } from '@/shared/types/domain-module';
 
 import { AuthController } from './auth.controller';
@@ -18,6 +19,11 @@ const authService = new AuthService({
   refreshTokenTtl: {
     defaultInSeconds: env.REFRESH_TTL,
     rememberMeInSeconds: env.REFRESH_TTL_REMEMBER,
+  },
+  mailer: mailProvider,
+  emailVerification: {
+    frontendUrl: env.FRONTEND_URL,
+    ttlInSeconds: env.EMAIL_VERIFICATION_TTL,
   },
   logger,
 });

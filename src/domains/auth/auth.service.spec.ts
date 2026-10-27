@@ -1,17 +1,22 @@
 import { beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
-import { verifyAccessToken } from '@/lib/jwt';
+import { signPurposeToken, verifyAccessToken, verifyPurposeToken } from '@/lib/jwt';
 import { hashOpaqueToken } from '@/lib/opaque-token';
-import { hashPassword } from '@/lib/password';
+import { hashPassword, verifyPassword } from '@/lib/password';
+import type { MailMessage, MailProvider } from '@/providers/mail/mail.provider';
+import { InMemoryMailProvider } from '@/providers/mail/memory.mail-provider';
 
 import {
   AccountDeletedError,
   AccountSuspendedError,
+  DeletedAccountEmailError,
+  EmailAlreadyRegisteredError,
   EmailNotVerifiedError,
   InvalidCredentialsError,
   InvalidGoogleTokenError,
   InvalidRefreshTokenError,
+  InvalidVerificationTokenError,
   RefreshTokenReusedError,
 } from './auth.errors';
 import type { AuthRepository, NewRefreshToken, RefreshTokenRecord } from './auth.repository';
@@ -20,6 +25,8 @@ import {
   type AuthLogger,
   AuthService,
   type AuthUsers,
+  type NewAccount,
+  type RegisteredAccount,
 } from './auth.service';
 
 const DAY_IN_SECONDS = 24 * 60 * 60;
@@ -86,6 +93,18 @@ class InMemoryUsers implements AuthUsers {
     return Promise.resolve(account);
   }
 
+  createWithPassword({ name, email, passwordHash, role }: NewAccount): Promise<RegisteredAccount> {
+    const account = buildAccount({ name, email, passwordHash, role, emailVerified: false });
+    this.accounts.push(account);
+    return Promise.resolve(account);
+  }
+
+  markEmailVerified(id: string): Promise<void> {
+    const account = this.accounts.find((stored) => stored.id === id);
+    if (account) account.emailVerified = true;
+    return Promise.resolve();
+  }
+
   linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials> {
     const account = this.accounts.find((stored) => stored.id === id) as StoredAccount;
     Object.assign(account, { googleId: sub, emailVerified: true });
@@ -99,6 +118,11 @@ class FakeGoogleVerifier implements GoogleIdTokenVerifier {
   verify(idToken: string): Promise<GoogleProfile | null> {
     return Promise.resolve(idToken === 'id-token-valido' ? googleProfile : null);
   }
+}
+
+function tokenFromMail(mail: MailMessage | undefined): string {
+  const link = /href="([^"]+)"/.exec(mail?.html ?? '')?.[1] ?? '';
+  return new URL(link).searchParams.get('token') ?? '';
 }
 
 function buildAccount(overrides: Partial<StoredAccount> = {}): StoredAccount {
@@ -123,7 +147,9 @@ describe('AuthService', () => {
   let authRepository: InMemoryAuthRepository;
   let users: InMemoryUsers;
   let service: AuthService;
-  let logger: { warn: Mock<AuthLogger['warn']> };
+  let logger: { warn: Mock<AuthLogger['warn']>; error: Mock<AuthLogger['error']> };
+  let mailer: InMemoryMailProvider;
+  let deps: ConstructorParameters<typeof AuthService>[0];
 
   beforeAll(async () => {
     passwordHash = await hashPassword(PASSWORD);
@@ -132,17 +158,21 @@ describe('AuthService', () => {
   beforeEach(() => {
     authRepository = new InMemoryAuthRepository();
     users = new InMemoryUsers();
-    logger = { warn: vi.fn<AuthLogger['warn']>() };
-    service = new AuthService({
+    logger = { warn: vi.fn<AuthLogger['warn']>(), error: vi.fn<AuthLogger['error']>() };
+    mailer = new InMemoryMailProvider();
+    deps = {
       logger,
       authRepository,
       users,
       googleVerifier: new FakeGoogleVerifier(),
+      mailer,
+      emailVerification: { frontendUrl: 'http://localhost:5173', ttlInSeconds: DAY_IN_SECONDS },
       refreshTokenTtl: {
         defaultInSeconds: DAY_IN_SECONDS,
         rememberMeInSeconds: 30 * DAY_IN_SECONDS,
       },
-    });
+    };
+    service = new AuthService(deps);
   });
 
   function login(overrides: { email?: string; password?: string; rememberMe?: boolean } = {}) {
@@ -402,6 +432,115 @@ describe('AuthService', () => {
     it('termina sem erro sem cookie ou com refresh desconhecido', async () => {
       await expect(service.logout(undefined)).resolves.toBeUndefined();
       await expect(service.logout('nao-existe')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('register', () => {
+    const input = {
+      name: 'Ana',
+      email: 'ana@cromocard.dev',
+      password: 'Senha@Forte1',
+      role: 'SELLER' as const,
+      termsAccepted: true as const,
+    };
+
+    it('CA1: grava a conta com a senha em hash e envia o e-mail de confirmação', async () => {
+      const account = await service.register(input);
+
+      expect(account).toMatchObject({ email: input.email, role: 'SELLER', emailVerified: false });
+      const stored = users.accounts[0];
+      expect(stored?.passwordHash).not.toBe(input.password);
+      await expect(verifyPassword(stored?.passwordHash ?? '', input.password)).resolves.toBe(true);
+      expect(mailer.sent).toHaveLength(1);
+      expect(mailer.sent[0]?.to).toBe(input.email);
+      expect(mailer.sent[0]?.html).toContain('http://localhost:5173/confirmar-email?token=');
+      expect(verifyPurposeToken(tokenFromMail(mailer.sent[0]), 'verify-email')).toBe(account.id);
+    });
+
+    it('CA5: e-mail já cadastrado responde 409 sem criar outra conta', async () => {
+      users.accounts = [buildAccount({ email: input.email })];
+
+      await expect(service.register(input)).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
+      expect(users.accounts).toHaveLength(1);
+      expect(mailer.sent).toHaveLength(0);
+    });
+
+    it('CA6: e-mail de conta excluída responde 409 ACCOUNT_DELETED', async () => {
+      users.accounts = [buildAccount({ email: input.email, deletedAt: new Date() })];
+
+      await expect(service.register(input)).rejects.toBeInstanceOf(DeletedAccountEmailError);
+    });
+
+    it('a falha no envio do e-mail não derruba o cadastro', async () => {
+      const failingMailer: MailProvider = { send: () => Promise.reject(new Error('SMTP fora')) };
+      const serviceWithFailingMail = new AuthService({ ...deps, mailer: failingMailer });
+
+      await expect(serviceWithFailingMail.register(input)).resolves.toMatchObject({
+        email: input.email,
+      });
+      await vi.waitFor(() => expect(logger.error).toHaveBeenCalledOnce());
+      expect(JSON.stringify(logger.error.mock.calls)).not.toContain(input.email);
+    });
+  });
+
+  describe('verifyEmail', () => {
+    it('CA8: o link válido confirma o e-mail e pode ser aberto de novo', async () => {
+      const account = buildAccount({ emailVerified: false });
+      users.accounts = [account];
+      const token = signPurposeToken(account.id, 'verify-email', 60);
+
+      await service.verifyEmail(token);
+      await service.verifyEmail(token);
+
+      expect(users.accounts[0]?.emailVerified).toBe(true);
+    });
+
+    it('CA9: link expirado ou inválido responde INVALID_VERIFICATION_TOKEN', async () => {
+      const account = buildAccount({ emailVerified: false });
+      users.accounts = [account];
+
+      await expect(
+        service.verifyEmail(signPurposeToken(account.id, 'verify-email', -1)),
+      ).rejects.toBeInstanceOf(InvalidVerificationTokenError);
+      await expect(service.verifyEmail('nao-e-token')).rejects.toBeInstanceOf(
+        InvalidVerificationTokenError,
+      );
+    });
+
+    it('CA9: link de conta excluída é inválido', async () => {
+      const account = buildAccount({ emailVerified: false, deletedAt: new Date() });
+      users.accounts = [account];
+
+      await expect(
+        service.verifyEmail(signPurposeToken(account.id, 'verify-email', 60)),
+      ).rejects.toBeInstanceOf(InvalidVerificationTokenError);
+    });
+  });
+
+  describe('resendVerification', () => {
+    it('CA10: envia um novo e-mail para a conta não confirmada', async () => {
+      users.accounts = [buildAccount({ emailVerified: false })];
+
+      await service.resendVerification('ana@cromocard.dev');
+
+      expect(mailer.sent).toHaveLength(1);
+    });
+
+    it('não envia para e-mail inexistente, já confirmado ou de conta excluída', async () => {
+      users.accounts = [
+        buildAccount({ email: 'confirmada@cromocard.dev' }),
+        buildAccount({
+          email: 'excluida@cromocard.dev',
+          emailVerified: false,
+          deletedAt: new Date(),
+        }),
+      ];
+
+      await service.resendVerification('ninguem@cromocard.dev');
+      await service.resendVerification('confirmada@cromocard.dev');
+      await service.resendVerification('excluida@cromocard.dev');
+
+      expect(mailer.sent).toHaveLength(0);
     });
   });
 });

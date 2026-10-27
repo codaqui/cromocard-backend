@@ -1,7 +1,13 @@
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
 import { UserNotFoundError } from './users.errors';
-import type { UserCredentials, UserSummary, UsersRepository } from './users.repository';
+import type {
+  NewPasswordAccount,
+  RegisteredUser,
+  UserCredentials,
+  UserSummary,
+  UsersRepository,
+} from './users.repository';
 import type { ListUsersQuery, UpdateUserInput } from './users.validator';
 
 const GOOGLE_PROVIDER = 'google';
@@ -61,6 +67,14 @@ export class UsersService {
 
   linkGoogleAccount(id: string, sub: string): Promise<UserCredentials> {
     return this.usersRepository.linkOauthAccount(id, { provider: GOOGLE_PROVIDER, oauthId: sub });
+  }
+
+  createWithPassword(account: NewPasswordAccount): Promise<RegisteredUser> {
+    return this.usersRepository.createPasswordAccount(account);
+  }
+
+  markEmailVerified(id: string): Promise<void> {
+    return this.usersRepository.markEmailVerified(id);
   }
 
   async remove(id: string): Promise<void> {
