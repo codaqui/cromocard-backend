@@ -27,6 +27,8 @@ const envSchema = z.object({
   MAIL_USER: optionalText,
   MAIL_PASSWORD: optionalText,
   API_PUBLIC_URL: z.url().optional(),
+  FRONTEND_URL: z.url().optional(),
+  EMAIL_VERIFICATION_TTL: z.coerce.number().int().positive().default(86400),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
 });
@@ -35,6 +37,8 @@ const DEVELOPMENT_API_PUBLIC_URL = 'http://localhost:3000';
 
 const requirePublicUrlInProduction = ({ NODE_ENV, API_PUBLIC_URL }: z.infer<typeof envSchema>) =>
   NODE_ENV !== 'production' || Boolean(API_PUBLIC_URL);
+
+const withoutTrailingSlash = (url: string) => url.replace(/\/+$/, '');
 
 const requireHostForSmtp = ({ MAIL_DRIVER, MAIL_HOST }: z.infer<typeof envSchema>) =>
   MAIL_DRIVER !== 'smtp' || Boolean(MAIL_HOST);
@@ -45,9 +49,10 @@ const envWithPublicUrlSchema = envSchema
     message: 'Obrigatória em produção',
   })
   .refine(requireHostForSmtp, { path: ['MAIL_HOST'], message: 'Obrigatório com MAIL_DRIVER=smtp' })
-  .transform(({ API_PUBLIC_URL = DEVELOPMENT_API_PUBLIC_URL, ...rest }) => ({
+  .transform(({ API_PUBLIC_URL = DEVELOPMENT_API_PUBLIC_URL, FRONTEND_URL, ...rest }) => ({
     ...rest,
-    API_PUBLIC_URL: API_PUBLIC_URL.replace(/\/+$/, ''),
+    API_PUBLIC_URL: withoutTrailingSlash(API_PUBLIC_URL),
+    FRONTEND_URL: withoutTrailingSlash(FRONTEND_URL ?? rest.CORS_ORIGIN[0] ?? ''),
   }));
 
 const parsedEnv = envWithPublicUrlSchema.safeParse(process.env);
