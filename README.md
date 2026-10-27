@@ -51,7 +51,7 @@ Os nomes seguem o contrato da infraestrutura: os mesmos do `.env.example`, do `i
 | `npm run test:integration` | Testes de integração; precisam de um PostgreSQL 18 com as migrations aplicadas no `DATABASE_URL` |
 | `npm run build` | Gera `dist/server.js` e `dist/ws-server.js` com o tsup |
 | `npm run db:migrate` / `npm run db:deploy` | Cria e aplica migrations (dev) / aplica as existentes |
-| `npm run db:seed` | Popula o banco com dados de teste, um arquivo por domínio em `database/seeds/`; pode rodar de novo sem duplicar (não roda em produção) |
+| `npm run db:seed` | Popula o banco com dados de teste. Os dados ficam em `database/seeds/data/*.json` (um arquivo por tabela, com referências pela `key` de cada registro) e os `*.seed.ts` validam e gravam; pode rodar de novo sem duplicar (não roda em produção) |
 
 ## Health check
 

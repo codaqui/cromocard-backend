@@ -1,0 +1,96 @@
+[
+  {
+    "key": "neymar",
+    "album": "copa-2026",
+    "number": "10",
+    "name": "Neymar Jr.",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "vinicius",
+    "album": "copa-2026",
+    "number": "7",
+    "name": "Vinícius Jr.",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "alisson",
+    "album": "copa-2026",
+    "number": "1",
+    "name": "Alisson",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "mbappe",
+    "album": "copa-2026",
+    "number": "9",
+    "name": "Kylian Mbappé",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "escudo-selecao",
+    "album": "copa-2026",
+    "number": "00",
+    "name": "Escudo da Seleção",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "pikachu",
+    "album": "pokemon-base-set",
+    "number": "58",
+    "name": "Pikachu",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "charizard",
+    "album": "pokemon-base-set",
+    "number": "4",
+    "name": "Charizard",
+    "rarity": "lendaria",
+    "language": "en"
+  },
+  {
+    "key": "blastoise",
+    "album": "pokemon-base-set",
+    "number": "2",
+    "name": "Blastoise",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "escudo-flamengo",
+    "album": "brasileirao-2026",
+    "number": "1",
+    "name": "Escudo do Flamengo",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "escudo-palmeiras",
+    "album": "brasileirao-2026",
+    "number": "2",
+    "name": "Escudo do Palmeiras",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "black-lotus",
+    "category": "magic",
+    "name": "Black Lotus",
+    "rarity": "lendaria",
+    "language": "pt-BR"
+  },
+  {
+    "key": "dragao-branco",
+    "category": "yugioh",
+    "name": "Dragão Branco de Olhos Azuis",
+    "rarity": "epica",
+    "language": "ja"
+  }
+]

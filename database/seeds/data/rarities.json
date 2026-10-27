@@ -1,0 +1,7 @@
+[
+  { "key": "comum", "name": "Comum", "sortOrder": 1 },
+  { "key": "incomum", "name": "Incomum", "sortOrder": 2 },
+  { "key": "rara", "name": "Rara", "sortOrder": 3 },
+  { "key": "epica", "name": "Épica", "sortOrder": 4 },
+  { "key": "lendaria", "name": "Lendária", "sortOrder": 5 }
+]

@@ -1,0 +1,39 @@
+[
+  {
+    "key": "raphinha",
+    "requester": "ana",
+    "type": "CARD",
+    "data": { "album": "copa-2026", "number": "11", "name": "Raphinha" }
+  },
+  {
+    "key": "pokemon-jungle",
+    "requester": "bruno",
+    "type": "ALBUM",
+    "data": {
+      "category": "pokemon",
+      "title": "Pokémon Jungle",
+      "publisher": "Wizards of the Coast",
+      "year": 1999
+    }
+  },
+  {
+    "key": "formula-1",
+    "requester": "carla",
+    "type": "CATEGORY",
+    "data": { "name": "Fórmula 1", "type": "ALBUM" }
+  },
+  {
+    "key": "neymar-repetida",
+    "requester": "elisa",
+    "reviewedBy": "admin",
+    "type": "CARD",
+    "status": "REJECTED",
+    "reviewedAt": "2026-10-02T15:00:00Z",
+    "data": {
+      "album": "copa-2026",
+      "number": "10",
+      "name": "Neymar Jr. (repetida)",
+      "rejectionReason": "A carta já existe no álbum."
+    }
+  }
+]

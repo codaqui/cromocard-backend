@@ -1,144 +1,150 @@
 import { env } from '@/config/env';
+import { AUDIT_ACTIONS } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import { CatalogRequestType, RequestStatus } from '@/generated/prisma/enums';
+import { z } from '@/lib/zod';
 import type { StorageProvider } from '@/providers/storage/storage.provider';
 
-import { SeedAlbum, SeedCategory } from './catalog.seed';
-import { SeedReport } from './community.seed';
+import { albumIdOf, categoryIdOf } from './catalog.seed';
+import { reportIdOf } from './community.seed';
+import { loadSeedData, seedKey } from './load-seed-data';
 import { solidColorPng } from './sample-image';
-import { SeedNamespace, seedId } from './seed-id';
-import { SeedUser } from './users.seed';
+import { type KeyResolver, keyResolver, optional, SeedNamespace, seedId } from './seed-id';
+import { userIdOf } from './users.seed';
 
-const requestId = (index: number) => seedId(SeedNamespace.catalogRequests, index);
-const settingId = (index: number) => seedId(SeedNamespace.globalSettings, index);
-const auditLogId = (index: number) => seedId(SeedNamespace.auditLogs, index);
+const catalogRequestsSchema = z.array(
+  z.object({
+    key: seedKey,
+    requester: seedKey,
+    reviewedBy: seedKey.optional(),
+    type: z.enum(CatalogRequestType),
+    status: z.enum(RequestStatus).optional(),
+    reviewedAt: z.iso.datetime().optional(),
+    data: z.looseObject({ album: seedKey.optional(), category: seedKey.optional() }),
+  }),
+);
 
-const rejectedRequest = requestId(4);
-const rejectionReason = 'A carta já existe no álbum.';
+const globalSettingsSchema = z.object({
+  homeBanner: z.object({
+    description: z.string(),
+    enabled: z.boolean(),
+    title: z.string().max(80),
+    subtitle: z.string().max(200),
+    ctaText: z.string().max(30),
+    ctaPath: z.string().startsWith('/'),
+  }),
+  notificationTemplates: z.object({
+    description: z.string(),
+    templates: z.array(
+      z.object({
+        name: z.string().max(60),
+        title: z.string().max(120),
+        content: z.string().max(500),
+      }),
+    ),
+  }),
+});
 
-const catalogRequests: Prisma.CatalogRequestCreateManyInput[] = [
-  {
-    id: requestId(1),
-    requesterId: SeedUser.ana,
-    type: 'CARD',
-    data: { albumId: SeedAlbum.worldCup2026, number: '11', name: 'Raphinha' },
-  },
-  {
-    id: requestId(2),
-    requesterId: SeedUser.bruno,
-    type: 'ALBUM',
-    data: {
-      categoryId: SeedCategory.pokemon,
-      title: 'Pokémon Jungle',
-      publisher: 'Wizards of the Coast',
-      year: 1999,
-    },
-  },
-  {
-    id: requestId(3),
-    requesterId: SeedUser.carla,
-    type: 'CATEGORY',
-    data: { name: 'Fórmula 1', type: 'ALBUM' },
-  },
-  {
-    id: rejectedRequest,
-    requesterId: SeedUser.elisa,
-    reviewedById: SeedUser.admin,
-    type: 'CARD',
-    status: 'REJECTED',
-    reviewedAt: new Date('2026-10-02T15:00:00Z'),
-    data: {
-      albumId: SeedAlbum.worldCup2026,
-      number: '10',
-      name: 'Neymar Jr. (repetida)',
-      rejectionReason,
-    },
-  },
-];
+const auditLogsSchema = z.array(
+  z.object({
+    key: seedKey,
+    admin: seedKey,
+    action: z.enum(AUDIT_ACTIONS),
+    entityType: z.enum(['CATALOG_REQUEST', 'REPORT']),
+    entity: seedKey,
+    reason: z.string().min(3).max(500),
+    createdAt: z.iso.datetime(),
+  }),
+);
+
+const catalogRequests = loadSeedData('catalog-requests.json', catalogRequestsSchema);
+const globalSettings = loadSeedData('global-settings.json', globalSettingsSchema);
+const auditLogs = loadSeedData('audit-logs.json', auditLogsSchema);
+
+const catalogRequestIdOf = keyResolver(
+  SeedNamespace.catalogRequests,
+  catalogRequests,
+  'catalog-requests.json',
+);
+
+const entityIdResolvers: Record<(typeof auditLogs)[number]['entityType'], KeyResolver> = {
+  CATALOG_REQUEST: catalogRequestIdOf,
+  REPORT: reportIdOf,
+};
 
 const DEVELOPMENT_FRONTEND_URL = 'http://localhost:5173';
 const frontendUrl = env.CORS_ORIGIN[0] ?? DEVELOPMENT_FRONTEND_URL;
 
 const sampleBanner = {
   key: 'banners/seed-home-banner.png',
-  content: solidColorPng({ width: 1200, height: 400, rgb: [79, 70, 229] }),
+  content: solidColorPng({ width: 1200, height: 400, rgb: [50, 145, 255] }),
   contentType: 'image/png',
 };
 
-const buildHomeBanner = (imageUrl: string) => ({
-  enabled: true,
-  title: 'Complete seu álbum da Copa 2026',
-  subtitle: 'Encontre colecionadores e troque suas figurinhas repetidas.',
-  ctaText: 'Começar agora',
-  ctaUrl: `${frontendUrl}/cadastro`,
-  imageUrl,
+function toRequestPayload({ album, category, ...data }: (typeof catalogRequests)[number]['data']) {
+  return {
+    ...data,
+    ...(album && { albumId: albumIdOf(album) }),
+    ...(category && { categoryId: categoryIdOf(category) }),
+  };
+}
+
+const toCatalogRequestData = (request: (typeof catalogRequests)[number]) => ({
+  id: catalogRequestIdOf(request.key),
+  requesterId: userIdOf(request.requester),
+  reviewedById: optional(userIdOf)(request.reviewedBy),
+  type: request.type,
+  status: request.status,
+  reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : undefined,
+  data: toRequestPayload(request.data) as Prisma.InputJsonObject,
 });
 
-const notificationTemplates = [
-  {
-    name: 'Manutenção programada',
-    title: 'Manutenção programada',
-    content: 'A plataforma ficará indisponível para manutenção no horário informado.',
-  },
-  {
-    name: 'Novo álbum no catálogo',
-    title: 'Novo álbum disponível',
-    content: 'Um novo álbum foi adicionado ao catálogo. Confira e comece sua coleção!',
-  },
-];
+function buildGlobalSettings(bannerImageUrl: string): Prisma.GlobalSettingCreateManyInput[] {
+  const { description: bannerDescription, ctaPath, ...banner } = globalSettings.homeBanner;
+  const { description: templatesDescription, templates } = globalSettings.notificationTemplates;
+  const homeBanner = { ...banner, ctaUrl: `${frontendUrl}${ctaPath}`, imageUrl: bannerImageUrl };
 
-const buildGlobalSettings = (bannerImageUrl: string): Prisma.GlobalSettingCreateManyInput[] => [
-  {
-    id: settingId(1),
-    key: 'home.banner',
-    value: JSON.stringify(buildHomeBanner(bannerImageUrl)),
-    description: 'Banner da página inicial',
-  },
-  {
-    id: settingId(2),
-    key: 'notification.templates',
-    value: JSON.stringify(notificationTemplates),
-    description: 'Modelos de notificação global',
-  },
-];
+  return [
+    {
+      id: seedId(SeedNamespace.globalSettings, 'home.banner'),
+      key: 'home.banner',
+      value: JSON.stringify(homeBanner),
+      description: bannerDescription,
+    },
+    {
+      id: seedId(SeedNamespace.globalSettings, 'notification.templates'),
+      key: 'notification.templates',
+      value: JSON.stringify(templates),
+      description: templatesDescription,
+    },
+  ];
+}
 
-const auditLogs: Prisma.AuditLogCreateManyInput[] = [
-  {
-    id: auditLogId(1),
-    adminId: SeedUser.admin,
-    action: 'CATALOG_REQUEST_REJECTED',
-    entityType: 'CATALOG_REQUEST',
-    entityId: rejectedRequest,
-    details: { reason: rejectionReason },
-    createdAt: new Date('2026-10-02T15:00:00Z'),
-  },
-  {
-    id: auditLogId(2),
-    adminId: SeedUser.admin,
-    action: 'REPORT_DISMISSED',
-    entityType: 'REPORT',
-    entityId: SeedReport.dismissed,
-    details: { reason: 'A mensagem não viola as regras do grupo.' },
-    createdAt: new Date('2026-10-01T12:00:00Z'),
-  },
-];
+const toAuditLogData = ({
+  key,
+  admin,
+  entity,
+  reason,
+  createdAt,
+  ...auditLog
+}: (typeof auditLogs)[number]) => ({
+  ...auditLog,
+  id: seedId(SeedNamespace.auditLogs, key),
+  adminId: userIdOf(admin),
+  entityId: entityIdResolvers[auditLog.entityType](entity),
+  details: { reason },
+  createdAt: new Date(createdAt),
+});
 
 export async function seedAdmin(prisma: PrismaClient, storage: StorageProvider): Promise<void> {
-  for (const request of catalogRequests) {
-    await prisma.catalogRequest.upsert({
-      where: { id: request.id },
-      create: request,
-      update: request,
-    });
+  for (const data of catalogRequests.map(toCatalogRequestData)) {
+    await prisma.catalogRequest.upsert({ where: { id: data.id }, create: data, update: data });
   }
   const banner = await storage.upload(sampleBanner);
   for (const setting of buildGlobalSettings(banner.url)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
   }
-  for (const auditLog of auditLogs) {
-    await prisma.auditLog.upsert({
-      where: { id: auditLog.id },
-      create: auditLog,
-      update: auditLog,
-    });
+  for (const data of auditLogs.map(toAuditLogData)) {
+    await prisma.auditLog.upsert({ where: { id: data.id }, create: data, update: data });
   }
 }

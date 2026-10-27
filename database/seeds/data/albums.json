@@ -1,0 +1,28 @@
+[
+  {
+    "key": "copa-2026",
+    "category": "copa-do-mundo",
+    "title": "Copa do Mundo 2026",
+    "publisher": "Panini",
+    "year": 2026,
+    "description": "Álbum oficial da Copa do Mundo de 2026.",
+    "totalCards": 5
+  },
+  {
+    "key": "brasileirao-2026",
+    "category": "brasileirao",
+    "title": "Campeonato Brasileiro 2026",
+    "publisher": "Panini",
+    "year": 2026,
+    "totalCards": 2
+  },
+  {
+    "key": "pokemon-base-set",
+    "category": "pokemon",
+    "title": "Pokémon Base Set",
+    "publisher": "Wizards of the Coast",
+    "year": 1999,
+    "totalCards": 3,
+    "status": "INACTIVE"
+  }
+]
