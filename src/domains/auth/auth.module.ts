@@ -21,9 +21,10 @@ const authService = new AuthService({
     rememberMeInSeconds: env.REFRESH_TTL_REMEMBER,
   },
   mailer: mailProvider,
-  emailVerification: {
+  emailLinks: {
     frontendUrl: env.FRONTEND_URL,
-    ttlInSeconds: env.EMAIL_VERIFICATION_TTL,
+    verificationTtlInSeconds: env.EMAIL_VERIFICATION_TTL,
+    passwordResetTtlInSeconds: env.PASSWORD_RESET_TTL,
   },
   logger,
 });

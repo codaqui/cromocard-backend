@@ -4,6 +4,8 @@ import { signAccessToken, signPurposeToken, verifyPurposeToken } from '@/lib/jwt
 import { generateOpaqueToken, hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import type { MailProvider } from '@/providers/mail/mail.provider';
+import { passwordChangedMail } from '@/providers/mail/templates/password-changed.mail';
+import { resetPasswordMail } from '@/providers/mail/templates/reset-password.mail';
 import { verifyEmailMail } from '@/providers/mail/templates/verify-email.mail';
 
 import {
@@ -15,15 +17,22 @@ import {
   InvalidCredentialsError,
   InvalidGoogleTokenError,
   InvalidRefreshTokenError,
+  InvalidResetTokenError,
   InvalidVerificationTokenError,
   RefreshTokenReusedError,
 } from './auth.errors';
 import type { AuthRepository, RefreshTokenRecord } from './auth.repository';
-import type { GoogleLoginInput, LoginInput, RegisterInput } from './auth.validator';
+import type {
+  GoogleLoginInput,
+  LoginInput,
+  RegisterInput,
+  ResetPasswordInput,
+} from './auth.validator';
 
 export interface AccountCredentials {
   id: string;
   name: string;
+  email: string;
   role: UserRole;
   status: UserStatus;
   emailVerified: boolean;
@@ -54,11 +63,13 @@ export interface AuthUsers {
   linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials>;
   createWithPassword(account: NewAccount): Promise<RegisteredAccount>;
   markEmailVerified(id: string): Promise<void>;
+  updatePassword(id: string, passwordHash: string): Promise<void>;
 }
 
-export interface EmailVerificationSettings {
+export interface EmailLinkSettings {
   frontendUrl: string;
-  ttlInSeconds: number;
+  verificationTtlInSeconds: number;
+  passwordResetTtlInSeconds: number;
 }
 
 export interface RefreshTokenTtl {
@@ -72,7 +83,7 @@ export interface AuthServiceDeps {
   googleVerifier: GoogleIdTokenVerifier;
   refreshTokenTtl: RefreshTokenTtl;
   mailer: MailProvider;
-  emailVerification: EmailVerificationSettings;
+  emailLinks: EmailLinkSettings;
   logger: AuthLogger;
 }
 
@@ -82,6 +93,7 @@ export interface AuthLogger {
 }
 
 const VERIFY_EMAIL_PATH = '/confirmar-email';
+const RESET_PASSWORD_PATH = '/redefinir-senha';
 
 export interface SessionContext {
   userAgent?: string;
@@ -167,13 +179,76 @@ export class AuthService {
     name,
     email,
   }: Pick<RegisteredAccount, 'id' | 'name' | 'email'>) {
-    const { frontendUrl, ttlInSeconds } = this.deps.emailVerification;
-    const token = signPurposeToken(id, 'verify-email', ttlInSeconds);
-    const link = `${frontendUrl}${VERIFY_EMAIL_PATH}?token=${encodeURIComponent(token)}`;
+    const { verificationTtlInSeconds } = this.deps.emailLinks;
+    const token = signPurposeToken(id, 'verify-email', verificationTtlInSeconds);
+    const mail = verifyEmailMail({ to: email, name, link: this.linkTo(VERIFY_EMAIL_PATH, token) });
+    this.runInBackground(
+      () => this.deps.mailer.send(mail),
+      id,
+      'Falha ao enviar o e-mail de confirmação',
+    );
+  }
 
-    this.deps.mailer.send(verifyEmailMail({ to: email, name, link })).catch(() => {
-      this.deps.logger.error({ userId: id }, 'Falha ao enviar o e-mail de confirmação');
+  forgotPassword(email: string): void {
+    this.runInBackground(
+      () => this.issuePasswordReset(email),
+      null,
+      'Falha no pedido de redefinição de senha',
+    );
+  }
+
+  async resetPassword({ token, password }: ResetPasswordInput): Promise<void> {
+    const account = await this.consumeResetToken(token);
+    await this.deps.users.updatePassword(account.id, await hashPassword(password));
+    await this.deps.authRepository.revokeAllRefreshTokens(account.id);
+
+    const mail = passwordChangedMail({ to: account.email, name: account.name });
+    this.runInBackground(
+      () => this.deps.mailer.send(mail),
+      account.id,
+      'Falha ao avisar a troca de senha',
+    );
+  }
+
+  private async issuePasswordReset(email: string): Promise<void> {
+    const account = await this.deps.users.findCredentialsByEmail(email);
+    if (!isActive(account)) return;
+
+    const token = generateOpaqueToken();
+    const expiresAt = new Date(
+      Date.now() + this.deps.emailLinks.passwordResetTtlInSeconds * MS_PER_SECOND,
+    );
+    await this.deps.authRepository.replacePasswordResetToken({
+      userId: account.id,
+      tokenHash: hashOpaqueToken(token),
+      expiresAt,
     });
+    const link = this.linkTo(RESET_PASSWORD_PATH, token);
+    await this.deps.mailer.send(resetPasswordMail({ to: account.email, name: account.name, link }));
+  }
+
+  private async consumeResetToken(token: string): Promise<AccountCredentials> {
+    const { authRepository, users } = this.deps;
+    const record = await authRepository.findValidPasswordResetToken(hashOpaqueToken(token));
+    const account = record ? await users.findCredentialsById(record.userId) : null;
+
+    if (
+      !record ||
+      !isActive(account) ||
+      !(await authRepository.markPasswordResetTokenUsed(record.id))
+    ) {
+      throw new InvalidResetTokenError();
+    }
+
+    return account;
+  }
+
+  private linkTo(path: string, token: string): string {
+    return `${this.deps.emailLinks.frontendUrl}${path}?token=${encodeURIComponent(token)}`;
+  }
+
+  private runInBackground(task: () => Promise<void>, userId: string | null, failure: string) {
+    task().catch(() => this.deps.logger.error({ userId }, failure));
   }
 
   async loginWithGoogle(
@@ -219,8 +294,13 @@ export class AuthService {
     }
   }
 
-  deleteExpiredTokens(): Promise<number> {
-    return this.deps.authRepository.deleteExpiredRefreshTokens();
+  async deleteExpiredTokens(): Promise<number> {
+    const { authRepository } = this.deps;
+    const [refreshTokens, resetTokens] = await Promise.all([
+      authRepository.deleteExpiredRefreshTokens(),
+      authRepository.deleteExpiredPasswordResetTokens(),
+    ]);
+    return refreshTokens + resetTokens;
   }
 
   private async findRefreshToken(refreshToken?: string): Promise<RefreshTokenRecord | null> {

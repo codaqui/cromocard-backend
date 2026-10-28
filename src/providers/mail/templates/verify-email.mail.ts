@@ -1,13 +1,11 @@
 import type { MailMessage } from '@/providers/mail/mail.provider';
 
+import { escapeHtml } from './escape-html';
+
 export interface VerifyEmailMailData {
   to: string;
   name: string;
   link: string;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 export function verifyEmailMail({ to, name, link }: VerifyEmailMailData): MailMessage {
