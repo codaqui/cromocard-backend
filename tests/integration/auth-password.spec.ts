@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '@/app';
 import { hashOpaqueToken } from '@/lib/opaque-token';
@@ -35,19 +35,19 @@ function reset(token: string, password = 'Nova@Senha12') {
   return request(app).post('/api/v1/auth/password/reset').send({ token, password });
 }
 
-async function tokenFromResetMail(): Promise<string> {
-  await expect.poll(() => sentMails.length).toBeGreaterThan(0);
-  const link = /href="([^"]+)"/.exec(sentMails.at(-1)?.html ?? '')?.[1] ?? '';
+function resetMailsTo(email: string) {
+  return sentMails.filter((mail) => mail.to === email && mail.subject.includes('Redefina'));
+}
+
+async function tokenFromResetMail(email: string, count = 1): Promise<string> {
+  await expect.poll(() => resetMailsTo(email).length).toBeGreaterThanOrEqual(count);
+  const link = /href="([^"]+)"/.exec(resetMailsTo(email).at(-1)?.html ?? '')?.[1] ?? '';
   return new URL(link).searchParams.get('token') ?? '';
 }
 
 async function passwordHashOf(id: string) {
   return (await prisma.user.findUniqueOrThrow({ where: { id } })).passwordHash ?? '';
 }
-
-beforeEach(() => {
-  sentMails.length = 0;
-});
 
 afterAll(async () => {
   const where = { userId: { in: createdUserIds } };
@@ -63,7 +63,7 @@ describe('POST /api/v1/auth/password/forgot', () => {
     const res = await forgot(user.email);
 
     expect(res.status).toBe(202);
-    const token = await tokenFromResetMail();
+    const token = await tokenFromResetMail(user.email);
     const stored = await prisma.passwordResetToken.findFirstOrThrow({ where: { userId: user.id } });
     expect(stored).toMatchObject({ token: hashOpaqueToken(token), used: false });
     expect(stored.token).not.toBe(token);
@@ -100,7 +100,7 @@ describe('POST /api/v1/auth/password/reset', () => {
       },
     });
     await forgot(user.email);
-    const token = await tokenFromResetMail();
+    const token = await tokenFromResetMail(user.email);
 
     const res = await reset(token);
 
@@ -118,7 +118,7 @@ describe('POST /api/v1/auth/password/reset', () => {
   it('CA6: link já usado ou expirado é recusado e a senha não muda', async () => {
     const user = await createUser();
     await forgot(user.email);
-    const token = await tokenFromResetMail();
+    const token = await tokenFromResetMail(user.email);
     await reset(token);
     const hashAfterReset = await passwordHashOf(user.id);
 
@@ -132,7 +132,7 @@ describe('POST /api/v1/auth/password/reset', () => {
   it('CA7: senha fora da regra responde 400 e o token continua válido', async () => {
     const user = await createUser();
     await forgot(user.email);
-    const token = await tokenFromResetMail();
+    const token = await tokenFromResetMail(user.email);
 
     const weak = await reset(token, 'fraca');
     const valid = await reset(token);
@@ -145,10 +145,9 @@ describe('POST /api/v1/auth/password/reset', () => {
   it('um pedido novo invalida o link anterior', async () => {
     const user = await createUser();
     await forgot(user.email);
-    const firstToken = await tokenFromResetMail();
-    sentMails.length = 0;
+    const firstToken = await tokenFromResetMail(user.email);
     await forgot(user.email);
-    await tokenFromResetMail();
+    await tokenFromResetMail(user.email, 2);
 
     const res = await reset(firstToken);
 
