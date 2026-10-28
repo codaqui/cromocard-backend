@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { UserNotFoundError } from './users.errors';
 import type { UserSummary, UsersPage, UsersRepository } from './users.repository';
 import { UsersService } from './users.service';
-import type { UpdateUserInput } from './users.validator';
+import type { AdminUpdateUserInput, CreateUserInput } from './users.validator';
 
 interface StoredUser extends UserSummary {
   deletedAt: Date | null;
@@ -35,8 +35,19 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
   }
 
-  update(id: string, input: UpdateUserInput): Promise<UserSummary> {
+  create(input: CreateUserInput): Promise<UserSummary> {
+    const user = buildUser({ ...input, emailVerified: true });
+    this.users = [...this.users, user];
+    return Promise.resolve(user);
+  }
+
+  update(id: string, input: AdminUpdateUserInput): Promise<UserSummary> {
     this.users = this.users.map((user) => (user.id === id ? { ...user, ...input } : user));
+    return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
+  }
+
+  updateStatus(id: string, status: UserSummary['status']): Promise<UserSummary> {
+    this.users = this.users.map((user) => (user.id === id ? { ...user, status } : user));
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
