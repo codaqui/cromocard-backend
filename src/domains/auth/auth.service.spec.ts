@@ -19,7 +19,13 @@ import {
   InvalidVerificationTokenError,
   RefreshTokenReusedError,
 } from './auth.errors';
-import type { AuthRepository, NewRefreshToken, RefreshTokenRecord } from './auth.repository';
+import type {
+  AuthRepository,
+  NewPasswordResetToken,
+  NewRefreshToken,
+  PasswordResetTokenRecord,
+  RefreshTokenRecord,
+} from './auth.repository';
 import {
   type AccountCredentials,
   type AuthLogger,
@@ -38,8 +44,42 @@ interface StoredRefreshToken extends RefreshTokenRecord {
   tokenHash: string;
 }
 
+interface StoredResetToken extends NewPasswordResetToken {
+  id: string;
+  used: boolean;
+}
+
 class InMemoryAuthRepository implements AuthRepository {
   tokens: StoredRefreshToken[] = [];
+  resetTokens: StoredResetToken[] = [];
+
+  replacePasswordResetToken(token: NewPasswordResetToken): Promise<void> {
+    this.resetTokens
+      .filter((stored) => stored.userId === token.userId)
+      .forEach((stored) => (stored.used = true));
+    this.resetTokens.push({ ...token, id: crypto.randomUUID(), used: false });
+    return Promise.resolve();
+  }
+
+  findValidPasswordResetToken(tokenHash: string): Promise<PasswordResetTokenRecord | null> {
+    const found = this.resetTokens.find(
+      (token) =>
+        token.tokenHash === tokenHash && !token.used && token.expiresAt.getTime() > Date.now(),
+    );
+    return Promise.resolve(found ? { id: found.id, userId: found.userId } : null);
+  }
+
+  markPasswordResetTokenUsed(id: string): Promise<boolean> {
+    const token = this.resetTokens.find((stored) => stored.id === id && !stored.used);
+    if (token) token.used = true;
+    return Promise.resolve(Boolean(token));
+  }
+
+  deleteExpiredPasswordResetTokens(): Promise<number> {
+    const before = this.resetTokens.length;
+    this.resetTokens = this.resetTokens.filter((token) => token.expiresAt.getTime() > Date.now());
+    return Promise.resolve(before - this.resetTokens.length);
+  }
 
   createRefreshToken({ userId, tokenHash, expiresAt }: NewRefreshToken): Promise<void> {
     this.tokens.push({ id: crypto.randomUUID(), userId, tokenHash, expiresAt, revokedAt: null });

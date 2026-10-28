@@ -16,12 +16,27 @@ export interface RefreshTokenRecord {
   revokedAt: Date | null;
 }
 
+export interface NewPasswordResetToken {
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+export interface PasswordResetTokenRecord {
+  id: string;
+  userId: string;
+}
+
 export interface AuthRepository {
   createRefreshToken(token: NewRefreshToken): Promise<void>;
   findRefreshTokenByHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
   revokeRefreshToken(id: string): Promise<boolean>;
   revokeAllRefreshTokens(userId: string): Promise<void>;
   deleteExpiredRefreshTokens(): Promise<number>;
+  replacePasswordResetToken(token: NewPasswordResetToken): Promise<void>;
+  findValidPasswordResetToken(tokenHash: string): Promise<PasswordResetTokenRecord | null>;
+  markPasswordResetTokenUsed(id: string): Promise<boolean>;
+  deleteExpiredPasswordResetTokens(): Promise<number>;
 }
 
 const refreshTokenSelect = { id: true, userId: true, expiresAt: true, revokedAt: true };
@@ -53,6 +68,38 @@ export class PrismaAuthRepository implements AuthRepository {
       where: { userId, revokedAt: null, expiresAt: { gt: new Date() }, ...notDeleted },
       data: { revokedAt: new Date() },
     });
+  }
+
+  async replacePasswordResetToken({ userId, tokenHash, expiresAt }: NewPasswordResetToken) {
+    await this.prisma.$transaction([
+      this.prisma.passwordResetToken.updateMany({
+        where: { userId, used: false, ...notDeleted },
+        data: { used: true },
+      }),
+      this.prisma.passwordResetToken.create({ data: { userId, token: tokenHash, expiresAt } }),
+    ]);
+  }
+
+  findValidPasswordResetToken(tokenHash: string): Promise<PasswordResetTokenRecord | null> {
+    return this.prisma.passwordResetToken.findFirst({
+      where: { token: tokenHash, used: false, expiresAt: { gt: new Date() }, ...notDeleted },
+      select: { id: true, userId: true },
+    });
+  }
+
+  async markPasswordResetTokenUsed(id: string): Promise<boolean> {
+    const { count } = await this.prisma.passwordResetToken.updateMany({
+      where: { id, used: false, ...notDeleted },
+      data: { used: true },
+    });
+    return count > 0;
+  }
+
+  async deleteExpiredPasswordResetTokens(): Promise<number> {
+    const { count } = await this.prisma.passwordResetToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    return count;
   }
 
   async deleteExpiredRefreshTokens(): Promise<number> {
