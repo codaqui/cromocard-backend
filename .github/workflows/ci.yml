@@ -25,7 +25,7 @@ jobs:
   # 1) Qualidade do código: lint, checagem de tipos, prisma validate e testes unitários.
   lint-and-unit:
     name: Lint, prisma validate e testes unitários
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # O prisma validate só precisa que a variável exista; não conecta no banco.
       DATABASE_URL: postgresql://user:pass@localhost:5432/db
@@ -58,7 +58,7 @@ jobs:
   # 2) Testes de integração contra um PostgreSQL de verdade, rodando como container de serviço.
   integration:
     name: Testes de integração (PostgreSQL)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         # Mesma versão do infra/docker-compose.yml
@@ -102,7 +102,7 @@ jobs:
   #    A gitleaks-action exige licença paga para organizações, por isso o job roda a imagem oficial.
   secrets:
     name: Scan de segredos (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
@@ -122,7 +122,7 @@ jobs:
   #    Os nomes batem com infra/docker-compose.yml: ghcr.io/codaqui/cromocard-api e cromocard-ws.
   docker:
     name: Imagem ${{ matrix.image }} (build, Trivy, GHCR)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Nenhuma imagem é publicada sem os testes e o scan de segredos.
     needs: [lint-and-unit, integration, secrets]
     permissions:

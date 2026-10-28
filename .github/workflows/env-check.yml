@@ -19,7 +19,7 @@ permissions:
 jobs:
   check:
     name: Conferir ${{ inputs.environment }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     steps:
       - name: Conferir nomes (sem imprimir valores)

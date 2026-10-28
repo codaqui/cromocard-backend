@@ -43,7 +43,7 @@ jobs:
   # 1) Descobre o ambiente e a tag. Roda no GitHub, não no servidor.
   resolve:
     name: Definir ambiente e tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -267,7 +267,7 @@ jobs:
     name: Avisar falha no canal
     needs: [resolve, deploy]
     if: failure()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: {}
     steps:
       - name: Enviar aviso (TEAM_WEBHOOK)
