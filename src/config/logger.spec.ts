@@ -19,7 +19,7 @@ function captureLogs() {
 const secrets = {
   email: 'ana@cromocard.dev',
   password: 'Senha@Forte1',
-  accessToken: 'eyJhbGciOiJIUzI1NiJ9.acesso',
+  accessToken: 'access-token-de-teste',
   refreshToken: 'refresh-opaco-123',
   cookie: 'cromocard_refresh=refresh-opaco-123',
 };
