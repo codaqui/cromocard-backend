@@ -9,6 +9,7 @@ const optionalText = z.preprocess(
 // o Compose de homologação e produção e os Environments do GitHub usam exatamente estes nomes.
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  APP_ENV: z.enum(['local', 'test', 'homolog', 'production']).default('local'),
   PORT: z.coerce.number().int().positive().default(3000),
   CORS_ORIGIN: z.string().transform((value) => value.split(',').map((origin) => origin.trim())),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'silent']).default('info'),
@@ -17,7 +18,8 @@ const envSchema = z.object({
   JWT_ACCESS_TTL: z.coerce.number().int().positive(),
   REFRESH_TTL: z.coerce.number().int().positive(),
   REFRESH_TTL_REMEMBER: z.coerce.number().int().positive(),
-  GOOGLE_CLIENT_ID: z.string().min(1),
+  GOOGLE_CLIENT_ID: optionalText,
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   COOKIE_SECURE: z.stringbool().default(true),
   JOBS_ENABLED: z.stringbool().default(false),
   MAIL_DRIVER: z.enum(['ethereal', 'smtp', 'memory']).default('ethereal'),
@@ -44,12 +46,19 @@ const withoutTrailingSlash = (url: string) => url.replace(/\/+$/, '');
 const requireHostForSmtp = ({ MAIL_DRIVER, MAIL_HOST }: z.infer<typeof envSchema>) =>
   MAIL_DRIVER !== 'smtp' || Boolean(MAIL_HOST);
 
+const requireRealMailInProduction = ({ APP_ENV, MAIL_DRIVER }: z.infer<typeof envSchema>) =>
+  APP_ENV !== 'production' || MAIL_DRIVER === 'smtp';
+
 const envWithPublicUrlSchema = envSchema
   .refine(requirePublicUrlInProduction, {
     path: ['API_PUBLIC_URL'],
     message: 'Obrigatória em produção',
   })
   .refine(requireHostForSmtp, { path: ['MAIL_HOST'], message: 'Obrigatório com MAIL_DRIVER=smtp' })
+  .refine(requireRealMailInProduction, {
+    path: ['MAIL_DRIVER'],
+    message: 'Em produção (APP_ENV=production) só smtp: o Ethereal não entrega os e-mails',
+  })
   .transform(({ API_PUBLIC_URL = DEVELOPMENT_API_PUBLIC_URL, FRONTEND_URL, ...rest }) => ({
     ...rest,
     API_PUBLIC_URL: withoutTrailingSlash(API_PUBLIC_URL),

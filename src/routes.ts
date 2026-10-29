@@ -13,19 +13,27 @@ import type { DomainModule } from '@/shared/types/domain-module';
 
 const API_PREFIX = '/api/v1';
 
-const domainModules: DomainModule[] = [
+const sharedModules: DomainModule[] = [
   authModule,
   usersModule,
-  uploadsModule,
   dashboardModule,
   reportsModule,
   settingsModule,
 ];
 
-export const routes = Router();
+export interface RoutesOptions {
+  /** Só a API recebe upload; o serviço de tempo real (ws) não monta a rota nem o storage. */
+  withUploads: boolean;
+}
 
-domainModules.forEach(({ basePath, router }) => routes.use(`${API_PREFIX}${basePath}`, router));
+export function createRoutes({ withUploads }: RoutesOptions): Router {
+  const domainModules = withUploads ? [...sharedModules, uploadsModule] : sharedModules;
+  const routes = Router();
 
-if (env.NODE_ENV !== 'production') {
-  routes.use('/docs', swaggerUi.serve, swaggerUi.setup(buildOpenApiDocument(domainModules)));
+  domainModules.forEach(({ basePath, router }) => routes.use(`${API_PREFIX}${basePath}`, router));
+  if (env.NODE_ENV !== 'production') {
+    routes.use('/docs', swaggerUi.serve, swaggerUi.setup(buildOpenApiDocument(domainModules)));
+  }
+
+  return routes;
 }

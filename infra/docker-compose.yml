@@ -59,21 +59,27 @@ services:
     environment:
       <<: *database-url
       NODE_ENV: production
+      # Qual ambiente é (ADR-018); o compose.hml.yml troca para homolog
+      APP_ENV: production
       PORT: "3000"
       JWT_SECRET: ${JWT_SECRET:?}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
       REFRESH_TTL: ${REFRESH_TTL:-86400}
       REFRESH_TTL_REMEMBER: ${REFRESH_TTL_REMEMBER:-2592000}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       JOBS_ENABLED: ${JOBS_ENABLED:-true}
       MAIL_DRIVER: ${MAIL_DRIVER:-ethereal}
+      MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_FROM: ${MAIL_FROM:-CromoCard <nao-responda@cromocard.com.br>}
       MAIL_HOST: ${MAIL_HOST:-}
       MAIL_USER: ${MAIL_USER:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
       API_PUBLIC_URL: ${API_URL:?}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    # Storage local (ADR-009): os uploads sobrevivem ao deploy, que recria o container.
+    volumes:
+      - uploads:/app/uploads
     networks: [edge, data]
     depends_on:
       postgres: { condition: service_healthy }
@@ -90,12 +96,13 @@ services:
     environment:
       <<: *database-url
       NODE_ENV: production
+      APP_ENV: production
       PORT: "3001"
       JWT_SECRET: ${JWT_SECRET:?}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
       REFRESH_TTL: ${REFRESH_TTL:-86400}
       REFRESH_TTL_REMEMBER: ${REFRESH_TTL_REMEMBER:-2592000}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
       API_PUBLIC_URL: ${API_URL:?}
     networks: [edge, data]
@@ -107,7 +114,7 @@ services:
     image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-web:${FRONTEND_TAG:?}
     environment:
       API_URL: ${API_URL:?}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       WS_URL: ${WS_URL:?}
     networks: [edge]
 
@@ -129,6 +136,7 @@ networks:
 
 volumes:
   pgdata: {}
+  uploads: {}
 
 # Nenhum serviço tem "ports:". Tráfego público entra pelo cloudflared; o banco de
 # homologação, pelo sidecar do Tailscale. O Docker ignora o ufw para portas publicadas.

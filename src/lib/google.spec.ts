@@ -1,7 +1,7 @@
 import type { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { describe, expect, it } from 'vitest';
 
-import { GoogleAuthLibraryVerifier } from './google';
+import { createGoogleVerifier, DisabledGoogleVerifier, GoogleAuthLibraryVerifier } from './google';
 
 const CLIENT_ID = 'cliente-de-teste.apps.googleusercontent.com';
 
@@ -54,5 +54,18 @@ describe('GoogleAuthLibraryVerifier', () => {
     const verifier = new GoogleAuthLibraryVerifier(CLIENT_ID, clientReturning(payload));
 
     await expect(verifier.verify('id-token')).resolves.toBeNull();
+  });
+});
+
+describe('createGoogleVerifier', () => {
+  it('usa a google-auth-library quando há client ID', () => {
+    expect(createGoogleVerifier(CLIENT_ID)).toBeInstanceOf(GoogleAuthLibraryVerifier);
+  });
+
+  it('desliga o login com Google sem client ID e recusa todo id_token', async () => {
+    const verifier = createGoogleVerifier(undefined);
+
+    expect(verifier).toBeInstanceOf(DisabledGoogleVerifier);
+    await expect(verifier.verify('qualquer-id-token')).resolves.toBeNull();
   });
 });
