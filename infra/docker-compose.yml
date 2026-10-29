@@ -64,6 +64,9 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
       API_PUBLIC_URL: ${API_URL:?}
+    # Storage local (ADR-009): os uploads sobrevivem ao deploy, que recria o container.
+    volumes:
+      - uploads:/app/uploads
     networks: [edge, data]
     depends_on:
       postgres: { condition: service_healthy }
@@ -114,6 +117,7 @@ networks:
 
 volumes:
   pgdata: {}
+  uploads: {}
 
 # Nenhum serviço tem "ports:". Tráfego público entra pelo cloudflared; o banco de
 # homologação, pelo sidecar do Tailscale. O Docker ignora o ufw para portas publicadas.
