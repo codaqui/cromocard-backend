@@ -4,7 +4,7 @@ import { logger } from '@/config/logger';
 import { startJobs } from '@/jobs';
 import { pingDatabase, prisma } from '@/lib/prisma';
 
-const server = createApp({ pingDatabase }).listen(env.PORT, () => {
+const server = createApp({ pingDatabase, withUploads: true }).listen(env.PORT, () => {
   logger.info(`API rodando em http://localhost:${env.PORT}`);
 });
 

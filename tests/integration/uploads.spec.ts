@@ -30,7 +30,7 @@ const adminToken = signAccessToken({ id: crypto.randomUUID(), role: 'ADMIN' });
 const customerToken = signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' });
 
 function postUpload(token?: string) {
-  const req = request(createApp()).post('/api/v1/uploads');
+  const req = request(createApp({ withUploads: true })).post('/api/v1/uploads');
   return token ? req.set('Authorization', `Bearer ${token}`) : req;
 }
 
@@ -44,7 +44,7 @@ describe('POST /api/v1/uploads', () => {
     expect(res.status).toBe(201);
     expect(data.key).toMatch(/^cards\/.+\.png$/);
     const { pathname } = new URL(data.url);
-    const file = await request(createApp()).get(pathname);
+    const file = await request(createApp({ withUploads: true })).get(pathname);
     expect(file.status).toBe(200);
     expect(file.headers['cross-origin-resource-policy']).toBe('cross-origin');
   });
@@ -124,5 +124,16 @@ describe('POST /api/v1/uploads', () => {
       .attach('file', pngImage(), 'c.png');
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('app sem upload (serviço ws)', () => {
+  it('não monta a rota de upload', async () => {
+    const res = await request(createApp())
+      .post('/api/v1/uploads')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', pngImage(), 'carta.png');
+
+    expect(res.status).toBe(404);
   });
 });
