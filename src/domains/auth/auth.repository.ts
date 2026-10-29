@@ -32,6 +32,7 @@ export interface AuthRepository {
   findRefreshTokenByHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
   revokeRefreshToken(id: string): Promise<boolean>;
   revokeAllRefreshTokens(userId: string): Promise<void>;
+  changePasswordAndRevokeSessions(userId: string, passwordHash: string): Promise<void>;
   deleteExpiredRefreshTokens(): Promise<number>;
   replacePasswordResetToken(token: NewPasswordResetToken): Promise<void>;
   findValidPasswordResetToken(tokenHash: string): Promise<PasswordResetTokenRecord | null>;
@@ -68,6 +69,19 @@ export class PrismaAuthRepository implements AuthRepository {
       where: { userId, revokedAt: null, expiresAt: { gt: new Date() }, ...notDeleted },
       data: { revokedAt: new Date() },
     });
+  }
+
+  async changePasswordAndRevokeSessions(userId: string, passwordHash: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash, emailVerified: true },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId, revokedAt: null, ...notDeleted },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
   }
 
   async replacePasswordResetToken({ userId, tokenHash, expiresAt }: NewPasswordResetToken) {

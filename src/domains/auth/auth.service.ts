@@ -63,7 +63,6 @@ export interface AuthUsers {
   linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials>;
   createWithPassword(account: NewAccount): Promise<RegisteredAccount>;
   markEmailVerified(id: string): Promise<void>;
-  updatePassword(id: string, passwordHash: string): Promise<void>;
 }
 
 export interface EmailLinkSettings {
@@ -200,8 +199,8 @@ export class AuthService {
 
   async resetPassword({ token, password }: ResetPasswordInput): Promise<void> {
     const account = await this.consumeResetToken(token);
-    await this.deps.users.updatePassword(account.id, await hashPassword(password));
-    await this.deps.authRepository.revokeAllRefreshTokens(account.id);
+    const passwordHash = await hashPassword(password);
+    await this.deps.authRepository.changePasswordAndRevokeSessions(account.id, passwordHash);
 
     const mail = passwordChangedMail({ to: account.email, name: account.name });
     this.runInBackground(

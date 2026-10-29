@@ -54,6 +54,8 @@ class InMemoryAuthRepository implements AuthRepository {
   tokens: StoredRefreshToken[] = [];
   resetTokens: StoredResetToken[] = [];
 
+  constructor(private readonly users: InMemoryUsers) {}
+
   replacePasswordResetToken(token: NewPasswordResetToken): Promise<void> {
     this.resetTokens
       .filter((stored) => stored.userId === token.userId)
@@ -109,6 +111,12 @@ class InMemoryAuthRepository implements AuthRepository {
       .forEach((token) => (token.revokedAt = new Date()));
     return Promise.resolve();
   }
+
+  async changePasswordAndRevokeSessions(userId: string, passwordHash: string): Promise<void> {
+    const account = this.users.accounts.find((stored) => stored.id === userId);
+    if (account) Object.assign(account, { passwordHash, emailVerified: true });
+    await this.revokeAllRefreshTokens(userId);
+  }
 }
 
 type StoredAccount = AccountCredentials & { email: string; googleId?: string };
@@ -138,12 +146,6 @@ class InMemoryUsers implements AuthUsers {
     const account = buildAccount({ name, email, passwordHash, role, emailVerified: false });
     this.accounts.push(account);
     return Promise.resolve(account);
-  }
-
-  updatePassword(id: string, passwordHash: string): Promise<void> {
-    const account = this.accounts.find((stored) => stored.id === id);
-    if (account) Object.assign(account, { passwordHash, emailVerified: true });
-    return Promise.resolve();
   }
 
   markEmailVerified(id: string): Promise<void> {
@@ -203,8 +205,8 @@ describe('AuthService', () => {
   });
 
   beforeEach(() => {
-    authRepository = new InMemoryAuthRepository();
     users = new InMemoryUsers();
+    authRepository = new InMemoryAuthRepository(users);
     logger = { warn: vi.fn<AuthLogger['warn']>(), error: vi.fn<AuthLogger['error']>() };
     mailer = new InMemoryMailProvider();
     deps = {

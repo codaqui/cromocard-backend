@@ -73,10 +73,6 @@ export class UsersService {
     return this.usersRepository.createPasswordAccount(account);
   }
 
-  updatePassword(id: string, passwordHash: string): Promise<void> {
-    return this.usersRepository.updatePassword(id, passwordHash);
-  }
-
   markEmailVerified(id: string): Promise<void> {
     return this.usersRepository.markEmailVerified(id);
   }

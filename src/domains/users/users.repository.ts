@@ -73,7 +73,6 @@ export interface UsersRepository {
   linkOauthAccount(id: string, identity: OauthIdentity): Promise<UserCredentials>;
   createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser>;
   markEmailVerified(id: string): Promise<void>;
-  updatePassword(id: string, passwordHash: string): Promise<void>;
 }
 
 function buildSearchFilter(search?: string): Prisma.UserWhereInput {
@@ -158,10 +157,6 @@ export class PrismaUsersRepository implements UsersRepository {
       data: { ...account, termsAccepted: true },
       select: registeredUserSelect,
     });
-  }
-
-  async updatePassword(id: string, passwordHash: string): Promise<void> {
-    await this.prisma.user.update({ where: { id }, data: { passwordHash, emailVerified: true } });
   }
 
   async markEmailVerified(id: string): Promise<void> {
