@@ -18,6 +18,16 @@ x-hardening: &hardening
 x-database-url: &database-url
   DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
 
+# E-mail (ADR-009). A api e o ws carregam o mesmo env.ts, que recusa o Ethereal com
+# APP_ENV=production: os dois precisam do mesmo MAIL_*, senão o ws não sobe em produção.
+x-mail: &mail
+  MAIL_DRIVER: ${MAIL_DRIVER:-ethereal}
+  MAIL_PORT: ${MAIL_PORT:-587}
+  MAIL_FROM: ${MAIL_FROM:-CromoCard <nao-responda@cromocard.com.br>}
+  MAIL_HOST: ${MAIL_HOST:-}
+  MAIL_USER: ${MAIL_USER:-}
+  MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+
 services:
   postgres:
     <<: *hardening
@@ -57,7 +67,7 @@ services:
     <<: *hardening
     image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-api:${BACKEND_TAG:?}
     environment:
-      <<: *database-url
+      <<: [*database-url, *mail]
       NODE_ENV: production
       # Qual ambiente é (ADR-018); o compose.hml.yml troca para homolog
       APP_ENV: production
@@ -68,12 +78,6 @@ services:
       REFRESH_TTL_REMEMBER: ${REFRESH_TTL_REMEMBER:-2592000}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       JOBS_ENABLED: ${JOBS_ENABLED:-true}
-      MAIL_DRIVER: ${MAIL_DRIVER:-ethereal}
-      MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_FROM: ${MAIL_FROM:-CromoCard <nao-responda@cromocard.com.br>}
-      MAIL_HOST: ${MAIL_HOST:-}
-      MAIL_USER: ${MAIL_USER:-}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
       API_PUBLIC_URL: ${API_URL:?}
       TRUST_PROXY: ${TRUST_PROXY:-1}
@@ -94,7 +98,7 @@ services:
     <<: *hardening
     image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-ws:${BACKEND_TAG:?}
     environment:
-      <<: *database-url
+      <<: [*database-url, *mail]
       NODE_ENV: production
       APP_ENV: production
       PORT: "3001"
