@@ -5,6 +5,8 @@ import { signAccessToken, signPurposeToken, verifyPurposeToken } from '@/lib/jwt
 import { generateOpaqueToken, hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPasswordInConstantTime } from '@/lib/password';
 import type { MailProvider } from '@/providers/mail/mail.provider';
+import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
+import { describeDuration } from '@/providers/mail/templates/describe-duration';
 import { verifyEmailMail } from '@/providers/mail/templates/verify-email.mail';
 
 import {
@@ -113,6 +115,11 @@ function passwordMatches(account: AccountCredentials | null, password: string) {
   return verifyPasswordInConstantTime(account?.passwordHash, password);
 }
 
+function rejectDuplicateEmail(error: unknown): never {
+  if (isUniqueConstraintError(error)) throw new EmailAlreadyRegisteredError();
+  throw error;
+}
+
 export class AuthService {
   constructor(private readonly deps: AuthServiceDeps) {}
 
@@ -134,7 +141,9 @@ export class AuthService {
   async register({ password, name, email, role }: RegisterInput): Promise<RegisteredAccount> {
     await this.assertEmailAvailable(email);
     const passwordHash = await hashPassword(password);
-    const account = await this.deps.users.createWithPassword({ name, email, role, passwordHash });
+    const account = await this.deps.users
+      .createWithPassword({ name, email, role, passwordHash })
+      .catch(rejectDuplicateEmail);
     this.sendVerificationEmail(account);
     return account;
   }
@@ -173,8 +182,14 @@ export class AuthService {
     const token = signPurposeToken(id, 'verify-email', ttlInSeconds);
     const link = `${frontendUrl}${VERIFY_EMAIL_PATH}?token=${encodeURIComponent(token)}`;
 
-    this.deps.mailer.send(verifyEmailMail({ to: email, name, link })).catch(() => {
-      this.deps.logger.error({ userId: id }, 'Falha ao enviar o e-mail de confirmação');
+    const mail = verifyEmailMail({
+      to: email,
+      name,
+      link,
+      validFor: describeDuration(ttlInSeconds),
+    });
+    this.deps.mailer.send(mail).catch((err: unknown) => {
+      this.deps.logger.error({ userId: id, err }, 'Falha ao enviar o e-mail de confirmação');
     });
   }
 

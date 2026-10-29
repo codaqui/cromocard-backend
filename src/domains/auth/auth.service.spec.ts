@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vite
 
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
 import type { GoogleLink } from '@/domains/users/users.service';
+import { Prisma } from '@/generated/prisma/client';
 import { signPurposeToken, verifyAccessToken, verifyPurposeToken } from '@/lib/jwt';
 import { hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPassword } from '@/lib/password';
@@ -481,6 +482,16 @@ describe('AuthService', () => {
       await expect(service.register(input)).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
       expect(users.accounts).toHaveLength(1);
       expect(mailer.sent).toHaveLength(0);
+    });
+
+    it('CA5: cadastro simultâneo barrado pelo índice único também responde 409', async () => {
+      const duplicate = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'teste',
+      });
+      vi.spyOn(users, 'createWithPassword').mockRejectedValueOnce(duplicate);
+
+      await expect(service.register(input)).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
     });
 
     it('CA6: e-mail de conta excluída responde 409 ACCOUNT_DELETED', async () => {
