@@ -1,0 +1,25 @@
+{
+  "homeBanner": {
+    "description": "Banner da página inicial",
+    "enabled": true,
+    "title": "Complete seu álbum da Copa 2026",
+    "subtitle": "Encontre colecionadores e troque suas figurinhas repetidas.",
+    "ctaText": "Começar agora",
+    "ctaPath": "/cadastro"
+  },
+  "notificationTemplates": {
+    "description": "Modelos de notificação global",
+    "templates": [
+      {
+        "name": "Manutenção programada",
+        "title": "Manutenção programada",
+        "content": "A plataforma ficará indisponível para manutenção no horário informado."
+      },
+      {
+        "name": "Novo álbum no catálogo",
+        "title": "Novo álbum disponível",
+        "content": "Um novo álbum foi adicionado ao catálogo. Confira e comece sua coleção!"
+      }
+    ]
+  }
+}

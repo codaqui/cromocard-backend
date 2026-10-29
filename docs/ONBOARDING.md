@@ -26,6 +26,7 @@ cp .env.example .env          # valores fictícios; troque o JWT_SECRET por: ope
 docker compose up -d          # PostgreSQL 18 local, a mesma versão do servidor
 npm ci                        # o postinstall roda "prisma generate"
 npm run db:migrate            # aplica as migrations
+npm run db:seed               # dados de teste; login admin@cromocard.dev / CromoCard@2026
 npm run dev                   # API em http://localhost:3000; documentação em http://localhost:3000/docs
 ```
 

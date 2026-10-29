@@ -1,0 +1,44 @@
+[
+  {
+    "key": "boas-vindas",
+    "group": "trocas-copa-2026",
+    "author": "ana",
+    "content": "Bem-vindos! Postem aqui as repetidas de vocês.",
+    "pinned": true
+  },
+  {
+    "key": "neymar-repetido",
+    "group": "trocas-copa-2026",
+    "author": "bruno",
+    "contentType": "CARD",
+    "card": "neymar",
+    "content": "Tenho o Neymar repetido, alguém troca pelo Vini?"
+  },
+  {
+    "key": "aceito-troca",
+    "group": "trocas-copa-2026",
+    "author": "carla",
+    "replyTo": "neymar-repetido",
+    "content": "Eu troco! Te chamo no privado."
+  },
+  {
+    "key": "mensagem-ofensiva",
+    "group": "trocas-copa-2026",
+    "author": "diego",
+    "content": "Quem não troca comigo é idiota."
+  },
+  {
+    "key": "spam-site-externo",
+    "group": "mestres-pokemon",
+    "author": "elisa",
+    "content": "Compre cartas baratas no meu site externo!!!"
+  },
+  {
+    "key": "charizard-chegou",
+    "group": "mestres-pokemon",
+    "author": "bruno",
+    "contentType": "CARD",
+    "card": "charizard",
+    "content": "Meu Charizard de 1999 chegou!"
+  }
+]

@@ -38,5 +38,378 @@ model User {
   updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
+  createdGroups           Group[]
+  groupMemberships        GroupMember[]
+  authoredGroupMessages   GroupMessage[]
+  reportsFiled            Report[]             @relation("ReportReporter")
+  reportsModerated        Report[]             @relation("ReportModerator")
+  reportsReceived         Report[]             @relation("ReportTargetUser")
+  catalogRequests         CatalogRequest[]     @relation("CatalogRequestRequester")
+  reviewedCatalogRequests CatalogRequest[]     @relation("CatalogRequestReviewer")
+  performedAuditLogs      AuditLog[]
+  updatedSettings         GlobalSetting[]
+  sentGlobalNotifications GlobalNotification[]
+  notifications           Notification[]
+
   @@map("users")
+}
+
+enum CategoryType {
+  ALBUM
+  CARD
+
+  @@map("category_type")
+}
+
+model Category {
+  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  parentCategoryId String?      @map("parent_category_id") @db.Uuid
+  name             String       @db.VarChar(90)
+  type             CategoryType
+  description      String?      @db.VarChar(255)
+  isDefault        Boolean      @default(false) @map("is_default")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
+
+  parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_categories_parent_category_id")
+  subcategories  Category[] @relation("CategoryHierarchy")
+  albums         Album[]
+  cards          Card[]
+
+  @@map("categories")
+}
+
+model Rarity {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name      String    @unique @db.VarChar(60)
+  sortOrder Int       @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  cards Card[]
+
+  @@map("rarities")
+}
+
+model Language {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name      String    @db.VarChar(60)
+  code      String    @unique @db.VarChar(5)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  cards Card[]
+
+  @@map("languages")
+}
+
+enum AlbumStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("album_status")
+}
+
+model Album {
+  id          String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  categoryId  String?     @map("category_id") @db.Uuid
+  title       String      @db.VarChar(160)
+  publisher   String?     @db.VarChar(120)
+  year        Int?        @db.SmallInt
+  description String?
+  coverUrl    String?     @map("cover_url") @db.VarChar(255)
+  totalCards  Int         @default(0) @map("total_cards")
+  status      AlbumStatus @default(ACTIVE)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_albums_category_id")
+  cards           Card[]
+  catalogRequests CatalogRequest[]
+
+  @@map("albums")
+}
+
+model Card {
+  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  albumId       String?   @map("album_id") @db.Uuid
+  categoryId    String?   @map("category_id") @db.Uuid
+  rarityId      String?   @map("rarity_id") @db.Uuid
+  languageId    String?   @map("language_id") @db.Uuid
+  name          String    @db.VarChar(160)
+  number        String?   @db.VarChar(20)
+  description   String?
+  frontImageUrl String?   @map("front_image_url") @db.VarChar(255)
+  backImageUrl  String?   @map("back_image_url") @db.VarChar(255)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  album           Album?           @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_album_id")
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_category_id")
+  rarity          Rarity?          @relation(fields: [rarityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_rarity_id")
+  language        Language?        @relation(fields: [languageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_language_id")
+  photos          CardPhoto[]
+  groupMessages   GroupMessage[]
+  catalogRequests CatalogRequest[]
+
+  @@unique([albumId, number])
+  @@map("cards")
+}
+
+model CardPhoto {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  cardId    String    @map("card_id") @db.Uuid
+  url       String    @db.VarChar(255)
+  sortOrder Int       @default(0) @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_card_photos_card_id")
+
+  @@map("card_photos")
+}
+
+enum GroupAccessType {
+  OPEN
+  CLOSED
+
+  @@map("group_access_type")
+}
+
+enum GroupStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("group_status")
+}
+
+model Group {
+  id            String          @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  creatorId     String          @map("creator_id") @db.Uuid
+  name          String          @db.VarChar(120)
+  description   String?
+  coverImageUrl String?         @map("cover_image_url") @db.VarChar(255)
+  accessType    GroupAccessType @map("access_type")
+  status        GroupStatus     @default(ACTIVE)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?       @map("deleted_at") @db.Timestamptz(6)
+
+  creator  User           @relation(fields: [creatorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_groups_creator_id")
+  members  GroupMember[]
+  messages GroupMessage[]
+
+  @@map("groups")
+}
+
+enum MemberRole {
+  MEMBER
+  ADMIN
+
+  @@map("member_role")
+}
+
+model GroupMember {
+  id         String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  groupId    String     @map("group_id") @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  role       MemberRole @default(MEMBER)
+  mutedUntil DateTime?  @map("muted_until") @db.Timestamptz(6)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime?  @map("deleted_at") @db.Timestamptz(6)
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_members_group_id")
+  user  User  @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_members_user_id")
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+enum MessageContentType {
+  TEXT
+  IMAGE
+  CARD
+  LISTING
+  POLL
+
+  @@map("message_content_type")
+}
+
+model GroupMessage {
+  id            String             @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  groupId       String             @map("group_id") @db.Uuid
+  authorId      String             @map("author_id") @db.Uuid
+  replyToId     String?            @map("reply_to_id") @db.Uuid
+  cardId        String?            @map("card_id") @db.Uuid
+  listingId     String?            @map("listing_id") @db.Uuid
+  contentType   MessageContentType @default(TEXT) @map("content_type")
+  content       String?
+  attachmentUrl String?            @map("attachment_url") @db.VarChar(255)
+  pinned        Boolean            @default(false)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  group   Group          @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_group_id")
+  author  User           @relation(fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_author_id")
+  replyTo GroupMessage?  @relation("GroupMessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_reply_to_id")
+  replies GroupMessage[] @relation("GroupMessageReplies")
+  card    Card?          @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_card_id")
+  reports Report[]
+
+  @@map("group_messages")
+}
+
+enum ReportTargetType {
+  LISTING
+  SELLER
+  USER
+  PROFILE
+  GROUP_MESSAGE
+
+  @@map("report_target_type")
+}
+
+enum ReportStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+
+  @@map("report_status")
+}
+
+model Report {
+  id             String           @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  reporterId     String           @map("reporter_id") @db.Uuid
+  moderatorId    String?          @map("moderator_id") @db.Uuid
+  listingId      String?          @map("listing_id") @db.Uuid
+  targetUserId   String?          @map("target_user_id") @db.Uuid
+  groupMessageId String?          @map("group_message_id") @db.Uuid
+  targetType     ReportTargetType @map("target_type")
+  reason         String           @db.VarChar(90)
+  description    String?          @db.VarChar(500)
+  status         ReportStatus     @default(PENDING)
+  resolvedAt     DateTime?        @map("resolved_at") @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?        @map("deleted_at") @db.Timestamptz(6)
+
+  reporter     User          @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_reporter_id")
+  moderator    User?         @relation("ReportModerator", fields: [moderatorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_moderator_id")
+  targetUser   User?         @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_target_user_id")
+  groupMessage GroupMessage? @relation(fields: [groupMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_group_message_id")
+
+  @@map("reports")
+}
+
+enum CatalogRequestType {
+  CARD
+  ALBUM
+  CATEGORY
+
+  @@map("catalog_request_type")
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("request_status")
+}
+
+model CatalogRequest {
+  id           String             @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  requesterId  String             @map("requester_id") @db.Uuid
+  reviewedById String?            @map("reviewed_by_id") @db.Uuid
+  cardId       String?            @map("card_id") @db.Uuid
+  albumId      String?            @map("album_id") @db.Uuid
+  type         CatalogRequestType
+  data         Json               @db.JsonB
+  status       RequestStatus      @default(PENDING)
+  reviewedAt   DateTime?          @map("reviewed_at") @db.Timestamptz(6)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  requester  User   @relation("CatalogRequestRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_requester_id")
+  reviewedBy User?  @relation("CatalogRequestReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_reviewed_by_id")
+  card       Card?  @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_card_id")
+  album      Album? @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_album_id")
+
+  @@map("catalog_requests")
+}
+
+model AuditLog {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  adminId    String    @map("admin_id") @db.Uuid
+  action     String    @db.VarChar(90)
+  entityType String    @map("entity_type") @db.VarChar(60)
+  entityId   String?   @map("entity_id") @db.Uuid
+  details    Json?     @db.JsonB
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_audit_logs_admin_id")
+
+  @@map("audit_logs")
+}
+
+model GlobalSetting {
+  id          String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  key         String    @unique @db.VarChar(90)
+  value       String
+  description String?   @db.VarChar(255)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_global_settings_updated_by_id")
+
+  @@map("global_settings")
+}
+
+model GlobalNotification {
+  id             String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  adminId        String    @map("admin_id") @db.Uuid
+  title          String    @db.VarChar(120)
+  content        String    @db.VarChar(500)
+  recipientCount Int       @default(0) @map("recipient_count")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  admin         User           @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_global_notifications_admin_id")
+  notifications Notification[]
+
+  @@map("global_notifications")
+}
+
+model Notification {
+  id                   String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId               String    @map("user_id") @db.Uuid
+  globalNotificationId String?   @map("global_notification_id") @db.Uuid
+  title                String    @db.VarChar(120)
+  message              String    @db.VarChar(500)
+  type                 String    @db.VarChar(40)
+  referenceLink        String?   @map("reference_link") @db.VarChar(255)
+  isRead               Boolean   @default(false) @map("is_read")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notifications_user_id")
+  globalNotification GlobalNotification? @relation(fields: [globalNotificationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notifications_global_notification_id")
+
+  @@map("notifications")
 }
