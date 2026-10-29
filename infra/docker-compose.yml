@@ -59,6 +59,8 @@ services:
     environment:
       <<: *database-url
       NODE_ENV: production
+      # Qual ambiente é (ADR-018); o compose.hml.yml troca para homolog
+      APP_ENV: production
       PORT: "3000"
       JWT_SECRET: ${JWT_SECRET:?}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
@@ -67,6 +69,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       JOBS_ENABLED: ${JOBS_ENABLED:-true}
       MAIL_DRIVER: ${MAIL_DRIVER:-ethereal}
+      MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_FROM: ${MAIL_FROM:-CromoCard <nao-responda@cromocard.com.br>}
       MAIL_HOST: ${MAIL_HOST:-}
       MAIL_USER: ${MAIL_USER:-}
@@ -93,6 +96,7 @@ services:
     environment:
       <<: *database-url
       NODE_ENV: production
+      APP_ENV: production
       PORT: "3001"
       JWT_SECRET: ${JWT_SECRET:?}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
