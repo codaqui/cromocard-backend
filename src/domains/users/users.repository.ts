@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
 
@@ -77,6 +78,7 @@ export interface UsersRepository {
   linkOauthAccount(id: string, link: OauthLink): Promise<UserCredentials>;
   createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser>;
   markEmailVerified(id: string): Promise<void>;
+  changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void>;
 }
 
 function buildSearchFilter(search?: string): Prisma.UserWhereInput {
@@ -165,6 +167,10 @@ export class PrismaUsersRepository implements UsersRepository {
 
   async markEmailVerified(id: string): Promise<void> {
     await this.prisma.user.update({ where: { id }, data: { emailVerified: true } });
+  }
+
+  async changePassword(id: string, passwordHash: string, tx: Transaction = this.prisma) {
+    await tx.user.update({ where: { id }, data: { passwordHash, emailVerified: true } });
   }
 
   linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {

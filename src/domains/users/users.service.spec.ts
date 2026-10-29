@@ -100,6 +100,13 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve();
   }
 
+  changePassword(id: string, passwordHash: string): Promise<void> {
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, passwordHash, emailVerified: true } : user,
+    );
+    return Promise.resolve();
+  }
+
   linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {
     const linked = { oauthProvider: provider, oauthId, emailVerified: true };
     const withoutPassword = discardPassword ? { passwordHash: null } : {};
@@ -227,5 +234,14 @@ describe('UsersService', () => {
     await service.markEmailVerified(user.id);
 
     expect(repository.users[0]?.emailVerified).toBe(true);
+  });
+
+  it('troca a senha e confirma o e-mail', async () => {
+    const user = buildUser({ emailVerified: false });
+    repository.users = [user];
+
+    await service.changePassword(user.id, 'novo-hash');
+
+    expect(repository.users[0]).toMatchObject({ passwordHash: 'novo-hash', emailVerified: true });
   });
 });

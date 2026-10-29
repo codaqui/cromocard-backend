@@ -7,6 +7,7 @@ import { hashPassword, verifyPasswordInConstantTime } from '@/lib/password';
 import type { MailProvider } from '@/providers/mail/mail.provider';
 import { passwordChangedMail } from '@/providers/mail/templates/password-changed.mail';
 import { resetPasswordMail } from '@/providers/mail/templates/reset-password.mail';
+import { type TransactionRunner, type Transaction } from '@/lib/transaction';
 import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
 import { describeDuration } from '@/providers/mail/templates/describe-duration';
 import { verifyEmailMail } from '@/providers/mail/templates/verify-email.mail';
@@ -24,7 +25,11 @@ import {
   InvalidVerificationTokenError,
   RefreshTokenReusedError,
 } from './auth.errors';
-import type { AuthRepository, RefreshTokenRecord } from './auth.repository';
+import type {
+  AuthRepository,
+  PasswordResetTokenRecord,
+  RefreshTokenRecord,
+} from './auth.repository';
 import type {
   GoogleLoginInput,
   LoginInput,
@@ -66,6 +71,7 @@ export interface AuthUsers {
   linkGoogleAccount(id: string, link: GoogleLink): Promise<AccountCredentials>;
   createWithPassword(account: NewAccount): Promise<RegisteredAccount>;
   markEmailVerified(id: string): Promise<void>;
+  changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void>;
 }
 
 export interface EmailLinkSettings {
@@ -86,6 +92,7 @@ export interface AuthServiceDeps {
   refreshTokenTtl: RefreshTokenTtl;
   mailer: MailProvider;
   emailLinks: EmailLinkSettings;
+  runInTransaction: TransactionRunner;
   logger: AuthLogger;
 }
 
@@ -108,6 +115,17 @@ export interface AuthSession {
   refreshExpiresAt: Date;
   persistent: boolean;
   user: Pick<AccountCredentials, 'id' | 'name' | 'role'>;
+}
+
+interface ResetTarget {
+  record: PasswordResetTokenRecord;
+  account: AccountCredentials;
+}
+
+interface PasswordChange {
+  tokenId: string;
+  userId: string;
+  passwordHash: string;
 }
 
 const MS_PER_SECOND = 1000;
@@ -213,9 +231,11 @@ export class AuthService {
   }
 
   async resetPassword({ token, password }: ResetPasswordInput): Promise<void> {
-    const account = await this.consumeResetToken(token);
+    const { record, account } = await this.findResetTarget(token);
     const passwordHash = await hashPassword(password);
-    await this.deps.authRepository.changePasswordAndRevokeSessions(account.id, passwordHash);
+    await this.deps.runInTransaction((tx) =>
+      this.replacePassword({ tokenId: record.id, userId: account.id, passwordHash }, tx),
+    );
 
     const mail = passwordChangedMail({ to: account.email, name: account.name });
     this.runInBackground(
@@ -230,32 +250,36 @@ export class AuthService {
     if (!isActive(account)) return;
 
     const token = generateOpaqueToken();
-    const expiresAt = new Date(
-      Date.now() + this.deps.emailLinks.passwordResetTtlInSeconds * MS_PER_SECOND,
-    );
+    const { passwordResetTtlInSeconds } = this.deps.emailLinks;
+    const expiresAt = new Date(Date.now() + passwordResetTtlInSeconds * MS_PER_SECOND);
     await this.deps.authRepository.replacePasswordResetToken({
       userId: account.id,
       tokenHash: hashOpaqueToken(token),
       expiresAt,
     });
     const link = this.linkTo(RESET_PASSWORD_PATH, token);
-    await this.deps.mailer.send(resetPasswordMail({ to: account.email, name: account.name, link }));
+    const validFor = describeDuration(passwordResetTtlInSeconds);
+    await this.deps.mailer.send(
+      resetPasswordMail({ to: account.email, name: account.name, link, validFor }),
+    );
   }
 
-  private async consumeResetToken(token: string): Promise<AccountCredentials> {
+  private async findResetTarget(token: string): Promise<ResetTarget> {
     const { authRepository, users } = this.deps;
     const record = await authRepository.findValidPasswordResetToken(hashOpaqueToken(token));
     const account = record ? await users.findCredentialsById(record.userId) : null;
 
-    if (
-      !record ||
-      !isActive(account) ||
-      !(await authRepository.markPasswordResetTokenUsed(record.id))
-    ) {
-      throw new InvalidResetTokenError();
-    }
+    if (!record || !isActive(account)) throw new InvalidResetTokenError();
+    return { record, account };
+  }
 
-    return account;
+  private async replacePassword(change: PasswordChange, tx: Transaction): Promise<void> {
+    const { authRepository, users } = this.deps;
+    const claimed = await authRepository.markPasswordResetTokenUsed(change.tokenId, tx);
+    if (!claimed) throw new InvalidResetTokenError();
+
+    await users.changePassword(change.userId, change.passwordHash, tx);
+    await authRepository.revokeAllRefreshTokens(change.userId, tx);
   }
 
   private linkTo(path: string, token: string): string {
@@ -263,7 +287,7 @@ export class AuthService {
   }
 
   private runInBackground(task: () => Promise<void>, userId: string | null, failure: string) {
-    task().catch(() => this.deps.logger.error({ userId }, failure));
+    task().catch((err: unknown) => this.deps.logger.error({ userId, err }, failure));
   }
 
   async loginWithGoogle(

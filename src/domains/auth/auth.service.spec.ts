@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vite
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
 import type { GoogleLink } from '@/domains/users/users.service';
 import { Prisma } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 import { signPurposeToken, verifyAccessToken, verifyPurposeToken } from '@/lib/jwt';
 import { hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPassword } from '@/lib/password';
@@ -55,8 +56,6 @@ interface StoredResetToken extends NewPasswordResetToken {
 class InMemoryAuthRepository implements AuthRepository {
   tokens: StoredRefreshToken[] = [];
   resetTokens: StoredResetToken[] = [];
-
-  constructor(private readonly users: InMemoryUsers) {}
 
   replacePasswordResetToken(token: NewPasswordResetToken): Promise<void> {
     this.resetTokens
@@ -113,12 +112,6 @@ class InMemoryAuthRepository implements AuthRepository {
       .forEach((token) => (token.revokedAt = new Date()));
     return Promise.resolve();
   }
-
-  async changePasswordAndRevokeSessions(userId: string, passwordHash: string): Promise<void> {
-    const account = this.users.accounts.find((stored) => stored.id === userId);
-    if (account) Object.assign(account, { passwordHash, emailVerified: true });
-    await this.revokeAllRefreshTokens(userId);
-  }
 }
 
 type StoredAccount = AccountCredentials & { email: string; googleId?: string };
@@ -153,6 +146,12 @@ class InMemoryUsers implements AuthUsers {
   markEmailVerified(id: string): Promise<void> {
     const account = this.accounts.find((stored) => stored.id === id);
     if (account) account.emailVerified = true;
+    return Promise.resolve();
+  }
+
+  changePassword(id: string, passwordHash: string): Promise<void> {
+    const account = this.accounts.find((stored) => stored.id === id);
+    if (account) Object.assign(account, { passwordHash, emailVerified: true });
     return Promise.resolve();
   }
 
@@ -209,7 +208,7 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     users = new InMemoryUsers();
-    authRepository = new InMemoryAuthRepository(users);
+    authRepository = new InMemoryAuthRepository();
     logger = { warn: vi.fn<AuthLogger['warn']>(), error: vi.fn<AuthLogger['error']>() };
     mailer = new InMemoryMailProvider();
     deps = {
@@ -218,6 +217,7 @@ describe('AuthService', () => {
       users,
       googleVerifier: new FakeGoogleVerifier(),
       mailer,
+      runInTransaction: (work) => work({} as Transaction),
       emailLinks: {
         frontendUrl: 'http://localhost:5173',
         verificationTtlInSeconds: DAY_IN_SECONDS,

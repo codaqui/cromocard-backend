@@ -1,3 +1,4 @@
+import type { Transaction } from '@/lib/transaction';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
 import { UserNotFoundError } from './users.errors';
@@ -84,6 +85,10 @@ export class UsersService {
 
   markEmailVerified(id: string): Promise<void> {
     return this.usersRepository.markEmailVerified(id);
+  }
+
+  changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void> {
+    return this.usersRepository.changePassword(id, passwordHash, tx);
   }
 
   async remove(id: string): Promise<void> {
