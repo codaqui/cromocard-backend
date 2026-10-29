@@ -12,6 +12,11 @@ export interface GoogleAccount {
   name: string;
 }
 
+export interface GoogleLink {
+  sub: string;
+  discardPassword: boolean;
+}
+
 export class UsersService {
   constructor(private readonly usersRepository: UsersRepository) {}
 
@@ -59,8 +64,12 @@ export class UsersService {
     });
   }
 
-  linkGoogleAccount(id: string, sub: string): Promise<UserCredentials> {
-    return this.usersRepository.linkOauthAccount(id, { provider: GOOGLE_PROVIDER, oauthId: sub });
+  linkGoogleAccount(id: string, { sub, discardPassword }: GoogleLink): Promise<UserCredentials> {
+    return this.usersRepository.linkOauthAccount(id, {
+      provider: GOOGLE_PROVIDER,
+      oauthId: sub,
+      discardPassword,
+    });
   }
 
   async remove(id: string): Promise<void> {

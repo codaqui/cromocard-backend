@@ -1,5 +1,6 @@
 import type { UserRole, UserStatus } from '@/generated/prisma/enums';
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
+import type { GoogleLink } from '@/domains/users/users.service';
 import { signAccessToken } from '@/lib/jwt';
 import { generateOpaqueToken, hashOpaqueToken } from '@/lib/opaque-token';
 import { verifyPasswordInConstantTime } from '@/lib/password';
@@ -31,7 +32,7 @@ export interface AuthUsers {
   findCredentialsById(id: string): Promise<AccountCredentials | null>;
   findCredentialsByGoogleId(sub: string): Promise<AccountCredentials | null>;
   createGoogleAccount(profile: GoogleProfile): Promise<AccountCredentials>;
-  linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials>;
+  linkGoogleAccount(id: string, link: GoogleLink): Promise<AccountCredentials>;
 }
 
 export interface RefreshTokenTtl {
@@ -68,12 +69,12 @@ const MS_PER_SECOND = 1000;
 
 function assertCanSignIn(account: AccountCredentials): void {
   if (account.deletedAt) throw new AccountDeletedError();
-  if (account.status === 'SUSPENDED') throw new AccountSuspendedError();
+  if (account.status !== 'ACTIVE') throw new AccountSuspendedError();
   if (!account.emailVerified) throw new EmailNotVerifiedError();
 }
 
 function isActive(account: AccountCredentials | null): account is AccountCredentials {
-  return Boolean(account && !account.deletedAt && account.status !== 'SUSPENDED');
+  return Boolean(account && !account.deletedAt && account.status === 'ACTIVE');
 }
 
 function passwordMatches(account: AccountCredentials | null, password: string) {
@@ -168,7 +169,10 @@ export class AuthService {
     if (!existing) return users.createGoogleAccount(profile);
 
     assertCanSignIn({ ...existing, emailVerified: true });
-    return users.linkGoogleAccount(existing.id, profile.sub);
+    return users.linkGoogleAccount(existing.id, {
+      sub: profile.sub,
+      discardPassword: !existing.emailVerified,
+    });
   }
 
   private refreshExpiry(rememberMe: boolean): Date {
