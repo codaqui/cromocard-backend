@@ -31,3 +31,13 @@ export class GoogleAuthLibraryVerifier implements GoogleIdTokenVerifier {
     return { sub: payload.sub, email, name };
   }
 }
+
+export class DisabledGoogleVerifier implements GoogleIdTokenVerifier {
+  verify(): Promise<GoogleProfile | null> {
+    return Promise.resolve(null);
+  }
+}
+
+export function createGoogleVerifier(clientId: string | undefined): GoogleIdTokenVerifier {
+  return clientId ? new GoogleAuthLibraryVerifier(clientId) : new DisabledGoogleVerifier();
+}
