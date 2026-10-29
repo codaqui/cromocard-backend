@@ -5,6 +5,7 @@ import type {
   NewOauthAccount,
   NewPasswordAccount,
   OauthIdentity,
+  OauthLink,
   RegisteredUser,
   UserCredentials,
   UserSummary,
@@ -99,9 +100,11 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve();
   }
 
-  linkOauthAccount(id: string, { provider, oauthId }: OauthIdentity): Promise<UserCredentials> {
+  linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {
+    const linked = { oauthProvider: provider, oauthId, emailVerified: true };
+    const withoutPassword = discardPassword ? { passwordHash: null } : {};
     this.users = this.users.map((user) =>
-      user.id === id ? { ...user, oauthProvider: provider, oauthId, emailVerified: true } : user,
+      user.id === id ? { ...user, ...linked, ...withoutPassword } : user,
     );
     return Promise.resolve(this.users.find((user) => user.id === id) as UserCredentials);
   }
@@ -195,12 +198,13 @@ describe('UsersService', () => {
     const user = buildUser({ emailVerified: false });
     repository.users = [user];
 
-    await service.linkGoogleAccount(user.id, 'google-sub');
+    await service.linkGoogleAccount(user.id, { sub: 'google-sub', discardPassword: true });
 
     expect(repository.users[0]).toMatchObject({
       oauthProvider: 'google',
       oauthId: 'google-sub',
       emailVerified: true,
+      passwordHash: null,
     });
   });
 

@@ -1,11 +1,14 @@
 import type { UserRole, UserStatus } from '@/generated/prisma/enums';
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
+import type { GoogleLink } from '@/domains/users/users.service';
 import { signAccessToken, signPurposeToken, verifyPurposeToken } from '@/lib/jwt';
 import { generateOpaqueToken, hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPasswordInConstantTime } from '@/lib/password';
 import type { MailProvider } from '@/providers/mail/mail.provider';
 import { passwordChangedMail } from '@/providers/mail/templates/password-changed.mail';
 import { resetPasswordMail } from '@/providers/mail/templates/reset-password.mail';
+import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
+import { describeDuration } from '@/providers/mail/templates/describe-duration';
 import { verifyEmailMail } from '@/providers/mail/templates/verify-email.mail';
 
 import {
@@ -60,7 +63,7 @@ export interface AuthUsers {
   findCredentialsById(id: string): Promise<AccountCredentials | null>;
   findCredentialsByGoogleId(sub: string): Promise<AccountCredentials | null>;
   createGoogleAccount(profile: GoogleProfile): Promise<AccountCredentials>;
-  linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials>;
+  linkGoogleAccount(id: string, link: GoogleLink): Promise<AccountCredentials>;
   createWithPassword(account: NewAccount): Promise<RegisteredAccount>;
   markEmailVerified(id: string): Promise<void>;
 }
@@ -111,16 +114,21 @@ const MS_PER_SECOND = 1000;
 
 function assertCanSignIn(account: AccountCredentials): void {
   if (account.deletedAt) throw new AccountDeletedError();
-  if (account.status === 'SUSPENDED') throw new AccountSuspendedError();
+  if (account.status !== 'ACTIVE') throw new AccountSuspendedError();
   if (!account.emailVerified) throw new EmailNotVerifiedError();
 }
 
 function isActive(account: AccountCredentials | null): account is AccountCredentials {
-  return Boolean(account && !account.deletedAt && account.status !== 'SUSPENDED');
+  return Boolean(account && !account.deletedAt && account.status === 'ACTIVE');
 }
 
 function passwordMatches(account: AccountCredentials | null, password: string) {
   return verifyPasswordInConstantTime(account?.passwordHash, password);
+}
+
+function rejectDuplicateEmail(error: unknown): never {
+  if (isUniqueConstraintError(error)) throw new EmailAlreadyRegisteredError();
+  throw error;
 }
 
 export class AuthService {
@@ -144,7 +152,9 @@ export class AuthService {
   async register({ password, name, email, role }: RegisterInput): Promise<RegisteredAccount> {
     await this.assertEmailAvailable(email);
     const passwordHash = await hashPassword(password);
-    const account = await this.deps.users.createWithPassword({ name, email, role, passwordHash });
+    const account = await this.deps.users
+      .createWithPassword({ name, email, role, passwordHash })
+      .catch(rejectDuplicateEmail);
     this.sendVerificationEmail(account);
     return account;
   }
@@ -181,7 +191,12 @@ export class AuthService {
   }: Pick<RegisteredAccount, 'id' | 'name' | 'email'>) {
     const { verificationTtlInSeconds } = this.deps.emailLinks;
     const token = signPurposeToken(id, 'verify-email', verificationTtlInSeconds);
-    const mail = verifyEmailMail({ to: email, name, link: this.linkTo(VERIFY_EMAIL_PATH, token) });
+    const mail = verifyEmailMail({
+      to: email,
+      name,
+      link: this.linkTo(VERIFY_EMAIL_PATH, token),
+      validFor: describeDuration(verificationTtlInSeconds),
+    });
     this.runInBackground(
       () => this.deps.mailer.send(mail),
       id,
@@ -326,7 +341,10 @@ export class AuthService {
     if (!existing) return users.createGoogleAccount(profile);
 
     assertCanSignIn({ ...existing, emailVerified: true });
-    return users.linkGoogleAccount(existing.id, profile.sub);
+    return users.linkGoogleAccount(existing.id, {
+      sub: profile.sub,
+      discardPassword: !existing.emailVerified,
+    });
   }
 
   private refreshExpiry(rememberMe: boolean): Date {

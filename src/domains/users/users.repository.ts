@@ -51,6 +51,10 @@ export interface OauthIdentity {
   oauthId: string;
 }
 
+export interface OauthLink extends OauthIdentity {
+  discardPassword: boolean;
+}
+
 export interface NewOauthAccount extends OauthIdentity {
   name: string;
   email: string;
@@ -70,7 +74,7 @@ export interface UsersRepository {
   findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null>;
   findCredentialsByOauthIncludingDeleted(identity: OauthIdentity): Promise<UserCredentials | null>;
   createOauthAccount(account: NewOauthAccount): Promise<UserCredentials>;
-  linkOauthAccount(id: string, identity: OauthIdentity): Promise<UserCredentials>;
+  linkOauthAccount(id: string, link: OauthLink): Promise<UserCredentials>;
   createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser>;
   markEmailVerified(id: string): Promise<void>;
 }
@@ -163,10 +167,15 @@ export class PrismaUsersRepository implements UsersRepository {
     await this.prisma.user.update({ where: { id }, data: { emailVerified: true } });
   }
 
-  linkOauthAccount(id: string, { provider, oauthId }: OauthIdentity): Promise<UserCredentials> {
+  linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {
     return this.prisma.user.update({
       where: { id },
-      data: { oauthProvider: provider, oauthId, emailVerified: true },
+      data: {
+        oauthProvider: provider,
+        oauthId,
+        emailVerified: true,
+        ...(discardPassword && { passwordHash: null }),
+      },
       select: userCredentialsSelect,
     });
   }

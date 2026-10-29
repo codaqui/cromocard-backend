@@ -1,6 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
+import type { GoogleLink } from '@/domains/users/users.service';
+import { Prisma } from '@/generated/prisma/client';
 import { signPurposeToken, verifyAccessToken, verifyPurposeToken } from '@/lib/jwt';
 import { hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPassword } from '@/lib/password';
@@ -154,9 +156,10 @@ class InMemoryUsers implements AuthUsers {
     return Promise.resolve();
   }
 
-  linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials> {
+  linkGoogleAccount(id: string, { sub, discardPassword }: GoogleLink): Promise<AccountCredentials> {
     const account = this.accounts.find((stored) => stored.id === id) as StoredAccount;
     Object.assign(account, { googleId: sub, emailVerified: true });
+    if (discardPassword) account.passwordHash = null;
     return Promise.resolve(account);
   }
 }
@@ -367,6 +370,22 @@ describe('AuthService', () => {
       expect(users.accounts[0]).toMatchObject({ googleId: googleProfile.sub, emailVerified: true });
     });
 
+    it('descarta a senha de conta não confirmada ao vincular, contra pré-sequestro', async () => {
+      users.accounts = [buildAccount({ emailVerified: false })];
+
+      await loginWithGoogle();
+
+      expect(users.accounts[0]?.passwordHash).toBeNull();
+    });
+
+    it('mantém a senha de conta já confirmada ao vincular', async () => {
+      users.accounts = [buildAccount({ emailVerified: true })];
+
+      await loginWithGoogle();
+
+      expect(users.accounts[0]?.passwordHash).toBe(passwordHash);
+    });
+
     it('não vincula nem entra em conta suspensa', async () => {
       users.accounts = [buildAccount({ status: 'SUSPENDED' })];
 
@@ -516,6 +535,16 @@ describe('AuthService', () => {
       await expect(service.register(input)).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
       expect(users.accounts).toHaveLength(1);
       expect(mailer.sent).toHaveLength(0);
+    });
+
+    it('CA5: cadastro simultâneo barrado pelo índice único também responde 409', async () => {
+      const duplicate = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'teste',
+      });
+      vi.spyOn(users, 'createWithPassword').mockRejectedValueOnce(duplicate);
+
+      await expect(service.register(input)).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
     });
 
     it('CA6: e-mail de conta excluída responde 409 ACCOUNT_DELETED', async () => {
