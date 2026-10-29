@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
+import type { GoogleLink } from '@/domains/users/users.service';
 import { signPurposeToken, verifyAccessToken, verifyPurposeToken } from '@/lib/jwt';
 import { hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPassword } from '@/lib/password';
@@ -105,9 +106,10 @@ class InMemoryUsers implements AuthUsers {
     return Promise.resolve();
   }
 
-  linkGoogleAccount(id: string, sub: string): Promise<AccountCredentials> {
+  linkGoogleAccount(id: string, { sub, discardPassword }: GoogleLink): Promise<AccountCredentials> {
     const account = this.accounts.find((stored) => stored.id === id) as StoredAccount;
     Object.assign(account, { googleId: sub, emailVerified: true });
+    if (discardPassword) account.passwordHash = null;
     return Promise.resolve(account);
   }
 }
@@ -312,6 +314,22 @@ describe('AuthService', () => {
 
       expect(session.user.id).toBe(account.id);
       expect(users.accounts[0]).toMatchObject({ googleId: googleProfile.sub, emailVerified: true });
+    });
+
+    it('descarta a senha de conta não confirmada ao vincular, contra pré-sequestro', async () => {
+      users.accounts = [buildAccount({ emailVerified: false })];
+
+      await loginWithGoogle();
+
+      expect(users.accounts[0]?.passwordHash).toBeNull();
+    });
+
+    it('mantém a senha de conta já confirmada ao vincular', async () => {
+      users.accounts = [buildAccount({ emailVerified: true })];
+
+      await loginWithGoogle();
+
+      expect(users.accounts[0]?.passwordHash).toBe(passwordHash);
     });
 
     it('não vincula nem entra em conta suspensa', async () => {
