@@ -2,7 +2,7 @@ import type { UserRole, UserStatus } from '@/generated/prisma/enums';
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
 import { signAccessToken } from '@/lib/jwt';
 import { generateOpaqueToken, hashOpaqueToken } from '@/lib/opaque-token';
-import { verifyPassword } from '@/lib/password';
+import { verifyPasswordInConstantTime } from '@/lib/password';
 
 import {
   AccountDeletedError,
@@ -76,8 +76,8 @@ function isActive(account: AccountCredentials | null): account is AccountCredent
   return Boolean(account && !account.deletedAt && account.status !== 'SUSPENDED');
 }
 
-async function passwordMatches(account: AccountCredentials | null, password: string) {
-  return Boolean(account?.passwordHash && (await verifyPassword(account.passwordHash, password)));
+function passwordMatches(account: AccountCredentials | null, password: string) {
+  return verifyPasswordInConstantTime(account?.passwordHash, password);
 }
 
 export class AuthService {
@@ -88,8 +88,9 @@ export class AuthService {
     context: SessionContext,
   ): Promise<AuthSession> {
     const account = await this.deps.users.findCredentialsByEmail(email);
+    const matches = await passwordMatches(account, password);
 
-    if (!account || !(await passwordMatches(account, password))) {
+    if (!account || !matches) {
       throw new InvalidCredentialsError();
     }
 
