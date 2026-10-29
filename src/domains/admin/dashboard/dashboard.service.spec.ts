@@ -1,142 +1,83 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { UserRole } from '@/generated/prisma/enums';
-import type { PaginationQuery } from '@/shared/utils/pagination';
+import type { MonthlySignups, SellerSummary, SignupsQuery } from '@/domains/users/users.service';
+import {
+  buildPaginationMeta,
+  type Paginated,
+  type PaginationQuery,
+} from '@/shared/utils/pagination';
+import type { DateRange } from '@/shared/utils/time-zone';
 
-import type {
-  DashboardRepository,
-  DateRange,
-  MonthlySignups,
-  RecentSellersPage,
-  SignupCounts,
-} from './dashboard.repository';
-import { DashboardService } from './dashboard.service';
-
-interface StoredUser {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  createdAt: Date;
-  deletedAt: Date | null;
-}
+import { type CatalogStats, type DashboardUsers, DashboardService } from './dashboard.service';
 
 const NOW = new Date('2026-10-29T13:00:00Z');
-const BRASILIA_OFFSET_IN_MS = 3 * 60 * 60 * 1000;
 
-const daysAgo = (days: number) => new Date(NOW.getTime() - days * 24 * 60 * 60 * 1000);
+class FakeUsers implements DashboardUsers {
+  members = 0;
+  signups: MonthlySignups[] = [];
+  sellers: SellerSummary[] = [];
+  lastSignupsQuery?: SignupsQuery;
+  lastSellersRange?: DateRange;
 
-const brasiliaMonth = (date: Date) =>
-  new Date(date.getTime() - BRASILIA_OFFSET_IN_MS).toISOString().slice(0, 7);
-
-function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
-  const id = crypto.randomUUID();
-  return {
-    id,
-    name: `Usuário ${id.slice(0, 4)}`,
-    email: `${id}@cromocard.dev`,
-    role: 'CUSTOMER',
-    createdAt: daysAgo(1),
-    deletedAt: null,
-    ...overrides,
-  };
-}
-
-const within = (date: Date, { from, to }: DateRange) => date >= from && date <= to;
-
-class InMemoryDashboardRepository implements DashboardRepository {
-  users: StoredUser[] = [];
-  cards: { deletedAt: Date | null }[] = [];
-
-  private activeNonAdmin() {
-    return this.users.filter((user) => !user.deletedAt && user.role !== 'ADMIN');
+  countMembers(): Promise<number> {
+    return Promise.resolve(this.members);
   }
 
-  countUsers(): Promise<number> {
-    return Promise.resolve(this.activeNonAdmin().length);
+  signupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]> {
+    this.lastSignupsQuery = query;
+    return Promise.resolve(this.signups);
   }
 
-  countCards(): Promise<number> {
-    return Promise.resolve(this.cards.filter((card) => !card.deletedAt).length);
-  }
-
-  countSignups(range: DateRange): Promise<SignupCounts> {
-    const inRange = this.activeNonAdmin().filter((user) => within(user.createdAt, range));
-    return Promise.resolve({
-      customers: inRange.filter((user) => user.role === 'CUSTOMER').length,
-      sellers: inRange.filter((user) => user.role === 'SELLER').length,
-    });
-  }
-
-  findSignupsByMonth(range: DateRange): Promise<MonthlySignups[]> {
-    const months = new Map<string, MonthlySignups>();
-    this.activeNonAdmin()
-      .filter((user) => within(user.createdAt, range))
-      .forEach((user) => {
-        const month = brasiliaMonth(user.createdAt);
-        const entry = months.get(month) ?? { month, customers: 0, sellers: 0 };
-        if (user.role === 'SELLER') entry.sellers += 1;
-        else entry.customers += 1;
-        months.set(month, entry);
-      });
-    return Promise.resolve([...months.values()].sort((a, b) => a.month.localeCompare(b.month)));
-  }
-
-  findRecentSellers(
+  listSellersCreatedWithin(
     range: DateRange,
-    { page, pageSize }: PaginationQuery,
-  ): Promise<RecentSellersPage> {
-    const sellers = this.activeNonAdmin()
-      .filter((user) => user.role === 'SELLER' && within(user.createdAt, range))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .map(({ id, name, email, createdAt }) => ({ id, name, email, createdAt }));
-    const start = (page - 1) * pageSize;
-    return Promise.resolve({
-      items: sellers.slice(start, start + pageSize),
-      total: sellers.length,
-    });
+    pagination: PaginationQuery,
+  ): Promise<Paginated<SellerSummary>> {
+    this.lastSellersRange = range;
+    const meta = buildPaginationMeta(pagination, this.sellers.length);
+    return Promise.resolve({ items: this.sellers, meta });
   }
 }
+
+const catalogWith = (cards: number): CatalogStats => ({ countCards: () => Promise.resolve(cards) });
 
 describe('DashboardService', () => {
-  let repository: InMemoryDashboardRepository;
-  let service: DashboardService;
+  let users: FakeUsers;
 
   beforeEach(() => {
-    repository = new InMemoryDashboardRepository();
-    service = new DashboardService(repository, () => NOW);
+    users = new FakeUsers();
   });
 
-  it('CA1: mostra totais e novos cadastros dos últimos 30 dias, sem excluídos nem ADMIN', async () => {
-    repository.users = [
-      buildUser({ createdAt: daysAgo(2) }),
-      buildUser({ role: 'SELLER', createdAt: daysAgo(10) }),
-      buildUser({ createdAt: daysAgo(60) }),
-      buildUser({ createdAt: daysAgo(3), deletedAt: daysAgo(1) }),
-      buildUser({ role: 'ADMIN', createdAt: daysAgo(1) }),
+  const serviceWith = (catalog?: CatalogStats) =>
+    new DashboardService({ users, catalog, now: () => NOW });
+
+  it('CA1: soma os novos cadastros do período e traz os totais', async () => {
+    users.members = 3;
+    users.signups = [
+      { month: '2026-09', customers: 1, sellers: 0 },
+      { month: '2026-10', customers: 1, sellers: 2 },
     ];
-    repository.cards = [{ deletedAt: null }, { deletedAt: null }, { deletedAt: daysAgo(1) }];
 
-    const { kpis, isEmpty } = await service.getSummary({});
+    const { kpis, isEmpty } = await serviceWith(catalogWith(2)).getSummary({});
 
-    expect(kpis).toEqual({ totalUsers: 3, totalCards: 2, newUsers: 2, newSellers: 1 });
+    expect(kpis).toEqual({ totalUsers: 3, totalCards: 2, newUsers: 4, newSellers: 2 });
     expect(isEmpty).toBe(false);
   });
 
-  it('CA2: recalcula os indicadores quando o período muda para 7 dias', async () => {
-    repository.users = [
-      buildUser({ createdAt: daysAgo(2) }),
-      buildUser({ role: 'SELLER', createdAt: daysAgo(10) }),
-    ];
+  it('CA1: usa os últimos 30 dias por padrão, a partir da meia-noite de Brasília', async () => {
+    const { period } = await serviceWith().getSummary({});
 
-    const { kpis, period } = await service.getSummary({ period: '7d' });
-
-    expect(kpis).toMatchObject({ newUsers: 1, newSellers: 0 });
-    expect(period).toEqual({ from: new Date('2026-10-23T03:00:00Z'), to: NOW });
+    expect(period).toEqual({ from: new Date('2026-09-30T03:00:00Z'), to: NOW });
+    expect(users.lastSignupsQuery?.timeZone).toBe('America/Sao_Paulo');
   });
 
-  it('corta o dia pelo horário de Brasília no período de hoje', async () => {
-    const { period } = await service.getSummary({ period: 'today' });
+  it('CA2: recalcula o período para 7 dias', async () => {
+    const { period } = await serviceWith().getSummary({ period: '7d' });
+
+    expect(period.from).toEqual(new Date('2026-10-23T03:00:00Z'));
+  });
+
+  it('corta o dia de hoje pelo horário de Brasília', async () => {
+    const { period } = await serviceWith().getSummary({ period: 'today' });
 
     expect(period.from).toEqual(new Date('2026-10-29T03:00:00Z'));
   });
@@ -145,46 +86,40 @@ describe('DashboardService', () => {
     const from = '2026-09-01T03:00:00.000Z';
     const to = '2026-09-30T23:59:59.000Z';
 
-    const { period } = await service.getSummary({ from, to });
+    const { period } = await serviceWith().getSummary({ from, to });
 
     expect(period).toEqual({ from: new Date(from), to: new Date(to) });
   });
 
-  it('CA3: separa clientes e vendedores por mês no gráfico de cadastros', async () => {
-    repository.users = [
-      buildUser({ createdAt: new Date('2026-09-15T12:00:00Z') }),
-      buildUser({ role: 'SELLER', createdAt: new Date('2026-09-20T12:00:00Z') }),
-      buildUser({ role: 'SELLER', createdAt: new Date('2026-10-05T12:00:00Z') }),
-    ];
+  it('CA3: devolve a série mensal de clientes e vendedores do domínio users', async () => {
+    users.signups = [{ month: '2026-10', customers: 1, sellers: 1 }];
 
-    const { signupsByMonth } = await service.getSummary({ period: '1y' });
+    const { signupsByMonth } = await serviceWith().getSummary({ period: '7d' });
 
-    expect(signupsByMonth).toEqual([
-      { month: '2026-09', customers: 1, sellers: 1 },
-      { month: '2026-10', customers: 0, sellers: 1 },
-    ]);
+    expect(signupsByMonth).toEqual(users.signups);
   });
 
-  it('CA4: lista os vendedores mais recentes do período, paginados', async () => {
-    const older = buildUser({ role: 'SELLER', name: 'Elisa', createdAt: daysAgo(20) });
-    const newer = buildUser({ role: 'SELLER', name: 'Fábio', createdAt: daysAgo(2) });
-    repository.users = [older, newer, buildUser({ createdAt: daysAgo(1) })];
+  it('CA4: lista os vendedores do mesmo período do resumo', async () => {
+    users.sellers = [{ id: '1', name: 'Fábio', email: 'f@cromocard.dev', createdAt: new Date() }];
 
-    const result = await service.listRecentSellers({
-      from: daysAgo(30).toISOString(),
-      to: NOW.toISOString(),
-      page: 1,
-      pageSize: 1,
-    });
+    const result = await serviceWith().listRecentSellers({ period: '7d', page: 1, pageSize: 10 });
 
-    expect(result.items.map((seller) => seller.name)).toEqual(['Fábio']);
-    expect(result.meta).toEqual({ page: 1, pageSize: 1, total: 2, totalPages: 2 });
+    expect(result.items).toHaveLength(1);
+    expect(users.lastSellersRange?.from).toEqual(new Date('2026-10-23T03:00:00Z'));
+  });
+
+  it('deixa o total de cartas nulo enquanto o catálogo não está ligado', async () => {
+    users.members = 1;
+
+    const { kpis, isEmpty } = await serviceWith().getSummary({});
+
+    expect(kpis.totalCards).toBeNull();
+    expect(isEmpty).toBe(false);
   });
 
   it('indica dashboard vazio quando não há usuários nem cartas', async () => {
-    const { isEmpty, kpis } = await service.getSummary({});
+    const { isEmpty } = await serviceWith(catalogWith(0)).getSummary({});
 
     expect(isEmpty).toBe(true);
-    expect(kpis).toEqual({ totalUsers: 0, totalCards: 0, newUsers: 0, newSellers: 0 });
   });
 });

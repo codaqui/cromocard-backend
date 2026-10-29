@@ -1,17 +1,32 @@
-import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
+import type { MonthlySignups, SellerSummary, SignupsQuery } from '@/domains/users/users.service';
+import type { Paginated, PaginationQuery } from '@/shared/utils/pagination';
+import { BRASILIA_TIME_ZONE, type DateRange } from '@/shared/utils/time-zone';
 
-import { resolvePeriod } from './dashboard-period';
-import type {
-  DashboardRepository,
-  DateRange,
-  MonthlySignups,
-  RecentSeller,
-} from './dashboard.repository';
-import type { DashboardQuery, RecentSellersQuery } from './dashboard.validator';
+import { resolvePeriod } from './dashboard.period';
+import type { PeriodQuery, RecentSellersQuery } from './dashboard.validator';
+
+export interface DashboardUsers {
+  countMembers(): Promise<number>;
+  signupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
+  listSellersCreatedWithin(
+    range: DateRange,
+    pagination: PaginationQuery,
+  ): Promise<Paginated<SellerSummary>>;
+}
+
+export interface CatalogStats {
+  countCards(): Promise<number>;
+}
+
+export interface DashboardServiceDeps {
+  users: DashboardUsers;
+  catalog?: CatalogStats;
+  now?: () => Date;
+}
 
 export interface DashboardKpis {
   totalUsers: number;
-  totalCards: number;
+  totalCards: number | null;
   newUsers: number;
   newSellers: number;
 }
@@ -23,47 +38,45 @@ export interface DashboardSummary {
   isEmpty: boolean;
 }
 
-export type Clock = () => Date;
+function sumSignups(signupsByMonth: MonthlySignups[]) {
+  return signupsByMonth.reduce(
+    (total, { customers, sellers }) => ({
+      newUsers: total.newUsers + customers + sellers,
+      newSellers: total.newSellers + sellers,
+    }),
+    { newUsers: 0, newSellers: 0 },
+  );
+}
 
 export class DashboardService {
-  constructor(
-    private readonly dashboardRepository: DashboardRepository,
-    private readonly now: Clock = () => new Date(),
-  ) {}
+  constructor(private readonly deps: DashboardServiceDeps) {}
 
-  async getSummary(query: DashboardQuery): Promise<DashboardSummary> {
-    const period = resolvePeriod(query, this.now());
-    const [kpis, signupsByMonth] = await Promise.all([
-      this.loadKpis(period),
-      this.dashboardRepository.findSignupsByMonth(period),
+  async getSummary(query: PeriodQuery): Promise<DashboardSummary> {
+    const period = this.resolve(query);
+    const [totalUsers, totalCards, signupsByMonth] = await Promise.all([
+      this.deps.users.countMembers(),
+      this.countCards(),
+      this.deps.users.signupsByMonth({ range: period, timeZone: BRASILIA_TIME_ZONE }),
     ]);
+    const kpis = { totalUsers, totalCards, ...sumSignups(signupsByMonth) };
 
-    return { period, kpis, signupsByMonth, isEmpty: !kpis.totalUsers && !kpis.totalCards };
+    return { period, kpis, signupsByMonth, isEmpty: !totalUsers && !totalCards };
   }
 
-  async listRecentSellers({
+  listRecentSellers({
+    period,
     from,
     to,
     ...pagination
-  }: RecentSellersQuery): Promise<Paginated<RecentSeller>> {
-    const range = { from: new Date(from), to: new Date(to) };
-    const { items, total } = await this.dashboardRepository.findRecentSellers(range, pagination);
-    return { items, meta: buildPaginationMeta(pagination, total) };
+  }: RecentSellersQuery): Promise<Paginated<SellerSummary>> {
+    return this.deps.users.listSellersCreatedWithin(this.resolve({ period, from, to }), pagination);
   }
 
-  private async loadKpis(period: DateRange): Promise<DashboardKpis> {
-    const { dashboardRepository } = this;
-    const [totalUsers, totalCards, signups] = await Promise.all([
-      dashboardRepository.countUsers(),
-      dashboardRepository.countCards(),
-      dashboardRepository.countSignups(period),
-    ]);
+  private resolve(query: PeriodQuery): DateRange {
+    return resolvePeriod(query, this.deps.now?.() ?? new Date());
+  }
 
-    return {
-      totalUsers,
-      totalCards,
-      newUsers: signups.customers + signups.sellers,
-      newSellers: signups.sellers,
-    };
+  private countCards(): Promise<number | null> {
+    return this.deps.catalog ? this.deps.catalog.countCards() : Promise.resolve(null);
   }
 }
