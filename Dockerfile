@@ -41,6 +41,9 @@ COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=prod-deps --chown=node:node /app/database ./database
 # O client do Prisma (src/generated) vai embutido no dist pelo tsup
 COPY --from=build --chown=node:node /app/dist ./dist
+# Pasta do storage local (ADR-009) com dono node: o /app é do root e a API roda como node.
+# O volume nomeado do Compose herda esse dono na primeira montagem.
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
 # Usuário não-root que já vem na imagem oficial do Node (uid 1000)
 USER node
 

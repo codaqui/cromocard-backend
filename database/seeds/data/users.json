@@ -1,0 +1,60 @@
+[
+  {
+    "key": "admin",
+    "name": "Admin CromoCard",
+    "email": "admin@cromocard.dev",
+    "role": "ADMIN",
+    "createdDaysAgo": 200
+  },
+  {
+    "key": "ana",
+    "name": "Ana Colecionadora",
+    "email": "ana@cromocard.dev",
+    "role": "CUSTOMER",
+    "createdDaysAgo": 150
+  },
+  {
+    "key": "bruno",
+    "name": "Bruno Figurinhas",
+    "email": "bruno@cromocard.dev",
+    "role": "CUSTOMER",
+    "createdDaysAgo": 120
+  },
+  {
+    "key": "carla",
+    "name": "Carla Trocas",
+    "email": "carla@cromocard.dev",
+    "role": "CUSTOMER",
+    "createdDaysAgo": 90
+  },
+  {
+    "key": "diego",
+    "name": "Diego Suspenso",
+    "email": "diego@cromocard.dev",
+    "role": "CUSTOMER",
+    "status": "SUSPENDED",
+    "createdDaysAgo": 60
+  },
+  {
+    "key": "elisa",
+    "name": "Elisa Cartas Raras",
+    "email": "elisa@cromocard.dev",
+    "role": "SELLER",
+    "createdDaysAgo": 35
+  },
+  {
+    "key": "fabio",
+    "name": "Fábio TCG Store",
+    "email": "fabio@cromocard.dev",
+    "role": "SELLER",
+    "createdDaysAgo": 10
+  },
+  {
+    "key": "gabriela",
+    "name": "Gabriela Iniciante",
+    "email": "gabriela@cromocard.dev",
+    "role": "CUSTOMER",
+    "emailVerified": false,
+    "createdDaysAgo": 2
+  }
+]

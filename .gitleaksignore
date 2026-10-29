@@ -6,3 +6,5 @@
 eef7e0920e6598c63a2829485fc1f86ac09f8fda:infra/validacao.env.example:generic-api-key:8
 # .env.example do esqueleto (branch feature/esqueleto-backend): valor de exemplo do JWT
 b66f29bce87bc2cbf799bf2b61fa9111e9352f68:.env.example:generic-api-key:6
+# src/config/logger.spec.ts (feature/109-realizar-login): access token fictício do teste de redaction do log
+388f1293588fa9cd872a26b22342a90c418e9172:src/config/logger.spec.ts:generic-api-key:22

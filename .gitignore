@@ -10,3 +10,6 @@ src/generated/
 .env.*
 *.env
 !.env.example
+
+# Arquivos enviados pelo storage local (ADR-009)
+/uploads/

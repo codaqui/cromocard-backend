@@ -9,3 +9,4 @@ tests
 src/generated
 *.log
 .env.*
+uploads

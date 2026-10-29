@@ -1,0 +1,20 @@
+[
+  {
+    "key": "recusa-neymar-repetida",
+    "admin": "admin",
+    "action": "CATALOG_REQUEST_REJECTED",
+    "entityType": "CATALOG_REQUEST",
+    "entity": "neymar-repetida",
+    "reason": "A carta já existe no álbum.",
+    "createdAt": "2026-10-02T15:00:00Z"
+  },
+  {
+    "key": "dispensa-charizard",
+    "admin": "admin",
+    "action": "REPORT_DISMISSED",
+    "entityType": "REPORT",
+    "entity": "charizard-dispensada",
+    "reason": "A mensagem não viola as regras do grupo.",
+    "createdAt": "2026-10-01T12:00:00Z"
+  }
+]

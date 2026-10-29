@@ -1,0 +1,35 @@
+[
+  {
+    "key": "ofensa-diego",
+    "reporter": "carla",
+    "targetType": "GROUP_MESSAGE",
+    "groupMessage": "mensagem-ofensiva",
+    "reason": "Ofensa",
+    "description": "Mensagem ofensiva contra os membros do grupo."
+  },
+  {
+    "key": "spam-elisa",
+    "reporter": "bruno",
+    "targetType": "GROUP_MESSAGE",
+    "groupMessage": "spam-site-externo",
+    "reason": "Spam",
+    "description": "Divulgação de site externo."
+  },
+  {
+    "key": "abuso-diego",
+    "reporter": "ana",
+    "targetType": "USER",
+    "targetUser": "diego",
+    "reason": "Comportamento abusivo"
+  },
+  {
+    "key": "charizard-dispensada",
+    "reporter": "ana",
+    "moderator": "admin",
+    "targetType": "GROUP_MESSAGE",
+    "groupMessage": "charizard-chegou",
+    "reason": "Spam",
+    "status": "DISMISSED",
+    "resolvedAt": "2026-10-01T12:00:00Z"
+  }
+]

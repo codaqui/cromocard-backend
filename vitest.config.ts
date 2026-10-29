@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 
 import { defineConfig } from 'vitest/config';
@@ -10,6 +11,7 @@ const testEnv = {
   CORS_ORIGIN: 'http://localhost:5173',
   JWT_SECRET: 'segredo-de-teste-segredo-de-teste-segredo',
   DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://teste:teste@localhost:5432/teste',
+  STORAGE_LOCAL_DIR: path.join(os.tmpdir(), 'cromocard-test-uploads'),
 };
 
 export default defineConfig({

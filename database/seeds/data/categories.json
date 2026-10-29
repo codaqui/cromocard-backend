@@ -1,0 +1,8 @@
+[
+  { "key": "futebol", "name": "Futebol", "type": "ALBUM", "isDefault": true },
+  { "key": "copa-do-mundo", "parent": "futebol", "name": "Copa do Mundo", "type": "ALBUM" },
+  { "key": "brasileirao", "parent": "futebol", "name": "Brasileirão", "type": "ALBUM" },
+  { "key": "pokemon", "name": "Pokémon", "type": "CARD", "isDefault": true },
+  { "key": "magic", "name": "Magic: The Gathering", "type": "CARD", "isDefault": true },
+  { "key": "yugioh", "name": "Yu-Gi-Oh!", "type": "CARD" }
+]

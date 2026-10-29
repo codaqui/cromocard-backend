@@ -1,0 +1,31 @@
+[
+  {
+    "key": "trocas-copa-2026",
+    "creator": "ana",
+    "name": "Trocas da Copa 2026",
+    "description": "Grupo para completar o álbum da Copa trocando repetidas.",
+    "accessType": "OPEN",
+    "members": [
+      { "user": "ana", "role": "ADMIN" },
+      { "user": "bruno" },
+      { "user": "carla" },
+      { "user": "diego" }
+    ]
+  },
+  {
+    "key": "mestres-pokemon",
+    "creator": "bruno",
+    "name": "Mestres Pokémon",
+    "description": "Colecionadores de cartas Pokémon antigas.",
+    "accessType": "CLOSED",
+    "members": [{ "user": "bruno", "role": "ADMIN" }, { "user": "elisa" }]
+  },
+  {
+    "key": "veteranos-magic",
+    "creator": "diego",
+    "name": "Veteranos do Magic",
+    "accessType": "OPEN",
+    "status": "SUSPENDED",
+    "members": [{ "user": "diego", "role": "ADMIN" }]
+  }
+]
