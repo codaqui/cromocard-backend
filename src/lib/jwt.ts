@@ -5,17 +5,16 @@ import { z } from '@/lib/zod';
 import { UnauthorizedError } from '@/shared/errors/http-errors';
 import type { AuthenticatedUser } from '@/shared/types/authenticated-user';
 
-const ACCESS_TOKEN_TTL_IN_SECONDS = 15 * 60;
-
 const accessTokenPayloadSchema = z.object({
   sub: z.string(),
   role: z.enum(['CUSTOMER', 'SELLER', 'ADMIN']),
+  purpose: z.never().optional(),
 });
 
 export function signAccessToken(user: AuthenticatedUser): string {
   return jwt.sign({ role: user.role }, env.JWT_SECRET, {
     subject: user.id,
-    expiresIn: ACCESS_TOKEN_TTL_IN_SECONDS,
+    expiresIn: env.JWT_ACCESS_TTL,
     algorithm: 'HS256',
   });
 }

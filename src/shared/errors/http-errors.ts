@@ -35,3 +35,13 @@ export class BusinessRuleError extends AppError {
     super({ statusCode: 422, code, message });
   }
 }
+
+export class TooManyRequestsError extends AppError {
+  constructor() {
+    super({
+      statusCode: 429,
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Muitas tentativas. Aguarde um minuto e tente de novo.',
+    });
+  }
+}

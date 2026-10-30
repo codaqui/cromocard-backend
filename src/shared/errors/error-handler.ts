@@ -2,7 +2,8 @@ import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { ZodError } from 'zod';
 
 import { AppError } from '@/shared/errors/app-error';
-import { NotFoundError, ValidationError } from '@/shared/errors/http-errors';
+import { ConflictError, NotFoundError, ValidationError } from '@/shared/errors/http-errors';
+import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
 
 function toValidationError(error: ZodError): ValidationError {
   return new ValidationError(
@@ -13,6 +14,7 @@ function toValidationError(error: ZodError): ValidationError {
 function toAppError(error: unknown): AppError | undefined {
   if (error instanceof AppError) return error;
   if (error instanceof ZodError) return toValidationError(error);
+  if (isUniqueConstraintError(error)) return new ConflictError('Este registro já existe');
   return undefined;
 }
 

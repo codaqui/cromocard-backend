@@ -10,6 +10,11 @@ const testEnv = {
   LOG_LEVEL: 'silent',
   CORS_ORIGIN: 'http://localhost:5173',
   JWT_SECRET: 'segredo-de-teste-segredo-de-teste-segredo',
+  JWT_ACCESS_TTL: '900',
+  REFRESH_TTL: '86400',
+  REFRESH_TTL_REMEMBER: '2592000',
+  GOOGLE_CLIENT_ID: 'cliente-de-teste.apps.googleusercontent.com',
+  COOKIE_SECURE: 'false',
   DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://teste:teste@localhost:5432/teste',
   STORAGE_LOCAL_DIR: path.join(os.tmpdir(), 'cromocard-test-uploads'),
 };

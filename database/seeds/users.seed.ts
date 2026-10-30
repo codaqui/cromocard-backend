@@ -1,7 +1,6 @@
-import argon2 from 'argon2';
-
 import type { PrismaClient } from '@/generated/prisma/client';
 import { UserRole, UserStatus } from '@/generated/prisma/enums';
+import { hashPassword } from '@/lib/password';
 import { z } from '@/lib/zod';
 
 import { daysAgo, loadSeedData, seedKey } from './load-seed-data';
@@ -26,7 +25,7 @@ const users = loadSeedData('users.json', usersSchema);
 export const userIdOf = keyResolver(SeedNamespace.users, users, 'users.json');
 
 export async function seedUsers(prisma: PrismaClient): Promise<void> {
-  const passwordHash = await argon2.hash(SEED_PASSWORD, { type: argon2.argon2id });
+  const passwordHash = await hashPassword(SEED_PASSWORD);
 
   for (const { key, createdDaysAgo, ...user } of users) {
     const id = userIdOf(key);
