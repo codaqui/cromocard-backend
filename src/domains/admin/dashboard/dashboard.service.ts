@@ -21,7 +21,7 @@ export interface CatalogStats {
 export interface DashboardServiceDeps {
   users: DashboardUsers;
   catalog?: CatalogStats;
-  now?: () => Date;
+  now: () => Date;
 }
 
 export interface DashboardKpis {
@@ -73,7 +73,7 @@ export class DashboardService {
   }
 
   private resolve(query: PeriodQuery): DateRange {
-    return resolvePeriod(query, this.deps.now?.() ?? new Date());
+    return resolvePeriod(query, this.deps.now());
   }
 
   private countCards(): Promise<number | null> {

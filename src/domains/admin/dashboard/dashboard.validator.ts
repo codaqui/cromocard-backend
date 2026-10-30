@@ -1,10 +1,10 @@
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
+import { DAY_IN_MS } from '@/shared/utils/time-zone';
 
 export const PERIOD_PRESETS = ['today', '7d', '30d', '1y'] as const;
 
 const MAX_RANGE_IN_DAYS = 5 * 366;
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const isoDate = z.iso.datetime({ offset: true, error: 'Informe a data no formato ISO 8601' });
 

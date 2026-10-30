@@ -6,7 +6,7 @@ import { createDashboardRoutes } from './dashboard.routes';
 import { DashboardService } from './dashboard.service';
 import { registerDashboardDocs } from './dashboard.swagger';
 
-const dashboardService = new DashboardService({ users: usersService });
+const dashboardService = new DashboardService({ users: usersService, now: () => new Date() });
 
 export const dashboardModule: DomainModule = {
   basePath: '/admin/dashboard',

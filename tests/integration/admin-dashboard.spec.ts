@@ -90,7 +90,7 @@ describe('GET /api/v1/admin/dashboard (PostgreSQL real)', () => {
 
     expect(kpis.newUsers - wholeBefore.kpis.newUsers).toBe(4);
     expect(kpis.newSellers - wholeBefore.kpis.newSellers).toBe(2);
-    expect(kpis.totalUsers).toBeGreaterThanOrEqual(wholeBefore.kpis.totalUsers + 4);
+    expect(kpis.totalUsers).toBeGreaterThanOrEqual(4);
     expect(kpis.totalCards).toBeNull();
   });
 

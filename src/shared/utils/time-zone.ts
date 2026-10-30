@@ -5,7 +5,7 @@ export interface DateRange {
   to: Date;
 }
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
+export const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const MAX_MONTHS = 120;
 
 function zonedParts(instant: Date, timeZone: string): Record<string, number> {

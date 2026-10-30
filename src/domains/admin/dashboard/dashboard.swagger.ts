@@ -13,6 +13,7 @@ const accessErrors = {
 };
 
 const count = z.number().int().min(0);
+const positive = z.number().int().min(1);
 
 const dashboardSummaryResponse = z.object({
   data: z.object({
@@ -42,7 +43,7 @@ const recentSellersResponse = z.object({
   data: z.array(
     z.object({ id: z.uuid(), name: z.string(), email: z.email(), createdAt: z.iso.datetime() }),
   ),
-  meta: z.object({ page: count, pageSize: count, total: count, totalPages: count }),
+  meta: z.object({ page: positive, pageSize: positive, total: count, totalPages: count }),
 });
 
 const json = (schema: z.ZodType) => ({ content: { 'application/json': { schema } } });
