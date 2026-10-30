@@ -5,6 +5,9 @@ import {
   createAlbumSchema,
   createCardSchema,
   createCategorySchema,
+  listAlbumsQuerySchema,
+  listCardsQuerySchema,
+  listCategoriesQuerySchema,
   updateAlbumSchema,
   updateCardSchema,
 } from './catalog.validator';
@@ -88,5 +91,26 @@ describe('createCategorySchema', () => {
 describe('catalogItemIdParamSchema', () => {
   it('R8: recusa id que não é UUID', () => {
     expect(catalogItemIdParamSchema.safeParse({ id: '1' }).success).toBe(false);
+  });
+});
+
+describe('listagens do catálogo', () => {
+  it('R3: aplica a paginação padrão e converte o ano da query string', () => {
+    expect(listAlbumsQuerySchema.parse({ year: '2026' })).toEqual({
+      page: 1,
+      pageSize: 20,
+      year: 2026,
+    });
+  });
+
+  it('R3: recusa ano inválido e filtros que não são UUID', () => {
+    expect(listAlbumsQuerySchema.safeParse({ year: 'abc' }).success).toBe(false);
+    expect(listCardsQuerySchema.safeParse({ albumId: 'x' }).success).toBe(false);
+    expect(listCardsQuerySchema.safeParse({ rarityId: 'x' }).success).toBe(false);
+  });
+
+  it('R3: recusa a busca em branco e tira os espaços das pontas', () => {
+    expect(listCategoriesQuerySchema.safeParse({ q: '   ' }).success).toBe(false);
+    expect(listCategoriesQuerySchema.parse({ q: ' futebol ' }).q).toBe('futebol');
   });
 });
