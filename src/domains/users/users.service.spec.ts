@@ -5,7 +5,13 @@ import type { DateRange } from '@/shared/utils/time-zone';
 import { UserNotFoundError } from './users.errors';
 import type {
   MonthlySignups,
+  NewOauthAccount,
+  NewPasswordAccount,
+  OauthIdentity,
+  OauthLink,
+  RegisteredUser,
   SellersPage,
+  UserCredentials,
   UserSummary,
   UsersPage,
   UsersRepository,
@@ -14,6 +20,9 @@ import { UsersService } from './users.service';
 import type { UpdateUserInput } from './users.validator';
 
 interface StoredUser extends UserSummary {
+  passwordHash: string | null;
+  oauthProvider: string | null;
+  oauthId: string | null;
   deletedAt: Date | null;
 }
 
@@ -26,6 +35,9 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     status: 'ACTIVE',
     emailVerified: true,
     createdAt: new Date(),
+    passwordHash: null,
+    oauthProvider: null,
+    oauthId: null,
     deletedAt: null,
     ...overrides,
   };
@@ -72,6 +84,59 @@ class InMemoryUsersRepository implements UsersRepository {
         role === 'SELLER' && !deletedAt && createdAt >= from && createdAt <= to,
     );
     return Promise.resolve({ items: sellers, total: sellers.length });
+  }
+
+  findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null> {
+    return Promise.resolve(this.users.find((user) => user.email === email) ?? null);
+  }
+
+  findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null> {
+    return Promise.resolve(this.users.find((user) => user.id === id) ?? null);
+  }
+
+  findCredentialsByOauthIncludingDeleted({
+    provider,
+    oauthId,
+  }: OauthIdentity): Promise<UserCredentials | null> {
+    const found = this.users.find(
+      (user) => user.oauthProvider === provider && user.oauthId === oauthId,
+    );
+    return Promise.resolve(found ?? null);
+  }
+
+  createOauthAccount({ provider, oauthId, ...account }: NewOauthAccount): Promise<UserCredentials> {
+    const user = buildUser({ ...account, oauthProvider: provider, oauthId });
+    this.users.push(user);
+    return Promise.resolve(user);
+  }
+
+  createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser> {
+    const user = buildUser({ ...account, emailVerified: false });
+    this.users.push(user);
+    return Promise.resolve(user);
+  }
+
+  markEmailVerified(id: string): Promise<void> {
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, emailVerified: true } : user,
+    );
+    return Promise.resolve();
+  }
+
+  changePassword(id: string, passwordHash: string): Promise<void> {
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, passwordHash, emailVerified: true } : user,
+    );
+    return Promise.resolve();
+  }
+
+  linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {
+    const linked = { oauthProvider: provider, oauthId, emailVerified: true };
+    const withoutPassword = discardPassword ? { passwordHash: null } : {};
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, ...linked, ...withoutPassword } : user,
+    );
+    return Promise.resolve(this.users.find((user) => user.id === id) as UserCredentials);
   }
 }
 
@@ -162,5 +227,79 @@ describe('UsersService', () => {
 
     expect(result.items.map(({ id }) => id)).toEqual([seller.id]);
     expect(result.meta).toEqual({ page: 1, pageSize: 10, total: 1, totalPages: 1 });
+  });
+
+  it('busca as credenciais pelo e-mail, inclusive de conta excluída', async () => {
+    const user = buildUser({ deletedAt: new Date() });
+    repository.users = [user];
+
+    await expect(service.findCredentialsByEmail(user.email)).resolves.toMatchObject({
+      id: user.id,
+      deletedAt: user.deletedAt,
+    });
+  });
+
+  it('busca as credenciais pelo id, inclusive de conta excluída', async () => {
+    const user = buildUser({ deletedAt: new Date() });
+    repository.users = [user];
+
+    await expect(service.findCredentialsById(user.id)).resolves.toMatchObject({ id: user.id });
+  });
+
+  it('cria a conta Google com o provider google e acha pelo sub', async () => {
+    const account = await service.createGoogleAccount({
+      sub: 'google-sub',
+      email: 'bia@gmail.com',
+      name: 'Bia',
+    });
+
+    expect(repository.users[0]).toMatchObject({ oauthProvider: 'google', oauthId: 'google-sub' });
+    await expect(service.findCredentialsByGoogleId('google-sub')).resolves.toMatchObject({
+      id: account.id,
+    });
+  });
+
+  it('vincula o Google a uma conta existente e confirma o e-mail', async () => {
+    const user = buildUser({ emailVerified: false });
+    repository.users = [user];
+
+    await service.linkGoogleAccount(user.id, { sub: 'google-sub', discardPassword: true });
+
+    expect(repository.users[0]).toMatchObject({
+      oauthProvider: 'google',
+      oauthId: 'google-sub',
+      emailVerified: true,
+      passwordHash: null,
+    });
+  });
+
+  it('cria a conta com senha sem e-mail confirmado', async () => {
+    const user = await service.createWithPassword({
+      name: 'Ana',
+      email: 'ana@cromocard.dev',
+      passwordHash: 'hash',
+      role: 'SELLER',
+    });
+
+    expect(user).toMatchObject({ role: 'SELLER', emailVerified: false });
+    expect(repository.users[0]?.passwordHash).toBe('hash');
+  });
+
+  it('marca o e-mail como confirmado', async () => {
+    const user = buildUser({ emailVerified: false });
+    repository.users = [user];
+
+    await service.markEmailVerified(user.id);
+
+    expect(repository.users[0]?.emailVerified).toBe(true);
+  });
+
+  it('troca a senha e confirma o e-mail', async () => {
+    const user = buildUser({ emailVerified: false });
+    repository.users = [user];
+
+    await service.changePassword(user.id, 'novo-hash');
+
+    expect(repository.users[0]).toMatchObject({ passwordHash: 'novo-hash', emailVerified: true });
   });
 });

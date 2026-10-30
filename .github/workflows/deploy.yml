@@ -43,7 +43,7 @@ jobs:
   # 1) Descobre o ambiente e a tag. Roda no GitHub, não no servidor.
   resolve:
     name: Definir ambiente e tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -134,7 +134,13 @@ jobs:
           POSTGRES_DB: ${{ vars.POSTGRES_DB }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          JWT_EXPIRES_IN: ${{ vars.JWT_EXPIRES_IN }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          MAIL_DRIVER: ${{ vars.MAIL_DRIVER }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          MAIL_HOST: ${{ vars.MAIL_HOST }}
+          MAIL_PORT: ${{ vars.MAIL_PORT }}
+          MAIL_USER: ${{ vars.MAIL_USER }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
           CORS_ORIGIN: ${{ vars.CORS_ORIGIN }}
           API_URL: ${{ vars.API_URL }}
           WS_URL: ${{ vars.WS_URL }}
@@ -172,7 +178,13 @@ jobs:
           POSTGRES_DB=$POSTGRES_DB
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
           JWT_SECRET=$JWT_SECRET
-          JWT_EXPIRES_IN=$JWT_EXPIRES_IN
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+          MAIL_DRIVER=$MAIL_DRIVER
+          MAIL_FROM=$MAIL_FROM
+          MAIL_HOST=$MAIL_HOST
+          MAIL_PORT=$MAIL_PORT
+          MAIL_USER=$MAIL_USER
+          MAIL_PASSWORD=$MAIL_PASSWORD
           CORS_ORIGIN=$CORS_ORIGIN
           API_URL=$API_URL
           WS_URL=$WS_URL
@@ -267,7 +279,7 @@ jobs:
     name: Avisar falha no canal
     needs: [resolve, deploy]
     if: failure()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: {}
     steps:
       - name: Enviar aviso (TEAM_WEBHOOK)
