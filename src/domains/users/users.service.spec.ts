@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { DateRange } from '@/shared/utils/time-zone';
+
 import { UserNotFoundError } from './users.errors';
 import type {
+  MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
   OauthIdentity,
   OauthLink,
   RegisteredUser,
+  SellersPage,
   UserCredentials,
   UserSummary,
   UsersPage,
@@ -61,6 +65,25 @@ class InMemoryUsersRepository implements UsersRepository {
       user.id === id ? { ...user, deletedAt: new Date() } : user,
     );
     return Promise.resolve();
+  }
+
+  monthlySignups: MonthlySignups[] = [];
+
+  countMembers(): Promise<number> {
+    const members = this.users.filter((user) => !user.deletedAt && user.role !== 'ADMIN');
+    return Promise.resolve(members.length);
+  }
+
+  countSignupsByMonth(): Promise<MonthlySignups[]> {
+    return Promise.resolve(this.monthlySignups);
+  }
+
+  findSellersCreatedWithin({ from, to }: DateRange): Promise<SellersPage> {
+    const sellers = this.users.filter(
+      ({ role, deletedAt, createdAt }) =>
+        role === 'SELLER' && !deletedAt && createdAt >= from && createdAt <= to,
+    );
+    return Promise.resolve({ items: sellers, total: sellers.length });
   }
 
   findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null> {
@@ -169,6 +192,41 @@ describe('UsersService', () => {
 
     expect(repository.users[0]?.deletedAt).toBeInstanceOf(Date);
     await expect(service.findById(user.id)).rejects.toBeInstanceOf(UserNotFoundError);
+  });
+
+  it('conta os membros sem excluídos nem administradores', async () => {
+    repository.users = [
+      buildUser(),
+      buildUser({ role: 'SELLER' }),
+      buildUser({ role: 'ADMIN' }),
+      buildUser({ deletedAt: new Date() }),
+    ];
+
+    await expect(service.countMembers()).resolves.toBe(2);
+  });
+
+  it('completa com zero os meses do período sem cadastros', async () => {
+    repository.monthlySignups = [{ month: '2026-08', customers: 2, sellers: 1 }];
+    const range = { from: new Date('2026-07-15T12:00:00Z'), to: new Date('2026-09-10T12:00:00Z') };
+
+    const signups = await service.signupsByMonth({ range, timeZone: 'America/Sao_Paulo' });
+
+    expect(signups).toEqual([
+      { month: '2026-07', customers: 0, sellers: 0 },
+      { month: '2026-08', customers: 2, sellers: 1 },
+      { month: '2026-09', customers: 0, sellers: 0 },
+    ]);
+  });
+
+  it('lista os vendedores criados no intervalo com a paginação', async () => {
+    const seller = buildUser({ role: 'SELLER', createdAt: new Date('2026-10-20T12:00:00Z') });
+    repository.users = [seller, buildUser({ role: 'SELLER', createdAt: new Date('2026-01-01') })];
+    const range = { from: new Date('2026-10-01T03:00:00Z'), to: new Date('2026-10-29T13:00:00Z') };
+
+    const result = await service.listSellersCreatedWithin(range, { page: 1, pageSize: 10 });
+
+    expect(result.items.map(({ id }) => id)).toEqual([seller.id]);
+    expect(result.meta).toEqual({ page: 1, pageSize: 10, total: 1, totalPages: 1 });
   });
 
   it('busca as credenciais pelo e-mail, inclusive de conta excluída', async () => {
