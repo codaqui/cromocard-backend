@@ -1,0 +1,46 @@
+import { BusinessRuleError, ConflictError, NotFoundError } from '@/shared/errors/http-errors';
+
+export class AlbumNotFoundError extends NotFoundError {
+  constructor() {
+    super('Álbum não encontrado', 'ALBUM_NOT_FOUND');
+  }
+}
+
+export class CardNotFoundError extends NotFoundError {
+  constructor() {
+    super('Carta não encontrada', 'CARD_NOT_FOUND');
+  }
+}
+
+export class CategoryNotFoundError extends NotFoundError {
+  constructor() {
+    super('Categoria não encontrada', 'CATEGORY_NOT_FOUND');
+  }
+}
+
+export class CardNumberTakenError extends ConflictError {
+  constructor() {
+    super('Já existe uma carta com este número no álbum', 'CARD_NUMBER_TAKEN');
+  }
+}
+
+export class AlbumHasCardsError extends BusinessRuleError {
+  constructor() {
+    super('O álbum tem cartas cadastradas e não pode ser excluído', 'ALBUM_HAS_CARDS');
+  }
+}
+
+export class CardInUseError extends BusinessRuleError {
+  constructor() {
+    super('A carta já está em coleções e não pode ser excluída', 'CARD_IN_USE');
+  }
+}
+
+export class CategoryInUseError extends BusinessRuleError {
+  constructor() {
+    super(
+      'A categoria tem álbuns, cartas ou subcategorias e não pode ser excluída',
+      'CATEGORY_IN_USE',
+    );
+  }
+}
