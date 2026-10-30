@@ -41,7 +41,7 @@ export class TooManyRequestsError extends AppError {
     super({
       statusCode: 429,
       code: 'TOO_MANY_REQUESTS',
-      message: 'Muitas tentativas. Aguarde um minuto e tente de novo.',
+      message: 'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
     });
   }
 }

@@ -1,13 +1,19 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
-import { googleLoginSchema, loginSchema } from './auth.validator';
+import {
+  googleLoginSchema,
+  loginSchema,
+  registerSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
+} from './auth.validator';
 
 const tags = ['Autenticação'];
 const sessionDescription =
   'Sessão iniciada: { data: { accessToken, user: { id, name, role } } } e cookie httpOnly cromocard_refresh';
 const tooManyRequests = { description: 'TOO_MANY_REQUESTS: passou de 5 tentativas por minuto' };
 
-function jsonBody(schema: typeof loginSchema | typeof googleLoginSchema) {
+function jsonBody(schema: Parameters<OpenAPIRegistry['register']>[1]) {
   return { body: { content: { 'application/json': { schema } } } };
 }
 
@@ -55,6 +61,41 @@ const authPaths: RouteConfig[] = [
     tags,
     summary: 'Encerra a sessão: revoga o refresh e limpa o cookie',
     responses: { 204: { description: 'Sessão encerrada' } },
+  },
+  {
+    method: 'post',
+    path: '/auth/register',
+    tags,
+    summary: 'Cria a conta de Cliente ou Vendedor e envia o e-mail de confirmação',
+    request: jsonBody(registerSchema),
+    responses: {
+      201: { description: '{ data: { id, name, email, role, emailVerified: false } }' },
+      400: { description: 'VALIDATION_ERROR: campo inválido, senha fora da regra ou termos' },
+      409: { description: 'EMAIL_ALREADY_REGISTERED ou ACCOUNT_DELETED' },
+      429: { description: 'TOO_MANY_REQUESTS: passou de 10 cadastros por hora' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/auth/verify-email',
+    tags,
+    summary: 'Confirma o e-mail pelo token do link',
+    request: jsonBody(verifyEmailSchema),
+    responses: {
+      204: { description: 'E-mail confirmado' },
+      400: { description: 'INVALID_VERIFICATION_TOKEN: link expirado ou inválido' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/auth/verify-email/resend',
+    tags,
+    summary: 'Reenvia o e-mail de confirmação; a resposta é a mesma exista ou não a conta',
+    request: jsonBody(resendVerificationSchema),
+    responses: {
+      202: { description: 'Pedido recebido' },
+      429: { description: 'TOO_MANY_REQUESTS: passou de 3 pedidos em 15 minutos' },
+    },
   },
 ];
 

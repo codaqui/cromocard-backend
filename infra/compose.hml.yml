@@ -16,9 +16,13 @@ services:
     deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
 
   api:
+    environment:
+      APP_ENV: homolog
     deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
 
   ws:
+    environment:
+      APP_ENV: homolog
     deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
 
   web:

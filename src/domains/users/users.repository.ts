@@ -28,6 +28,23 @@ const userCredentialsSelect = {
 
 export type UserCredentials = Prisma.UserGetPayload<{ select: typeof userCredentialsSelect }>;
 
+const registeredUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  emailVerified: true,
+} satisfies Prisma.UserSelect;
+
+export type RegisteredUser = Prisma.UserGetPayload<{ select: typeof registeredUserSelect }>;
+
+export interface NewPasswordAccount {
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: 'CUSTOMER' | 'SELLER';
+}
+
 export interface OauthIdentity {
   provider: string;
   oauthId: string;
@@ -57,6 +74,8 @@ export interface UsersRepository {
   findCredentialsByOauthIncludingDeleted(identity: OauthIdentity): Promise<UserCredentials | null>;
   createOauthAccount(account: NewOauthAccount): Promise<UserCredentials>;
   linkOauthAccount(id: string, link: OauthLink): Promise<UserCredentials>;
+  createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser>;
+  markEmailVerified(id: string): Promise<void>;
 }
 
 function buildSearchFilter(search?: string): Prisma.UserWhereInput {
@@ -134,6 +153,17 @@ export class PrismaUsersRepository implements UsersRepository {
       },
       select: userCredentialsSelect,
     });
+  }
+
+  createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser> {
+    return this.prisma.user.create({
+      data: { ...account, termsAccepted: true },
+      select: registeredUserSelect,
+    });
+  }
+
+  async markEmailVerified(id: string): Promise<void> {
+    await this.prisma.user.update({ where: { id }, data: { emailVerified: true } });
   }
 
   linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {

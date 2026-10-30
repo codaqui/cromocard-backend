@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { UserNotFoundError } from './users.errors';
 import type {
   NewOauthAccount,
+  NewPasswordAccount,
   OauthIdentity,
   OauthLink,
+  RegisteredUser,
   UserCredentials,
   UserSummary,
   UsersPage,
@@ -83,6 +85,19 @@ class InMemoryUsersRepository implements UsersRepository {
     const user = buildUser({ ...account, oauthProvider: provider, oauthId });
     this.users.push(user);
     return Promise.resolve(user);
+  }
+
+  createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser> {
+    const user = buildUser({ ...account, emailVerified: false });
+    this.users.push(user);
+    return Promise.resolve(user);
+  }
+
+  markEmailVerified(id: string): Promise<void> {
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, emailVerified: true } : user,
+    );
+    return Promise.resolve();
   }
 
   linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {
@@ -191,5 +206,26 @@ describe('UsersService', () => {
       emailVerified: true,
       passwordHash: null,
     });
+  });
+
+  it('cria a conta com senha sem e-mail confirmado', async () => {
+    const user = await service.createWithPassword({
+      name: 'Ana',
+      email: 'ana@cromocard.dev',
+      passwordHash: 'hash',
+      role: 'SELLER',
+    });
+
+    expect(user).toMatchObject({ role: 'SELLER', emailVerified: false });
+    expect(repository.users[0]?.passwordHash).toBe('hash');
+  });
+
+  it('marca o e-mail como confirmado', async () => {
+    const user = buildUser({ emailVerified: false });
+    repository.users = [user];
+
+    await service.markEmailVerified(user.id);
+
+    expect(repository.users[0]?.emailVerified).toBe(true);
   });
 });

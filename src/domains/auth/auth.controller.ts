@@ -1,9 +1,15 @@
 import type { CookieOptions, Request, Response } from 'express';
 
-import { noContent, ok } from '@/shared/utils/http-response';
+import { accepted, created, noContent, ok } from '@/shared/utils/http-response';
 
 import type { AuthService, AuthSession, SessionContext } from './auth.service';
-import { googleLoginSchema, loginSchema } from './auth.validator';
+import {
+  googleLoginSchema,
+  loginSchema,
+  registerSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
+} from './auth.validator';
 
 export const REFRESH_COOKIE_NAME = 'cromocard_refresh';
 export const REFRESH_COOKIE_PATH = '/api/v1/auth';
@@ -57,6 +63,20 @@ export class AuthController {
     await this.authService.logout(readRefreshCookie(req));
     res.clearCookie(REFRESH_COOKIE_NAME, this.cookieOptions());
     noContent(res);
+  };
+
+  register = async (req: Request, res: Response): Promise<void> => {
+    created(res, await this.authService.register(registerSchema.parse(req.body)));
+  };
+
+  verifyEmail = async (req: Request, res: Response): Promise<void> => {
+    await this.authService.verifyEmail(verifyEmailSchema.parse(req.body).token);
+    noContent(res);
+  };
+
+  resendVerification = async (req: Request, res: Response): Promise<void> => {
+    await this.authService.resendVerification(resendVerificationSchema.parse(req.body).email);
+    accepted(res);
   };
 
   private sendSession(res: Response, { accessToken, user, ...refresh }: AuthSession): void {
