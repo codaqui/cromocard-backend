@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import type { UserStatus } from '@/generated/prisma/enums';
+import type { Transaction } from '@/lib/transaction';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
 
@@ -20,6 +21,7 @@ export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySele
 const userCredentialsSelect = {
   id: true,
   name: true,
+  email: true,
   role: true,
   status: true,
   emailVerified: true,
@@ -28,6 +30,23 @@ const userCredentialsSelect = {
 } satisfies Prisma.UserSelect;
 
 export type UserCredentials = Prisma.UserGetPayload<{ select: typeof userCredentialsSelect }>;
+
+const registeredUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  emailVerified: true,
+} satisfies Prisma.UserSelect;
+
+export type RegisteredUser = Prisma.UserGetPayload<{ select: typeof registeredUserSelect }>;
+
+export interface NewPasswordAccount {
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: 'CUSTOMER' | 'SELLER';
+}
 
 export interface OauthIdentity {
   provider: string;
@@ -60,6 +79,9 @@ export interface UsersRepository {
   findCredentialsByOauthIncludingDeleted(identity: OauthIdentity): Promise<UserCredentials | null>;
   createOauthAccount(account: NewOauthAccount): Promise<UserCredentials>;
   linkOauthAccount(id: string, link: OauthLink): Promise<UserCredentials>;
+  createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser>;
+  markEmailVerified(id: string): Promise<void>;
+  changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void>;
 }
 
 function buildSearchFilter(q?: string): Prisma.UserWhereInput {
@@ -166,6 +188,21 @@ export class PrismaUsersRepository implements UsersRepository {
       },
       select: userCredentialsSelect,
     });
+  }
+
+  createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser> {
+    return this.prisma.user.create({
+      data: { ...account, termsAccepted: true },
+      select: registeredUserSelect,
+    });
+  }
+
+  async markEmailVerified(id: string): Promise<void> {
+    await this.prisma.user.update({ where: { id }, data: { emailVerified: true } });
+  }
+
+  async changePassword(id: string, passwordHash: string, tx: Transaction = this.prisma) {
+    await tx.user.update({ where: { id }, data: { passwordHash, emailVerified: true } });
   }
 
   linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {

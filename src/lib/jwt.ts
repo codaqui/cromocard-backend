@@ -19,6 +19,29 @@ export function signAccessToken(user: AuthenticatedUser): string {
   });
 }
 
+export type TokenPurpose = 'verify-email';
+
+const purposeTokenPayloadSchema = z.object({ sub: z.string(), purpose: z.string() });
+
+export function signPurposeToken(userId: string, purpose: TokenPurpose, ttlInSeconds: number) {
+  return jwt.sign({ purpose }, env.JWT_SECRET, {
+    subject: userId,
+    expiresIn: ttlInSeconds,
+    algorithm: 'HS256',
+  });
+}
+
+export function verifyPurposeToken(token: string, purpose: TokenPurpose): string | null {
+  try {
+    const payload = purposeTokenPayloadSchema.parse(
+      jwt.verify(token, env.JWT_SECRET, { algorithms: ['HS256'] }),
+    );
+    return payload.purpose === purpose ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export function verifyAccessToken(token: string): AuthenticatedUser {
   try {
     const payload = accessTokenPayloadSchema.parse(

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { env } from '@/config/env';
 
-import { signAccessToken, verifyAccessToken } from './jwt';
+import { signAccessToken, signPurposeToken, verifyAccessToken, verifyPurposeToken } from './jwt';
 
 const user = { id: '0190a000-0000-7001-8000-000000000001', role: 'CUSTOMER' as const };
 
@@ -45,5 +45,32 @@ describe('jwt', () => {
     });
 
     expect(() => verifyAccessToken(token)).toThrow('Token inválido ou expirado');
+  });
+
+  it('gera e valida o token de confirmação de e-mail', () => {
+    const token = signPurposeToken(user.id, 'verify-email', 60);
+
+    expect(verifyPurposeToken(token, 'verify-email')).toBe(user.id);
+  });
+
+  it('o token de confirmação não vale como access token', () => {
+    const token = signPurposeToken(user.id, 'verify-email', 60);
+
+    expect(() => verifyAccessToken(token)).toThrow('Token inválido ou expirado');
+  });
+
+  it('recusa token de confirmação expirado', () => {
+    const token = signPurposeToken(user.id, 'verify-email', -1);
+
+    expect(verifyPurposeToken(token, 'verify-email')).toBeNull();
+  });
+
+  it('recusa token com outro purpose e o access token', () => {
+    const otherPurpose = jwt.sign({ purpose: 'reset-password' }, env.JWT_SECRET, {
+      subject: user.id,
+    });
+
+    expect(verifyPurposeToken(otherPurpose, 'verify-email')).toBeNull();
+    expect(verifyPurposeToken(signAccessToken(user), 'verify-email')).toBeNull();
   });
 });

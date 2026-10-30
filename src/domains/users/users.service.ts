@@ -1,7 +1,14 @@
+import type { Transaction } from '@/lib/transaction';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
 import { UserNotFoundError } from './users.errors';
-import type { UserCredentials, UserSummary, UsersRepository } from './users.repository';
+import type {
+  NewPasswordAccount,
+  RegisteredUser,
+  UserCredentials,
+  UserSummary,
+  UsersRepository,
+} from './users.repository';
 import type { ListUsersQuery, UpdateUserInput } from './users.validator';
 
 const GOOGLE_PROVIDER = 'google';
@@ -70,6 +77,18 @@ export class UsersService {
       oauthId: sub,
       discardPassword,
     });
+  }
+
+  createWithPassword(account: NewPasswordAccount): Promise<RegisteredUser> {
+    return this.usersRepository.createPasswordAccount(account);
+  }
+
+  markEmailVerified(id: string): Promise<void> {
+    return this.usersRepository.markEmailVerified(id);
+  }
+
+  changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void> {
+    return this.usersRepository.changePassword(id, passwordHash, tx);
   }
 
   async remove(id: string): Promise<void> {
