@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it, type Mock, vi } from 'vite
 import type { GoogleIdTokenVerifier, GoogleProfile } from '@/lib/google';
 import type { GoogleLink } from '@/domains/users/users.service';
 import { Prisma } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 import { signPurposeToken, verifyAccessToken, verifyPurposeToken } from '@/lib/jwt';
 import { hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPassword } from '@/lib/password';
@@ -18,10 +19,17 @@ import {
   InvalidCredentialsError,
   InvalidGoogleTokenError,
   InvalidRefreshTokenError,
+  InvalidResetTokenError,
   InvalidVerificationTokenError,
   RefreshTokenReusedError,
 } from './auth.errors';
-import type { AuthRepository, NewRefreshToken, RefreshTokenRecord } from './auth.repository';
+import type {
+  AuthRepository,
+  NewPasswordResetToken,
+  NewRefreshToken,
+  PasswordResetTokenRecord,
+  RefreshTokenRecord,
+} from './auth.repository';
 import {
   type AccountCredentials,
   type AuthLogger,
@@ -40,8 +48,42 @@ interface StoredRefreshToken extends RefreshTokenRecord {
   tokenHash: string;
 }
 
+interface StoredResetToken extends NewPasswordResetToken {
+  id: string;
+  used: boolean;
+}
+
 class InMemoryAuthRepository implements AuthRepository {
   tokens: StoredRefreshToken[] = [];
+  resetTokens: StoredResetToken[] = [];
+
+  replacePasswordResetToken(token: NewPasswordResetToken): Promise<void> {
+    this.resetTokens
+      .filter((stored) => stored.userId === token.userId)
+      .forEach((stored) => (stored.used = true));
+    this.resetTokens.push({ ...token, id: crypto.randomUUID(), used: false });
+    return Promise.resolve();
+  }
+
+  findValidPasswordResetToken(tokenHash: string): Promise<PasswordResetTokenRecord | null> {
+    const found = this.resetTokens.find(
+      (token) =>
+        token.tokenHash === tokenHash && !token.used && token.expiresAt.getTime() > Date.now(),
+    );
+    return Promise.resolve(found ? { id: found.id, userId: found.userId } : null);
+  }
+
+  markPasswordResetTokenUsed(id: string): Promise<boolean> {
+    const token = this.resetTokens.find((stored) => stored.id === id && !stored.used);
+    if (token) token.used = true;
+    return Promise.resolve(Boolean(token));
+  }
+
+  deleteExpiredPasswordResetTokens(): Promise<number> {
+    const before = this.resetTokens.length;
+    this.resetTokens = this.resetTokens.filter((token) => token.expiresAt.getTime() > Date.now());
+    return Promise.resolve(before - this.resetTokens.length);
+  }
 
   createRefreshToken({ userId, tokenHash, expiresAt }: NewRefreshToken): Promise<void> {
     this.tokens.push({ id: crypto.randomUUID(), userId, tokenHash, expiresAt, revokedAt: null });
@@ -107,6 +149,12 @@ class InMemoryUsers implements AuthUsers {
     return Promise.resolve();
   }
 
+  changePassword(id: string, passwordHash: string): Promise<void> {
+    const account = this.accounts.find((stored) => stored.id === id);
+    if (account) Object.assign(account, { passwordHash, emailVerified: true });
+    return Promise.resolve();
+  }
+
   linkGoogleAccount(id: string, { sub, discardPassword }: GoogleLink): Promise<AccountCredentials> {
     const account = this.accounts.find((stored) => stored.id === id) as StoredAccount;
     Object.assign(account, { googleId: sub, emailVerified: true });
@@ -159,8 +207,8 @@ describe('AuthService', () => {
   });
 
   beforeEach(() => {
-    authRepository = new InMemoryAuthRepository();
     users = new InMemoryUsers();
+    authRepository = new InMemoryAuthRepository();
     logger = { warn: vi.fn<AuthLogger['warn']>(), error: vi.fn<AuthLogger['error']>() };
     mailer = new InMemoryMailProvider();
     deps = {
@@ -169,7 +217,12 @@ describe('AuthService', () => {
       users,
       googleVerifier: new FakeGoogleVerifier(),
       mailer,
-      emailVerification: { frontendUrl: 'http://localhost:5173', ttlInSeconds: DAY_IN_SECONDS },
+      runInTransaction: (work) => work({} as Transaction),
+      emailLinks: {
+        frontendUrl: 'http://localhost:5173',
+        verificationTtlInSeconds: DAY_IN_SECONDS,
+        passwordResetTtlInSeconds: 60 * 60,
+      },
       refreshTokenTtl: {
         defaultInSeconds: DAY_IN_SECONDS,
         rememberMeInSeconds: 30 * DAY_IN_SECONDS,
@@ -571,5 +624,147 @@ describe('AuthService', () => {
 
       expect(mailer.sent).toHaveLength(0);
     });
+  });
+
+  describe('forgotPassword', () => {
+    it('CA1: grava o token com hash, válido por 1 hora, e envia o link pelo MailProvider', async () => {
+      const account = buildAccount();
+      users.accounts = [account];
+
+      service.forgotPassword(account.email);
+
+      await vi.waitFor(() => expect(mailer.sent).toHaveLength(1));
+      const token =
+        new URL(/href="([^"]+)"/.exec(mailer.sent[0]?.html ?? '')?.[1] ?? '').searchParams.get(
+          'token',
+        ) ?? '';
+      expect(mailer.sent[0]?.html).toContain('http://localhost:5173/redefinir-senha?token=');
+      expect(authRepository.resetTokens).toHaveLength(1);
+      const [stored] = authRepository.resetTokens;
+      expect(stored).toMatchObject({
+        userId: account.id,
+        tokenHash: hashOpaqueToken(token),
+        used: false,
+      });
+      expect(Math.round(((stored?.expiresAt.getTime() ?? 0) - Date.now()) / 60_000)).toBe(60);
+    });
+
+    it('um pedido novo invalida os links anteriores', async () => {
+      users.accounts = [buildAccount()];
+
+      service.forgotPassword('ana@cromocard.dev');
+      await vi.waitFor(() => expect(mailer.sent).toHaveLength(1));
+      service.forgotPassword('ana@cromocard.dev');
+      await vi.waitFor(() => expect(mailer.sent).toHaveLength(2));
+
+      expect(authRepository.resetTokens.map((token) => token.used)).toEqual([true, false]);
+    });
+
+    it('CA2: e-mail inexistente, conta suspensa ou excluída não recebe nada', async () => {
+      users.accounts = [
+        buildAccount({ email: 'suspensa@cromocard.dev', status: 'SUSPENDED' }),
+        buildAccount({ email: 'excluida@cromocard.dev', deletedAt: new Date() }),
+      ];
+
+      service.forgotPassword('ninguem@cromocard.dev');
+      service.forgotPassword('suspensa@cromocard.dev');
+      service.forgotPassword('excluida@cromocard.dev');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(mailer.sent).toHaveLength(0);
+      expect(authRepository.resetTokens).toHaveLength(0);
+    });
+  });
+
+  describe('resetPassword', () => {
+    async function issueToken(account: StoredAccount): Promise<string> {
+      service.forgotPassword(account.email);
+      await vi.waitFor(() => expect(mailer.sent.length).toBeGreaterThan(0));
+      const link = /href="([^"]+)"/.exec(mailer.sent.at(-1)?.html ?? '')?.[1] ?? '';
+      mailer.sent.length = 0;
+      return new URL(link).searchParams.get('token') ?? '';
+    }
+
+    it('CA5: troca a senha, gasta o token, revoga as sessões, confirma o e-mail e avisa', async () => {
+      const account = buildAccount({ emailVerified: false });
+      users.accounts = [account];
+      authRepository.tokens.push({
+        id: 'sessao',
+        userId: account.id,
+        tokenHash: 'x',
+        expiresAt: new Date(Date.now() + 60_000),
+        revokedAt: null,
+      });
+      const token = await issueToken(account);
+
+      await service.resetPassword({ token, password: 'Nova@Senha12' });
+
+      await expect(verifyPassword(account.passwordHash ?? '', 'Nova@Senha12')).resolves.toBe(true);
+      expect(account.emailVerified).toBe(true);
+      expect(authRepository.resetTokens[0]?.used).toBe(true);
+      expect(authRepository.tokens.every((stored) => stored.revokedAt)).toBe(true);
+      await vi.waitFor(() =>
+        expect(mailer.sent[0]?.subject).toContain('senha do CromoCard foi alterada'),
+      );
+    });
+
+    it('CA6: link já usado é recusado e a senha não muda de novo', async () => {
+      const account = buildAccount();
+      users.accounts = [account];
+      const token = await issueToken(account);
+      await service.resetPassword({ token, password: 'Nova@Senha12' });
+      const hashAfterFirstReset = account.passwordHash;
+
+      await expect(
+        service.resetPassword({ token, password: 'Outra@Senha12' }),
+      ).rejects.toBeInstanceOf(InvalidResetTokenError);
+      expect(account.passwordHash).toBe(hashAfterFirstReset);
+    });
+
+    it('CA6: link expirado ou inválido é recusado', async () => {
+      const account = buildAccount();
+      users.accounts = [account];
+      const token = await issueToken(account);
+      authRepository.resetTokens[0]!.expiresAt = new Date(Date.now() - 1000);
+
+      await expect(
+        service.resetPassword({ token, password: 'Nova@Senha12' }),
+      ).rejects.toBeInstanceOf(InvalidResetTokenError);
+      await expect(
+        service.resetPassword({ token: 'nao-existe', password: 'Nova@Senha12' }),
+      ).rejects.toBeInstanceOf(InvalidResetTokenError);
+      expect(account.passwordHash).toBe(passwordHash);
+    });
+
+    it('conta só Google passa a ter senha', async () => {
+      const account = buildAccount({ passwordHash: null, googleId: 'google-sub' });
+      users.accounts = [account];
+      const token = await issueToken(account);
+
+      await service.resetPassword({ token, password: 'Nova@Senha12' });
+
+      await expect(verifyPassword(account.passwordHash ?? '', 'Nova@Senha12')).resolves.toBe(true);
+    });
+  });
+
+  it('CA8: a limpeza apaga refresh tokens e tokens de redefinição expirados', async () => {
+    const past = new Date(Date.now() - 1000);
+    authRepository.tokens.push({
+      id: 'r',
+      userId: 'u',
+      tokenHash: 'h',
+      expiresAt: past,
+      revokedAt: null,
+    });
+    authRepository.resetTokens.push({
+      id: 'p',
+      userId: 'u',
+      tokenHash: 'h',
+      expiresAt: past,
+      used: false,
+    });
+
+    await expect(service.deleteExpiredTokens()).resolves.toBe(2);
+    expect(authRepository.resetTokens).toHaveLength(0);
   });
 });

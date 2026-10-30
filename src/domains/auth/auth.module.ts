@@ -3,6 +3,7 @@ import { logger } from '@/config/logger';
 import { usersService } from '@/domains/users/users.module';
 import { createGoogleVerifier } from '@/lib/google';
 import { prisma } from '@/lib/prisma';
+import { runInTransaction } from '@/lib/transaction';
 import { mailProvider } from '@/providers/mail/mail.factory';
 import type { DomainModule } from '@/shared/types/domain-module';
 
@@ -21,10 +22,12 @@ const authService = new AuthService({
     rememberMeInSeconds: env.REFRESH_TTL_REMEMBER,
   },
   mailer: mailProvider,
-  emailVerification: {
+  emailLinks: {
     frontendUrl: env.FRONTEND_URL,
-    ttlInSeconds: env.EMAIL_VERIFICATION_TTL,
+    verificationTtlInSeconds: env.EMAIL_VERIFICATION_TTL,
+    passwordResetTtlInSeconds: env.PASSWORD_RESET_TTL,
   },
+  runInTransaction,
   logger,
 });
 const authController = new AuthController(authService, { secure: env.COOKIE_SECURE });

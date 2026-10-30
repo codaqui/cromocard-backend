@@ -23,6 +23,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.refreshToken.deleteMany({ where: { userId } });
+  await prisma.passwordResetToken.deleteMany({ where: { userId } });
   await prisma.user.delete({ where: { id: userId } });
 });
 
@@ -43,6 +44,26 @@ describe('limpeza dos tokens expirados', () => {
     await expect(prisma.refreshToken.findUnique({ where: { id: expired.id } })).resolves.toBeNull();
     await expect(
       prisma.refreshToken.findUnique({ where: { id: valid.id } }),
+    ).resolves.not.toBeNull();
+  });
+
+  it('CA8 (CCD006): apaga também os tokens de redefinição expirados', async () => {
+    const [expired, valid] = await Promise.all([
+      prisma.passwordResetToken.create({
+        data: { userId, token: tokenHash(), expiresAt: new Date(Date.now() - DAY_IN_MS) },
+      }),
+      prisma.passwordResetToken.create({
+        data: { userId, token: tokenHash(), expiresAt: new Date(Date.now() + DAY_IN_MS) },
+      }),
+    ]);
+
+    await authService.deleteExpiredTokens();
+
+    await expect(
+      prisma.passwordResetToken.findUnique({ where: { id: expired.id } }),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.passwordResetToken.findUnique({ where: { id: valid.id } }),
     ).resolves.not.toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import type { AuthController } from './auth.controller';
 const loginLimit = { limit: 5 };
 const registerLimit = { limit: 10, windowInMinutes: 60 };
 const resendLimit = { limit: 3, windowInMinutes: 15, keyByBodyField: 'email' };
+const resetLimit = { limit: 10, windowInMinutes: 15 };
 
 export function createAuthRoutes(controller: AuthController): Router {
   const router = Router();
@@ -28,6 +29,8 @@ export function createAuthRoutes(controller: AuthController): Router {
     rateLimitRequests(resendLimit),
     controller.resendVerification,
   );
+  router.post('/password/forgot', rateLimitRequests(resendLimit), controller.forgotPassword);
+  router.post('/password/reset', rateLimitRequests(resetLimit), controller.resetPassword);
 
   return router;
 }

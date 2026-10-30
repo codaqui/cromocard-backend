@@ -31,6 +31,7 @@ const envSchema = z.object({
   API_PUBLIC_URL: z.url().optional(),
   FRONTEND_URL: z.url().optional(),
   EMAIL_VERIFICATION_TTL: z.coerce.number().int().positive().default(86400),
+  PASSWORD_RESET_TTL: z.coerce.number().int().positive().default(3600),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
 });

@@ -1,10 +1,12 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
 import {
+  forgotPasswordSchema,
   googleLoginSchema,
   loginSchema,
   registerSchema,
   resendVerificationSchema,
+  resetPasswordSchema,
   verifyEmailSchema,
 } from './auth.validator';
 
@@ -95,6 +97,30 @@ const authPaths: RouteConfig[] = [
     responses: {
       202: { description: 'Pedido recebido' },
       429: { description: 'TOO_MANY_REQUESTS: passou de 3 pedidos em 15 minutos' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/auth/password/forgot',
+    tags,
+    summary: 'Pede o link de redefinição de senha; a resposta é a mesma exista ou não a conta',
+    request: jsonBody(forgotPasswordSchema),
+    responses: {
+      202: { description: 'Pedido recebido' },
+      400: { description: 'VALIDATION_ERROR: e-mail inválido' },
+      429: { description: 'TOO_MANY_REQUESTS: passou de 3 pedidos em 15 minutos' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/auth/password/reset',
+    tags,
+    summary: 'Define a senha nova com o token do link e encerra todas as sessões',
+    request: jsonBody(resetPasswordSchema),
+    responses: {
+      204: { description: 'Senha alterada' },
+      400: { description: 'VALIDATION_ERROR (senha fora da regra) ou INVALID_RESET_TOKEN' },
+      429: { description: 'TOO_MANY_REQUESTS: passou de 10 tentativas em 15 minutos' },
     },
   },
 ];

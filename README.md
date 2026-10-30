@@ -46,6 +46,7 @@ Os nomes seguem o contrato da infraestrutura: os mesmos do `.env.example`, do `i
 | `JOBS_ENABLED` | Não | Padrão `false`; `true` liga os jobs agendados (só numa instância da API) |
 | `FRONTEND_URL` | Não | Base dos links dos e-mails; padrão: o primeiro `CORS_ORIGIN` |
 | `EMAIL_VERIFICATION_TTL` | Não | Validade do link de confirmação, em segundos (padrão 86400 = 24 h) |
+| `PASSWORD_RESET_TTL` | Não | Validade do link de redefinição de senha, em segundos (padrão 3600 = 1 h) |
 | `APP_ENV` | Não | Qual ambiente é (ADR-018): `local` (padrão), `test`, `homolog` ou `production` |
 | `MAIL_DRIVER` | Não | `ethereal` (padrão: o link de cada e-mail sai no log), `smtp` ou `memory` (testes); com `APP_ENV=production`, só `smtp` |
 | `MAIL_FROM` | Não | Remetente dos e-mails |

@@ -95,3 +95,13 @@ export class InvalidVerificationTokenError extends AppError {
     });
   }
 }
+
+export class InvalidResetTokenError extends AppError {
+  constructor() {
+    super({
+      statusCode: 400,
+      code: 'INVALID_RESET_TOKEN',
+      message: 'Link de redefinição inválido ou expirado. Peça um novo.',
+    });
+  }
+}

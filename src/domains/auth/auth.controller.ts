@@ -4,10 +4,12 @@ import { accepted, created, noContent, ok } from '@/shared/utils/http-response';
 
 import type { AuthService, AuthSession, SessionContext } from './auth.service';
 import {
+  forgotPasswordSchema,
   googleLoginSchema,
   loginSchema,
   registerSchema,
   resendVerificationSchema,
+  resetPasswordSchema,
   verifyEmailSchema,
 } from './auth.validator';
 
@@ -77,6 +79,16 @@ export class AuthController {
   resendVerification = async (req: Request, res: Response): Promise<void> => {
     await this.authService.resendVerification(resendVerificationSchema.parse(req.body).email);
     accepted(res);
+  };
+
+  forgotPassword = (req: Request, res: Response): void => {
+    this.authService.forgotPassword(forgotPasswordSchema.parse(req.body).email);
+    accepted(res);
+  };
+
+  resetPassword = async (req: Request, res: Response): Promise<void> => {
+    await this.authService.resetPassword(resetPasswordSchema.parse(req.body));
+    noContent(res);
   };
 
   private sendSession(res: Response, { accessToken, user, ...refresh }: AuthSession): void {
