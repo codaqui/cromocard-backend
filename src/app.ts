@@ -20,6 +20,7 @@ export function createApp(deps: AppDeps = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', env.TRUST_PROXY);
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
   app.use(express.json());

@@ -1,5 +1,10 @@
 import { z } from '@/lib/zod';
 
+const optionalText = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+
 // Os nomes seguem o contrato de variáveis da infraestrutura (Documento de Apoio da Automação):
 // o Compose de homologação e produção e os Environments do GitHub usam exatamente estes nomes.
 const envSchema = z.object({
@@ -9,6 +14,13 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'silent']).default('info'),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
+  JWT_ACCESS_TTL: z.coerce.number().int().positive(),
+  REFRESH_TTL: z.coerce.number().int().positive(),
+  REFRESH_TTL_REMEMBER: z.coerce.number().int().positive(),
+  GOOGLE_CLIENT_ID: optionalText,
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  COOKIE_SECURE: z.stringbool().default(true),
+  JOBS_ENABLED: z.stringbool().default(false),
   API_PUBLIC_URL: z.url().optional(),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),

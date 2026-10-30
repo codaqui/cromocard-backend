@@ -37,6 +37,13 @@ Os nomes seguem o contrato da infraestrutura: os mesmos do `.env.example`, do `i
 | `DATABASE_URL` | Sim | Em homologação e produção, montada pelo Compose |
 | `JWT_SECRET` | Sim | Mínimo de 32 caracteres |
 | `CORS_ORIGIN` | Sim | Lista separada por vírgula |
+| `JWT_ACCESS_TTL` | Sim | Validade do access token, em segundos (900 = 15 min) |
+| `REFRESH_TTL` | Sim | Validade do refresh token sem "lembrar de mim", em segundos (86400 = 1 dia) |
+| `REFRESH_TTL_REMEMBER` | Sim | Validade do refresh token com "lembrar de mim", em segundos (2592000 = 30 dias) |
+| `GOOGLE_CLIENT_ID` | Não | Client ID do Google Identity Services, o mesmo do frontend; sem ele, o login com Google fica desligado (`401 INVALID_GOOGLE_TOKEN`) |
+| `TRUST_PROXY` | Não | Padrão `0`; quantos proxies na frente da API repassam o IP do cliente (`X-Forwarded-For`). Em hml e prod é `1` (o cloudflared), para o rate limit contar por pessoa |
+| `COOKIE_SECURE` | Não | Padrão `true`; `false` só no ambiente local, em http |
+| `JOBS_ENABLED` | Não | Padrão `false`; `true` liga os jobs agendados (só numa instância da API) |
 | `PORT` | Não | Padrão 3000 (API); o serviço ws usa 3001 |
 | `NODE_ENV` | Não | `development`, `test` ou `production` |
 | `LOG_LEVEL` | Não | Padrão `info` |

@@ -1,8 +1,21 @@
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
 import { UserNotFoundError } from './users.errors';
-import type { UserSummary, UsersRepository } from './users.repository';
+import type { UserCredentials, UserSummary, UsersRepository } from './users.repository';
 import type { ListUsersQuery, UpdateUserInput } from './users.validator';
+
+const GOOGLE_PROVIDER = 'google';
+
+export interface GoogleAccount {
+  sub: string;
+  email: string;
+  name: string;
+}
+
+export interface GoogleLink {
+  sub: string;
+  discardPassword: boolean;
+}
 
 export class UsersService {
   constructor(private readonly usersRepository: UsersRepository) {}
@@ -25,6 +38,38 @@ export class UsersService {
   async update(id: string, input: UpdateUserInput): Promise<UserSummary> {
     await this.findById(id);
     return this.usersRepository.update(id, input);
+  }
+
+  findCredentialsByEmail(email: string): Promise<UserCredentials | null> {
+    return this.usersRepository.findCredentialsByEmailIncludingDeleted(email);
+  }
+
+  findCredentialsById(id: string): Promise<UserCredentials | null> {
+    return this.usersRepository.findCredentialsByIdIncludingDeleted(id);
+  }
+
+  findCredentialsByGoogleId(sub: string): Promise<UserCredentials | null> {
+    return this.usersRepository.findCredentialsByOauthIncludingDeleted({
+      provider: GOOGLE_PROVIDER,
+      oauthId: sub,
+    });
+  }
+
+  createGoogleAccount({ sub, email, name }: GoogleAccount): Promise<UserCredentials> {
+    return this.usersRepository.createOauthAccount({
+      provider: GOOGLE_PROVIDER,
+      oauthId: sub,
+      email,
+      name,
+    });
+  }
+
+  linkGoogleAccount(id: string, { sub, discardPassword }: GoogleLink): Promise<UserCredentials> {
+    return this.usersRepository.linkOauthAccount(id, {
+      provider: GOOGLE_PROVIDER,
+      oauthId: sub,
+      discardPassword,
+    });
   }
 
   async remove(id: string): Promise<void> {

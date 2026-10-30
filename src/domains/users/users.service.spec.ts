@@ -1,11 +1,22 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { UserNotFoundError } from './users.errors';
-import type { UserSummary, UsersPage, UsersRepository } from './users.repository';
+import type {
+  NewOauthAccount,
+  OauthIdentity,
+  OauthLink,
+  UserCredentials,
+  UserSummary,
+  UsersPage,
+  UsersRepository,
+} from './users.repository';
 import { UsersService } from './users.service';
 import type { UpdateUserInput } from './users.validator';
 
 interface StoredUser extends UserSummary {
+  passwordHash: string | null;
+  oauthProvider: string | null;
+  oauthId: string | null;
   deletedAt: Date | null;
 }
 
@@ -18,6 +29,9 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     status: 'ACTIVE',
     emailVerified: true,
     createdAt: new Date(),
+    passwordHash: null,
+    oauthProvider: null,
+    oauthId: null,
     deletedAt: null,
     ...overrides,
   };
@@ -45,6 +59,39 @@ class InMemoryUsersRepository implements UsersRepository {
       user.id === id ? { ...user, deletedAt: new Date() } : user,
     );
     return Promise.resolve();
+  }
+
+  findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null> {
+    return Promise.resolve(this.users.find((user) => user.email === email) ?? null);
+  }
+
+  findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null> {
+    return Promise.resolve(this.users.find((user) => user.id === id) ?? null);
+  }
+
+  findCredentialsByOauthIncludingDeleted({
+    provider,
+    oauthId,
+  }: OauthIdentity): Promise<UserCredentials | null> {
+    const found = this.users.find(
+      (user) => user.oauthProvider === provider && user.oauthId === oauthId,
+    );
+    return Promise.resolve(found ?? null);
+  }
+
+  createOauthAccount({ provider, oauthId, ...account }: NewOauthAccount): Promise<UserCredentials> {
+    const user = buildUser({ ...account, oauthProvider: provider, oauthId });
+    this.users.push(user);
+    return Promise.resolve(user);
+  }
+
+  linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {
+    const linked = { oauthProvider: provider, oauthId, emailVerified: true };
+    const withoutPassword = discardPassword ? { passwordHash: null } : {};
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, ...linked, ...withoutPassword } : user,
+    );
+    return Promise.resolve(this.users.find((user) => user.id === id) as UserCredentials);
   }
 }
 
@@ -100,5 +147,49 @@ describe('UsersService', () => {
 
     expect(repository.users[0]?.deletedAt).toBeInstanceOf(Date);
     await expect(service.findById(user.id)).rejects.toBeInstanceOf(UserNotFoundError);
+  });
+
+  it('busca as credenciais pelo e-mail, inclusive de conta excluída', async () => {
+    const user = buildUser({ deletedAt: new Date() });
+    repository.users = [user];
+
+    await expect(service.findCredentialsByEmail(user.email)).resolves.toMatchObject({
+      id: user.id,
+      deletedAt: user.deletedAt,
+    });
+  });
+
+  it('busca as credenciais pelo id, inclusive de conta excluída', async () => {
+    const user = buildUser({ deletedAt: new Date() });
+    repository.users = [user];
+
+    await expect(service.findCredentialsById(user.id)).resolves.toMatchObject({ id: user.id });
+  });
+
+  it('cria a conta Google com o provider google e acha pelo sub', async () => {
+    const account = await service.createGoogleAccount({
+      sub: 'google-sub',
+      email: 'bia@gmail.com',
+      name: 'Bia',
+    });
+
+    expect(repository.users[0]).toMatchObject({ oauthProvider: 'google', oauthId: 'google-sub' });
+    await expect(service.findCredentialsByGoogleId('google-sub')).resolves.toMatchObject({
+      id: account.id,
+    });
+  });
+
+  it('vincula o Google a uma conta existente e confirma o e-mail', async () => {
+    const user = buildUser({ emailVerified: false });
+    repository.users = [user];
+
+    await service.linkGoogleAccount(user.id, { sub: 'google-sub', discardPassword: true });
+
+    expect(repository.users[0]).toMatchObject({
+      oauthProvider: 'google',
+      oauthId: 'google-sub',
+      emailVerified: true,
+      passwordHash: null,
+    });
   });
 });

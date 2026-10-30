@@ -61,9 +61,14 @@ services:
       NODE_ENV: production
       PORT: "3000"
       JWT_SECRET: ${JWT_SECRET:?}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
+      REFRESH_TTL: ${REFRESH_TTL:-86400}
+      REFRESH_TTL_REMEMBER: ${REFRESH_TTL_REMEMBER:-2592000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      JOBS_ENABLED: ${JOBS_ENABLED:-true}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
       API_PUBLIC_URL: ${API_URL:?}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     # Storage local (ADR-009): os uploads sobrevivem ao deploy, que recria o container.
     volumes:
       - uploads:/app/uploads
@@ -85,6 +90,10 @@ services:
       NODE_ENV: production
       PORT: "3001"
       JWT_SECRET: ${JWT_SECRET:?}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
+      REFRESH_TTL: ${REFRESH_TTL:-86400}
+      REFRESH_TTL_REMEMBER: ${REFRESH_TTL_REMEMBER:-2592000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       CORS_ORIGIN: ${CORS_ORIGIN:?}
       API_PUBLIC_URL: ${API_URL:?}
     networks: [edge, data]
@@ -96,6 +105,7 @@ services:
     image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-web:${FRONTEND_TAG:?}
     environment:
       API_URL: ${API_URL:?}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       WS_URL: ${WS_URL:?}
     networks: [edge]
 

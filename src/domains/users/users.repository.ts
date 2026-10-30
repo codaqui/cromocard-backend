@@ -16,6 +16,32 @@ const userSummarySelect = {
 
 export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
 
+const userCredentialsSelect = {
+  id: true,
+  name: true,
+  role: true,
+  status: true,
+  emailVerified: true,
+  passwordHash: true,
+  deletedAt: true,
+} satisfies Prisma.UserSelect;
+
+export type UserCredentials = Prisma.UserGetPayload<{ select: typeof userCredentialsSelect }>;
+
+export interface OauthIdentity {
+  provider: string;
+  oauthId: string;
+}
+
+export interface OauthLink extends OauthIdentity {
+  discardPassword: boolean;
+}
+
+export interface NewOauthAccount extends OauthIdentity {
+  name: string;
+  email: string;
+}
+
 export interface UsersPage {
   items: UserSummary[];
   total: number;
@@ -26,6 +52,11 @@ export interface UsersRepository {
   findById(id: string): Promise<UserSummary | null>;
   update(id: string, input: UpdateUserInput): Promise<UserSummary>;
   softDelete(id: string): Promise<void>;
+  findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null>;
+  findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null>;
+  findCredentialsByOauthIncludingDeleted(identity: OauthIdentity): Promise<UserCredentials | null>;
+  createOauthAccount(account: NewOauthAccount): Promise<UserCredentials>;
+  linkOauthAccount(id: string, link: OauthLink): Promise<UserCredentials>;
 }
 
 function buildSearchFilter(search?: string): Prisma.UserWhereInput {
@@ -68,5 +99,53 @@ export class PrismaUsersRepository implements UsersRepository {
 
   async softDelete(id: string): Promise<void> {
     await this.prisma.user.update({ where: { id }, data: softDeleteData() });
+  }
+
+  findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null> {
+    return this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: userCredentialsSelect,
+    });
+  }
+
+  findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null> {
+    return this.prisma.user.findUnique({ where: { id }, select: userCredentialsSelect });
+  }
+
+  findCredentialsByOauthIncludingDeleted({
+    provider,
+    oauthId,
+  }: OauthIdentity): Promise<UserCredentials | null> {
+    return this.prisma.user.findUnique({
+      where: { oauthProvider_oauthId: { oauthProvider: provider, oauthId } },
+      select: userCredentialsSelect,
+    });
+  }
+
+  createOauthAccount({ provider, oauthId, ...account }: NewOauthAccount): Promise<UserCredentials> {
+    return this.prisma.user.create({
+      data: {
+        ...account,
+        role: 'CUSTOMER',
+        emailVerified: true,
+        termsAccepted: true,
+        oauthProvider: provider,
+        oauthId,
+      },
+      select: userCredentialsSelect,
+    });
+  }
+
+  linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        oauthProvider: provider,
+        oauthId,
+        emailVerified: true,
+        ...(discardPassword && { passwordHash: null }),
+      },
+      select: userCredentialsSelect,
+    });
   }
 }
