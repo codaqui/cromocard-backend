@@ -4,6 +4,7 @@ import swaggerUi from 'swagger-ui-express';
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
 import { authModule } from '@/domains/auth/auth.module';
+import { catalogModule } from '@/domains/catalog/catalog.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { settingsModule } from '@/domains/admin/settings/settings.module';
@@ -17,6 +18,7 @@ const sharedModules: DomainModule[] = [
   authModule,
   usersModule,
   dashboardModule,
+  catalogModule,
   reportsModule,
   settingsModule,
 ];
