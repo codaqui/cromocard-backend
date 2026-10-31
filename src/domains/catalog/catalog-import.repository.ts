@@ -1,7 +1,7 @@
-import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { PrismaClient } from '@/generated/prisma/client';
 import { notDeleted } from '@/shared/utils/soft-delete';
 
-import { emptyOptionalCardFields } from './cards.repository';
+import { emptyOptionalCardFields, refreshAlbumTotals } from './cards.repository';
 
 export interface NamedReference {
   id: string;
@@ -36,17 +36,6 @@ export interface CatalogImportRepository {
 
 function cardData({ restoreId: _restoreId, ...card }: ImportedCard) {
   return card;
-}
-
-async function refreshTotalCards(tx: Prisma.TransactionClient, albumIds: string[]) {
-  for (const albumId of albumIds) {
-    const totalCards = await tx.card.count({ where: { albumId, ...notDeleted } });
-    await tx.album.update({ where: { id: albumId }, data: { totalCards } });
-  }
-}
-
-function albumIdsOf(cards: ImportedCard[]): string[] {
-  return [...new Set(cards.flatMap(({ albumId }) => (albumId ? [albumId] : [])))];
 }
 
 export class PrismaCatalogImportRepository implements CatalogImportRepository {
@@ -103,7 +92,10 @@ export class PrismaCatalogImportRepository implements CatalogImportRepository {
           },
         });
       }
-      await refreshTotalCards(tx, albumIdsOf(cards));
+      await refreshAlbumTotals(
+        tx,
+        cards.map(({ albumId }) => albumId),
+      );
     });
   }
 }

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
 
@@ -48,6 +49,17 @@ export interface AlbumCardNumber {
 export interface CardNumberOwner {
   id: string;
   deletedAt: Date | null;
+}
+
+export async function refreshAlbumTotals(
+  tx: Transaction,
+  albumIds: (string | null)[],
+): Promise<void> {
+  const distinctAlbumIds = [...new Set(albumIds)].filter((albumId) => albumId !== null);
+  for (const albumId of distinctAlbumIds) {
+    const totalCards = await tx.card.count({ where: { albumId, ...notDeleted } });
+    await tx.album.update({ where: { id: albumId }, data: { totalCards } });
+  }
 }
 
 export interface CardsRepository {
@@ -113,23 +125,46 @@ export class PrismaCardsRepository implements CardsRepository {
   }
 
   create(input: CreateCardInput): Promise<Card> {
-    return this.prisma.card.create({ data: input, select: cardSelect });
+    return this.prisma.$transaction(async (tx) => {
+      const card = await tx.card.create({ data: input, select: cardSelect });
+      await refreshAlbumTotals(tx, [card.albumId]);
+      return card;
+    });
   }
 
   restore(id: string, input: CreateCardInput): Promise<Card> {
-    return this.prisma.card.update({
-      where: { id },
-      data: { ...emptyOptionalCardFields, ...input, deletedAt: null },
-      select: cardSelect,
+    return this.prisma.$transaction(async (tx) => {
+      const card = await tx.card.update({
+        where: { id },
+        data: { ...emptyOptionalCardFields, ...input, deletedAt: null },
+        select: cardSelect,
+      });
+      await refreshAlbumTotals(tx, [card.albumId]);
+      return card;
     });
   }
 
   update(id: string, input: UpdateCardInput): Promise<Card> {
-    return this.prisma.card.update({ where: { id }, data: input, select: cardSelect });
+    return this.prisma.$transaction(async (tx) => {
+      const previous = await tx.card.findUniqueOrThrow({
+        where: { id },
+        select: { albumId: true },
+      });
+      const card = await tx.card.update({ where: { id }, data: input, select: cardSelect });
+      await refreshAlbumTotals(tx, [previous.albumId, card.albumId]);
+      return card;
+    });
   }
 
   async softDelete(id: string): Promise<void> {
-    await this.prisma.card.update({ where: { id }, data: softDeleteData() });
+    await this.prisma.$transaction(async (tx) => {
+      const { albumId } = await tx.card.update({
+        where: { id },
+        data: softDeleteData(),
+        select: { albumId: true },
+      });
+      await refreshAlbumTotals(tx, [albumId]);
+    });
   }
 
   countByAlbum(albumId: string): Promise<number> {

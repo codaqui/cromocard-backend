@@ -201,7 +201,9 @@ describe('CatalogImportService', () => {
   it('CA6: aponta linha com quantidade errada de colunas', async () => {
     const errors = await importErrors(service.importCards(ADMIN_ID, csv('Copa 2026;1;Jogador')));
 
-    expect(errors).toEqual([{ field: '2', message: 'A linha deve ter 6 colunas separadas por ;' }]);
+    expect(errors).toEqual([
+      { field: '2.columns', message: 'A linha deve ter 6 colunas separadas por ;' },
+    ]);
   });
 
   it('R13: recusa arquivo sem o cabeçalho do modelo', async () => {

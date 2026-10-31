@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
+import { Prisma } from '@/generated/prisma/client';
 
 import type { Album, AlbumsPage, AlbumsRepository } from './albums.repository';
 import type {
@@ -18,6 +19,7 @@ import {
   CardNumberTakenError,
   CategoryInUseError,
   CategoryNotFoundError,
+  CategoryParentInvalidError,
   LanguageNotFoundError,
   RarityNotFoundError,
 } from './catalog.errors';
@@ -117,11 +119,6 @@ class InMemoryAlbumsRepository implements AlbumsRepository {
 
   update(id: string, input: UpdateAlbumInput): Promise<Album> {
     return Promise.resolve(Object.assign(findStored(this.albums, id), input));
-  }
-
-  updateTotalCards(id: string, totalCards: number): Promise<void> {
-    findStored(this.albums, id).totalCards = totalCards;
-    return Promise.resolve();
   }
 
   softDelete(id: string): Promise<void> {
@@ -331,14 +328,13 @@ describe('CatalogService', () => {
   });
 
   describe('cartas', () => {
-    it('CA2: cadastra a carta com nome, álbum, número e imagem e atualiza o total do álbum', async () => {
+    it('CA2: cadastra a carta com nome, álbum, número e imagem', async () => {
       const album = await newAlbum();
 
       const card = await newCard({ albumId: album.id, number: '10' });
 
       expect(card).toMatchObject({ name: 'Pikachu', number: '10', frontImageUrl: FRONT_IMAGE_URL });
       await expect(service.listCards(PAGE)).resolves.toMatchObject({ items: [{ id: card.id }] });
-      await expect(service.findAlbum(album.id)).resolves.toMatchObject({ totalCards: 1 });
       expect(auditLog.actions()).toContain('CARD_CREATED');
     });
 
@@ -367,7 +363,6 @@ describe('CatalogService', () => {
       const restored = await newCard({ albumId: album.id, number: '10', name: 'Nova' });
 
       expect(restored).toMatchObject({ id: removed.id, name: 'Nova' });
-      await expect(service.findAlbum(album.id)).resolves.toMatchObject({ totalCards: 1 });
     });
 
     it('R7: na edição recusa o número de outra carta, mesmo excluída', async () => {
@@ -391,14 +386,20 @@ describe('CatalogService', () => {
       expect(auditLog.actions()).toContain('CARD_UPDATED');
     });
 
-    it('L5: mover a carta de álbum recalcula o total dos dois álbuns', async () => {
-      const [from, to] = await Promise.all([newAlbum(), newAlbum()]);
-      const card = await newCard({ albumId: from.id, number: '1' });
+    it('R7: cadastro simultâneo barrado pelo índice único responde CARD_NUMBER_TAKEN', async () => {
+      const duplicate = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'teste',
+      });
+      vi.spyOn(cards, 'create').mockRejectedValueOnce(duplicate);
 
-      await service.updateCard(ADMIN_ID, card.id, { albumId: to.id });
+      await expect(newCard({ number: '1' })).rejects.toThrow(CardNumberTakenError);
+    });
 
-      await expect(service.findAlbum(from.id)).resolves.toMatchObject({ totalCards: 0 });
-      await expect(service.findAlbum(to.id)).resolves.toMatchObject({ totalCards: 1 });
+    it('R7: erro do banco que não é de valor único continua subindo', async () => {
+      vi.spyOn(cards, 'create').mockRejectedValueOnce(new Error('banco fora do ar'));
+
+      await expect(newCard()).rejects.toThrow('banco fora do ar');
     });
 
     it('R6: recusa álbum, categoria, raridade ou idioma inexistentes', async () => {
@@ -434,14 +435,13 @@ describe('CatalogService', () => {
       await expect(service.deleteCard(ADMIN_ID, card.id)).rejects.toThrow(CardInUseError);
     });
 
-    it('R10, R14: exclui a carta com soft delete, recalcula o total e audita', async () => {
+    it('R10, R14: exclui a carta com soft delete e audita', async () => {
       const album = await newAlbum();
       const card = await newCard({ albumId: album.id, number: '1' });
 
       await service.deleteCard(ADMIN_ID, card.id);
 
       await expect(service.findCard(card.id)).rejects.toThrow(CardNotFoundError);
-      await expect(service.findAlbum(album.id)).resolves.toMatchObject({ totalCards: 0 });
       expect(auditLog.actions()).toContain('CARD_DELETED');
     });
 
@@ -468,6 +468,36 @@ describe('CatalogService', () => {
         items: [{ name: 'Esportes' }],
       });
       expect(auditLog.actions()).toEqual(['CATEGORY_CREATED', 'CATEGORY_UPDATED']);
+    });
+
+    it('R15: recusa a categoria como pai dela mesma', async () => {
+      const category = await newCategory();
+
+      await expect(
+        service.updateCategory(ADMIN_ID, category.id, { parentCategoryId: category.id }),
+      ).rejects.toThrow(CategoryParentInvalidError);
+    });
+
+    it('R15: recusa uma subcategoria, direta ou não, como pai', async () => {
+      const root = await newCategory({ name: 'Esportes' });
+      const child = await newCategory({ name: 'Futebol', parentCategoryId: root.id });
+      const grandchild = await newCategory({ name: 'Copa', parentCategoryId: child.id });
+
+      await expect(
+        service.updateCategory(ADMIN_ID, root.id, { parentCategoryId: grandchild.id }),
+      ).rejects.toThrow(CategoryParentInvalidError);
+    });
+
+    it('R15: aceita mover a categoria para outro ramo', async () => {
+      const sports = await newCategory({ name: 'Esportes' });
+      const games = await newCategory({ name: 'Jogos' });
+      const child = await newCategory({ name: 'Futebol', parentCategoryId: sports.id });
+
+      const moved = await service.updateCategory(ADMIN_ID, child.id, {
+        parentCategoryId: games.id,
+      });
+
+      expect(moved.parentCategoryId).toBe(games.id);
     });
 
     it('R15: recusa categoria pai inexistente', async () => {

@@ -3,6 +3,7 @@ import type {
   RecordAuditLogInput,
 } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { AppError } from '@/shared/errors/app-error';
+import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
 import type { Album, AlbumsRepository } from './albums.repository';
@@ -15,6 +16,7 @@ import {
   CardNumberTakenError,
   CategoryInUseError,
   CategoryNotFoundError,
+  CategoryParentInvalidError,
   LanguageNotFoundError,
   RarityNotFoundError,
 } from './catalog.errors';
@@ -81,6 +83,11 @@ function keepOrReplace<T>(replacement: T | undefined, current: T): T {
   return replacement === undefined ? current : replacement;
 }
 
+function rejectDuplicateNumber(error: unknown): never {
+  if (isUniqueConstraintError(error)) throw new CardNumberTakenError();
+  throw error;
+}
+
 export class CatalogService {
   constructor(private readonly deps: CatalogServiceDeps) {}
 
@@ -130,8 +137,7 @@ export class CatalogService {
 
   async createCard(adminId: string, input: CreateCardInput): Promise<Card> {
     await this.ensureCardReferences(input);
-    const card = await this.saveNewCard(input);
-    await this.refreshTotalCards(card.albumId);
+    const card = await this.saveNewCard(input).catch(rejectDuplicateNumber);
     await this.audit(adminId, { action: 'CARD_CREATED', entityType: 'card', entityId: card.id });
     return card;
   }
@@ -143,17 +149,15 @@ export class CatalogService {
       albumId: keepOrReplace(input.albumId, previousAlbumId),
       number: keepOrReplace(input.number, previousNumber),
     });
-    const card = await this.deps.cards.update(id, input);
-    await this.refreshTotalCardsAfterMove(previousAlbumId, card.albumId);
+    const card = await this.deps.cards.update(id, input).catch(rejectDuplicateNumber);
     await this.audit(adminId, { action: 'CARD_UPDATED', entityType: 'card', entityId: id });
     return card;
   }
 
   async deleteCard(adminId: string, id: string): Promise<void> {
-    const card = await this.findCard(id);
+    await this.findCard(id);
     if (await this.deps.cardUsage?.isCardInCollections(id)) throw new CardInUseError();
     await this.deps.cards.softDelete(id);
-    await this.refreshTotalCards(card.albumId);
     await this.audit(adminId, { action: 'CARD_DELETED', entityType: 'card', entityId: id });
   }
 
@@ -182,6 +186,7 @@ export class CatalogService {
   async updateCategory(adminId: string, id: string, input: UpdateCategoryInput): Promise<Category> {
     await this.findCategory(id);
     await this.ensureCategory(input.parentCategoryId);
+    await this.ensureNotOwnAncestor(id, input.parentCategoryId);
     const category = await this.deps.categories.update(id, input);
     await this.audit(adminId, { action: 'CATEGORY_UPDATED', entityType: 'category', entityId: id });
     return category;
@@ -264,15 +269,20 @@ export class CatalogService {
     );
   }
 
-  private async refreshTotalCards(albumId: string | null): Promise<void> {
-    if (!albumId) return;
-    await this.deps.albums.updateTotalCards(albumId, await this.deps.cards.countByAlbum(albumId));
+  private async ensureNotOwnAncestor(id: string, parentId: string | null | undefined) {
+    if (!parentId) return;
+    if ((await this.ancestorsFrom(parentId)).includes(id)) throw new CategoryParentInvalidError();
   }
 
-  private async refreshTotalCardsAfterMove(from: string | null, to: string | null) {
-    if (from === to) return;
-    await this.refreshTotalCards(from);
-    await this.refreshTotalCards(to);
+  private async ancestorsFrom(categoryId: string): Promise<string[]> {
+    const ancestors: string[] = [];
+    let currentId: string | null = categoryId;
+    while (currentId && !ancestors.includes(currentId)) {
+      ancestors.push(currentId);
+      const current: Category | null = await this.deps.categories.findById(currentId);
+      currentId = current?.parentCategoryId ?? null;
+    }
+    return ancestors;
   }
 
   private async audit(adminId: string, change: AuditedChange): Promise<void> {

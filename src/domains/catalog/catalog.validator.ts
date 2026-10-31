@@ -1,12 +1,22 @@
+import { CategoryType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 
 const SMALLINT_MAX = 32767;
+const URL_MAX_LENGTH = 255;
+
+export const ALBUM_TITLE_MAX_LENGTH = 160;
+export const ALBUM_PUBLISHER_MAX_LENGTH = 120;
+export const CARD_NAME_MAX_LENGTH = 160;
+export const CARD_NUMBER_MAX_LENGTH = 20;
+export const CATEGORY_NAME_MAX_LENGTH = 90;
+export const RARITY_NAME_MAX_LENGTH = 60;
+export const LANGUAGE_CODE_MAX_LENGTH = 5;
 
 const requiredText = (max: number) => z.string().trim().min(1).max(max);
 const optionalText = (max: number) => requiredText(max).nullable().optional();
 const optionalLongText = z.string().trim().min(1).nullable().optional();
-const imageUrl = z.url().max(255);
+const imageUrl = z.url().max(URL_MAX_LENGTH);
 const optionalReference = z.uuid().nullable().optional();
 const year = z.number().int().min(1).max(SMALLINT_MAX);
 
@@ -32,8 +42,8 @@ export const listCardsQuerySchema = searchQuerySchema.extend({
 export const listCategoriesQuerySchema = searchQuerySchema;
 
 export const createAlbumSchema = z.object({
-  title: requiredText(160),
-  publisher: optionalText(120),
+  title: requiredText(ALBUM_TITLE_MAX_LENGTH),
+  publisher: optionalText(ALBUM_PUBLISHER_MAX_LENGTH),
   year: year.nullable().optional(),
   description: optionalLongText,
   coverUrl: imageUrl.nullable().optional(),
@@ -43,8 +53,8 @@ export const createAlbumSchema = z.object({
 export const updateAlbumSchema = createAlbumSchema.partial();
 
 export const createCardSchema = z.object({
-  name: requiredText(160),
-  number: optionalText(20),
+  name: requiredText(CARD_NAME_MAX_LENGTH),
+  number: optionalText(CARD_NUMBER_MAX_LENGTH),
   description: optionalLongText,
   frontImageUrl: imageUrl,
   backImageUrl: imageUrl.nullable().optional(),
@@ -56,11 +66,11 @@ export const createCardSchema = z.object({
 
 export const updateCardSchema = createCardSchema.partial();
 
-export const CATEGORY_TYPES = ['ALBUM', 'CARD'] as const;
+export const categoryTypeSchema = z.enum(CategoryType);
 
 export const createCategorySchema = z.object({
-  name: requiredText(90),
-  type: z.enum(CATEGORY_TYPES),
+  name: requiredText(CATEGORY_NAME_MAX_LENGTH),
+  type: categoryTypeSchema,
   parentCategoryId: optionalReference,
 });
 

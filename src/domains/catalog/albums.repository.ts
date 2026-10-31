@@ -30,7 +30,6 @@ export interface AlbumsRepository {
   findById(id: string): Promise<Album | null>;
   create(input: CreateAlbumInput): Promise<Album>;
   update(id: string, input: UpdateAlbumInput): Promise<Album>;
-  updateTotalCards(id: string, totalCards: number): Promise<void>;
   softDelete(id: string): Promise<void>;
 }
 
@@ -72,10 +71,6 @@ export class PrismaAlbumsRepository implements AlbumsRepository {
 
   update(id: string, input: UpdateAlbumInput): Promise<Album> {
     return this.prisma.album.update({ where: { id }, data: input, select: albumSelect });
-  }
-
-  async updateTotalCards(id: string, totalCards: number): Promise<void> {
-    await this.prisma.album.update({ where: { id }, data: { totalCards } });
   }
 
   async softDelete(id: string): Promise<void> {

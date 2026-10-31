@@ -33,6 +33,8 @@ function asAdmin() {
   return {
     get: (path: string) => request(app).get(`${BASE}${path}`).set(auth),
     post: (path: string, body: object) => request(app).post(`${BASE}${path}`).set(auth).send(body),
+    patch: (path: string, body: object) =>
+      request(app).patch(`${BASE}${path}`).set(auth).send(body),
     delete: (path: string) => request(app).delete(`${BASE}${path}`).set(auth),
     importCsv: (content: string) =>
       request(app)
@@ -152,6 +154,29 @@ describe('cartas', () => {
   });
 });
 
+describe('total de cartas do álbum', () => {
+  it('L5: mover a carta de álbum recalcula o total dos dois álbuns', async () => {
+    const [from, to] = await Promise.all([createAlbum(), createAlbum()]);
+    const card = (await createCard(from.id, '1')).body as Created;
+
+    const res = await asAdmin().patch(`/cards/${card.data.id}`, { albumId: to.id });
+
+    expect(res.status).toBe(200);
+    await expect(totalCardsOf(from.id)).resolves.toBe(0);
+    await expect(totalCardsOf(to.id)).resolves.toBe(1);
+  });
+
+  it('L5, R10: excluir a carta recalcula o total do álbum', async () => {
+    const album = await createAlbum();
+    const card = (await createCard(album.id, '1')).body as Created;
+    await createCard(album.id, '2');
+
+    await asAdmin().delete(`/cards/${card.data.id}`);
+
+    await expect(totalCardsOf(album.id)).resolves.toBe(1);
+  });
+});
+
 describe('álbuns e categorias', () => {
   it('CA4: álbum com cartas não é excluído e informa o motivo', async () => {
     const album = await createAlbum();
@@ -187,6 +212,19 @@ describe('álbuns e categorias', () => {
 
     expect(res.status).toBe(422);
     expect((res.body as ErrorBody).error).toBe('CATEGORY_IN_USE');
+  });
+
+  it('R15: categoria não pode ser pai dela mesma', async () => {
+    const category = (
+      await asAdmin().post('/categories', { name: `${MARKER} ciclo`, type: 'CARD' })
+    ).body as Created;
+
+    const res = await asAdmin().patch(`/categories/${category.data.id}`, {
+      parentCategoryId: category.data.id,
+    });
+
+    expect(res.status).toBe(422);
+    expect((res.body as ErrorBody).error).toBe('CATEGORY_PARENT_INVALID');
   });
 
   it('R15: lista as raridades e os idiomas do seed', async () => {

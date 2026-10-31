@@ -58,6 +58,15 @@ export class CategoryInUseError extends BusinessRuleError {
   }
 }
 
+export class CategoryParentInvalidError extends BusinessRuleError {
+  constructor() {
+    super(
+      'A categoria não pode ficar dentro dela mesma nem de uma subcategoria dela',
+      'CATEGORY_PARENT_INVALID',
+    );
+  }
+}
+
 export class CsvInvalidError extends AppError {
   constructor(details: ErrorDetail[]) {
     super({

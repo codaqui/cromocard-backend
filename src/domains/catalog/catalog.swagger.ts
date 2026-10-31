@@ -4,6 +4,7 @@ import { z } from '@/lib/zod';
 
 import {
   catalogItemIdParamSchema,
+  categoryTypeSchema,
   createAlbumSchema,
   createCardSchema,
   createCategorySchema,
@@ -67,7 +68,7 @@ const cardResponse = z.object({
 const categoryResponse = z.object({
   id: z.uuid(),
   name: z.string(),
-  type: z.enum(['ALBUM', 'CARD']),
+  type: categoryTypeSchema,
   parentCategoryId: z.uuid().nullable(),
   parentCategory: reference.nullable(),
   createdAt: timestamp,
@@ -211,7 +212,13 @@ const resources: CatalogResource[] = [
     updateBody: updateCategorySchema,
     response: categoryResponse,
     notFound: 'CATEGORY_NOT_FOUND',
-    writeErrors: { 404: { description: 'CATEGORY_NOT_FOUND (a categoria ou a categoria pai)' } },
+    writeErrors: {
+      404: { description: 'CATEGORY_NOT_FOUND (a categoria ou a categoria pai)' },
+      422: {
+        description:
+          'CATEGORY_PARENT_INVALID: a categoria pai é ela mesma ou uma subcategoria dela',
+      },
+    },
     deleteError: 'CATEGORY_IN_USE: a categoria tem álbuns, cartas ou subcategorias',
   },
 ];

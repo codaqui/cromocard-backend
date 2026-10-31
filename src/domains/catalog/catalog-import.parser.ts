@@ -4,6 +4,14 @@ import { z } from '@/lib/zod';
 import type { ErrorDetail } from '@/shared/errors/app-error';
 
 import { CsvInvalidError } from './catalog.errors';
+import {
+  ALBUM_TITLE_MAX_LENGTH,
+  CARD_NAME_MAX_LENGTH,
+  CARD_NUMBER_MAX_LENGTH,
+  CATEGORY_NAME_MAX_LENGTH,
+  LANGUAGE_CODE_MAX_LENGTH,
+  RARITY_NAME_MAX_LENGTH,
+} from './catalog.validator';
 
 export const CARD_IMPORT_COLUMNS = [
   'album_title',
@@ -27,12 +35,12 @@ const optionalCell = (max: number) =>
     .transform((value) => value || undefined);
 
 const cardImportRowSchema = z.object({
-  album_title: optionalCell(160),
-  number: optionalCell(20),
-  name: z.string().min(1, { error: 'Informe o nome da carta' }).max(160),
-  rarity: optionalCell(60),
-  language: optionalCell(5),
-  category: optionalCell(90),
+  album_title: optionalCell(ALBUM_TITLE_MAX_LENGTH),
+  number: optionalCell(CARD_NUMBER_MAX_LENGTH),
+  name: z.string().min(1, { error: 'Informe o nome da carta' }).max(CARD_NAME_MAX_LENGTH),
+  rarity: optionalCell(RARITY_NAME_MAX_LENGTH),
+  language: optionalCell(LANGUAGE_CODE_MAX_LENGTH),
+  category: optionalCell(CATEGORY_NAME_MAX_LENGTH),
 });
 
 export type CardImportColumn = (typeof CARD_IMPORT_COLUMNS)[number];
@@ -90,7 +98,7 @@ function parseLine({ record, info }: CsvRecord): ParsedLine {
   const line = info.lines;
   if (record.length !== CARD_IMPORT_COLUMNS.length) {
     const message = `A linha deve ter ${CARD_IMPORT_COLUMNS.length} colunas separadas por ;`;
-    return { errors: [{ field: `${line}`, message }] };
+    return { errors: [{ field: `${line}.columns`, message }] };
   }
 
   const cells = Object.fromEntries(CARD_IMPORT_COLUMNS.map((column, i) => [column, record[i]]));
