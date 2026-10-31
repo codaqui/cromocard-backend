@@ -25,6 +25,16 @@ const cardSelect = {
 
 export type Card = Prisma.CardGetPayload<{ select: typeof cardSelect }>;
 
+const emptyOptionalCardFields = {
+  number: null,
+  description: null,
+  backImageUrl: null,
+  albumId: null,
+  categoryId: null,
+  rarityId: null,
+  languageId: null,
+} satisfies Prisma.CardUncheckedUpdateInput;
+
 export interface CardsPage {
   items: Card[];
   total: number;
@@ -109,7 +119,7 @@ export class PrismaCardsRepository implements CardsRepository {
   restore(id: string, input: CreateCardInput): Promise<Card> {
     return this.prisma.card.update({
       where: { id },
-      data: { ...input, deletedAt: null },
+      data: { ...emptyOptionalCardFields, ...input, deletedAt: null },
       select: cardSelect,
     });
   }

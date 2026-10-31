@@ -18,6 +18,18 @@ export class CategoryNotFoundError extends NotFoundError {
   }
 }
 
+export class RarityNotFoundError extends NotFoundError {
+  constructor() {
+    super('Raridade não encontrada', 'RARITY_NOT_FOUND');
+  }
+}
+
+export class LanguageNotFoundError extends NotFoundError {
+  constructor() {
+    super('Idioma não encontrado', 'LANGUAGE_NOT_FOUND');
+  }
+}
+
 export class CardNumberTakenError extends ConflictError {
   constructor() {
     super('Já existe uma carta com este número no álbum', 'CARD_NUMBER_TAKEN');
