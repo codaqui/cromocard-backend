@@ -8,6 +8,8 @@ import { CatalogController } from './catalog.controller';
 import { createCatalogRoutes } from './catalog.routes';
 import { CatalogService } from './catalog.service';
 import { registerCatalogDocs } from './catalog.swagger';
+import { PrismaCatalogImportRepository } from './catalog-import.repository';
+import { CatalogImportService } from './catalog-import.service';
 import { PrismaCategoriesRepository } from './categories.repository';
 import { PrismaReferencesRepository } from './references.repository';
 
@@ -19,9 +21,14 @@ const catalogService = new CatalogService({
   auditLog: auditLogService,
 });
 
+const catalogImportService = new CatalogImportService(
+  new PrismaCatalogImportRepository(prisma),
+  auditLogService,
+);
+
 export const catalogModule: DomainModule = {
   basePath: '/admin/catalog',
-  router: createCatalogRoutes(new CatalogController(catalogService)),
+  router: createCatalogRoutes(new CatalogController(catalogService, catalogImportService)),
   registerDocs: registerCatalogDocs,
 };
 

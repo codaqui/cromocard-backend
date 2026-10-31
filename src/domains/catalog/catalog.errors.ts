@@ -1,3 +1,4 @@
+import { AppError, type ErrorDetail } from '@/shared/errors/app-error';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/shared/errors/http-errors';
 
 export class AlbumNotFoundError extends NotFoundError {
@@ -54,5 +55,16 @@ export class CategoryInUseError extends BusinessRuleError {
       'A categoria tem álbuns, cartas ou subcategorias e não pode ser excluída',
       'CATEGORY_IN_USE',
     );
+  }
+}
+
+export class CsvInvalidError extends AppError {
+  constructor(details: ErrorDetail[]) {
+    super({
+      statusCode: 422,
+      code: 'CSV_INVALID',
+      message: 'O arquivo tem linhas com erro e nenhuma carta foi importada',
+      details,
+    });
   }
 }

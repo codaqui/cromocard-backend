@@ -18,6 +18,8 @@ const catalogRoutes = [
   ['post', `${BASE}/cards`],
   ['patch', `${BASE}/cards/${ITEM_ID}`],
   ['delete', `${BASE}/cards/${ITEM_ID}`],
+  ['post', `${BASE}/cards/import`],
+  ['get', `${BASE}/cards/import/template`],
   ['get', `${BASE}/categories`],
   ['post', `${BASE}/categories`],
   ['patch', `${BASE}/categories/${ITEM_ID}`],
@@ -87,6 +89,24 @@ describe('validação do catálogo', () => {
   });
 });
 
+describe('importação de cartas por CSV', () => {
+  it('R13: baixa o modelo com o cabeçalho das colunas', async () => {
+    const res = await asAdmin('get', `${BASE}/cards/import/template`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('modelo-importacao-cartas.csv');
+    expect(res.text).toContain('album_title;number;name;rarity;language;category');
+  });
+
+  it('R13: recusa a importação sem arquivo com 400', async () => {
+    const res = await asAdmin('post', `${BASE}/cards/import`);
+
+    expect(res.status).toBe(400);
+    expect(errorCode(res.body)).toBe('VALIDATION_ERROR');
+  });
+});
+
 describe('documentação do catálogo', () => {
   it('lista as rotas do catálogo no Swagger', () => {
     const document = buildOpenApiDocument([catalogModule]);
@@ -98,6 +118,8 @@ describe('documentação do catálogo', () => {
       '/admin/catalog/cards/{id}',
       '/admin/catalog/categories',
       '/admin/catalog/categories/{id}',
+      '/admin/catalog/cards/import',
+      '/admin/catalog/cards/import/template',
       '/admin/catalog/rarities',
       '/admin/catalog/languages',
     ]);

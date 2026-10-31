@@ -25,7 +25,7 @@ const cardSelect = {
 
 export type Card = Prisma.CardGetPayload<{ select: typeof cardSelect }>;
 
-const emptyOptionalCardFields = {
+export const emptyOptionalCardFields = {
   number: null,
   description: null,
   backImageUrl: null,

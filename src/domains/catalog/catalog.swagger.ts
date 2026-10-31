@@ -14,6 +14,7 @@ import {
   updateCardSchema,
   updateCategorySchema,
 } from './catalog.validator';
+import { CARD_IMPORT_COLUMNS } from './catalog-import.parser';
 
 const BASE_PATH = '/admin/catalog';
 const tags = ['Administração - Catálogo'];
@@ -229,8 +230,49 @@ function referencePath(path: string, summary: string): RouteConfig {
   };
 }
 
+const importFormSchema = z.object({
+  file: z.string().openapi({
+    type: 'string',
+    format: 'binary',
+    description: `CSV separado por ; com o cabeçalho ${CARD_IMPORT_COLUMNS.join(';')}`,
+  }),
+});
+
+const importPaths: RouteConfig[] = [
+  {
+    method: 'post',
+    path: `${BASE_PATH}/cards/import`,
+    tags,
+    security,
+    summary: 'Importa cartas por CSV; grava todas ou nenhuma (CCD061)',
+    request: { body: { content: { 'multipart/form-data': { schema: importFormSchema } } } },
+    responses: {
+      201: { description: 'Cartas importadas', ...single(z.object({ created: count })) },
+      400: { description: 'Arquivo ausente no campo file' },
+      ...accessErrors,
+      413: { description: 'Arquivo acima de 4 MB' },
+      422: { description: 'CSV_INVALID: `details` lista cada erro como `<linha>.<coluna>`' },
+    },
+  },
+  {
+    method: 'get',
+    path: `${BASE_PATH}/cards/import/template`,
+    tags,
+    security,
+    summary: 'Baixa o modelo do CSV de importação de cartas (CCD061)',
+    responses: {
+      200: {
+        description: 'Arquivo CSV com o cabeçalho',
+        content: { 'text/csv': { schema: z.string() } },
+      },
+      ...accessErrors,
+    },
+  },
+];
+
 const catalogPaths: RouteConfig[] = [
   ...resources.flatMap(resourcePaths),
+  ...importPaths,
   referencePath('/rarities', 'Lista as raridades do seed, na ordem de exibição (CCD061)'),
   referencePath('/languages', 'Lista os idiomas do seed (CCD061)'),
 ];

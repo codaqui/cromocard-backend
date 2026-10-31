@@ -1,9 +1,12 @@
 import type { Request, Response } from 'express';
 
+import { MissingFileError } from '@/domains/uploads/uploads.errors';
 import { getAuthenticatedUser } from '@/shared/middlewares/authenticate';
 import { created, noContent, ok, paginated } from '@/shared/utils/http-response';
 
 import type { CatalogService } from './catalog.service';
+import { CARD_IMPORT_TEMPLATE } from './catalog-import.parser';
+import type { CatalogImportService } from './catalog-import.service';
 import {
   catalogItemIdParamSchema,
   createAlbumSchema,
@@ -25,8 +28,18 @@ function adminIdOf(req: Request): string {
   return getAuthenticatedUser(req).id;
 }
 
+function uploadedContent(req: Request): Buffer {
+  if (!req.file) throw new MissingFileError();
+  return req.file.buffer;
+}
+
+const IMPORT_TEMPLATE_FILE_NAME = 'modelo-importacao-cartas.csv';
+
 export class CatalogController {
-  constructor(private readonly catalogService: CatalogService) {}
+  constructor(
+    private readonly catalogService: CatalogService,
+    private readonly importService: CatalogImportService,
+  ) {}
 
   listAlbums = async (req: Request, res: Response): Promise<void> => {
     const query = listAlbumsQuerySchema.parse(req.query);
@@ -68,6 +81,19 @@ export class CatalogController {
   deleteCard = async (req: Request, res: Response): Promise<void> => {
     await this.catalogService.deleteCard(adminIdOf(req), itemIdOf(req));
     noContent(res);
+  };
+
+  importCards = async (req: Request, res: Response): Promise<void> => {
+    const content = uploadedContent(req);
+    created(res, await this.importService.importCards(adminIdOf(req), content));
+  };
+
+  downloadImportTemplate = (_req: Request, res: Response): void => {
+    res
+      .status(200)
+      .type('text/csv; charset=utf-8')
+      .attachment(IMPORT_TEMPLATE_FILE_NAME)
+      .send(CARD_IMPORT_TEMPLATE);
   };
 
   listCategories = async (req: Request, res: Response): Promise<void> => {

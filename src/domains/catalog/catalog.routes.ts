@@ -3,6 +3,8 @@ import { Router } from 'express';
 import { authenticate } from '@/shared/middlewares/authenticate';
 import { authorize } from '@/shared/middlewares/authorize';
 
+import { parseSingleFile } from '@/domains/uploads/uploads.middleware';
+
 import type { CatalogController } from './catalog.controller';
 
 export function createCatalogRoutes(controller: CatalogController): Router {
@@ -19,6 +21,8 @@ export function createCatalogRoutes(controller: CatalogController): Router {
   router.post('/cards', controller.createCard);
   router.patch('/cards/:id', controller.updateCard);
   router.delete('/cards/:id', controller.deleteCard);
+  router.post('/cards/import', parseSingleFile, controller.importCards);
+  router.get('/cards/import/template', controller.downloadImportTemplate);
 
   router.get('/categories', controller.listCategories);
   router.post('/categories', controller.createCategory);
