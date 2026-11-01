@@ -507,6 +507,23 @@ describe('AuthService', () => {
     });
   });
 
+  describe('revokeAllSessions', () => {
+    it('revoga todas as sessões do usuário', async () => {
+      users.accounts = [buildAccount()];
+      const first = await login();
+      const second = await login();
+
+      await service.revokeAllSessions(users.accounts[0]!.id);
+
+      await expect(service.refresh(first.refreshToken, context)).rejects.toBeInstanceOf(
+        RefreshTokenReusedError,
+      );
+      await expect(service.refresh(second.refreshToken, context)).rejects.toBeInstanceOf(
+        RefreshTokenReusedError,
+      );
+    });
+  });
+
   describe('register', () => {
     const input = {
       name: 'Ana',
