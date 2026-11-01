@@ -20,7 +20,7 @@ const adminUsersService = new AdminUsersService(
   },
   auditLogService,
 );
-const usersController = new UsersController(usersService);
+const usersController = new UsersController(usersService, adminUsersService);
 
 export const usersModule: DomainModule = {
   basePath: '/users',

@@ -14,5 +14,13 @@ export function createUsersRoutes(controller: UsersController): Router {
   router.patch('/me', controller.updateMe);
   router.delete('/me', controller.deleteMe);
 
+  router.use(authorize('ADMIN'));
+  router.post('/', controller.create);
+  router.get('/:id', controller.getById);
+  router.patch('/:id', controller.update);
+  router.post('/:id/suspend', controller.suspend);
+  router.post('/:id/reactivate', controller.reactivate);
+  router.delete('/:id', controller.remove);
+
   return router;
 }
