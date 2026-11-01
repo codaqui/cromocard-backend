@@ -1,5 +1,6 @@
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
+import { reasonBodySchema } from '@/shared/validators/reason';
 
 const userRoleSchema = z.enum(['CUSTOMER', 'SELLER', 'ADMIN']);
 const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
@@ -30,9 +31,7 @@ export const adminUpdateUserSchema = z.object({
   role: userRoleSchema.optional(),
 });
 
-export const reasonSchema = z.object({
-  reason: z.string().trim().min(3).max(500),
-});
+export const reasonSchema = reasonBodySchema;
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
