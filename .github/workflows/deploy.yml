@@ -14,6 +14,9 @@ name: deploy
 #   - Este é o ÚNICO arquivo com job no runner self-hosted. Ele não pode ter gatilho
 #     pull_request nem pull_request_target: o repositório é público.
 #   - Os logs são públicos: nunca imprimir o .env nem rodar "docker compose config" sem -q.
+#   - O deploy do frontend (outro repositório, ADR-056) mexe no mesmo ambiente: os passos que
+#     gravam o .env ou rodam "docker compose up" pegam a trava /srv/cromocard/<env>/.deploy.lock.
+#     O concurrency do GitHub não vale entre repositórios.
 on:
   workflow_call:             # chamado pelo ci.yml depois de um push em develop
     inputs:
@@ -119,6 +122,8 @@ jobs:
       DIR: /srv/cromocard/${{ needs.resolve.outputs.env }}
       # Com isso, todo "docker compose" abaixo usa o projeto certo sem repetir o -p.
       COMPOSE_PROJECT_NAME: cromocard-${{ needs.resolve.outputs.env }}
+      LOCK_FILE: /srv/cromocard/${{ needs.resolve.outputs.env }}/.deploy.lock
+      LOCK_TIMEOUT_SECONDS: "900"
     steps:
       # Pega a pasta infra/ do MESMO commit que vai subir, para os arquivos Compose
       # baterem com a versão da imagem (também vale para o rollback manual).
@@ -150,6 +155,8 @@ jobs:
           TAILSCALE_VERSION: ${{ vars.TAILSCALE_VERSION }}
         run: |
           set -euo pipefail
+          exec 9>"$LOCK_FILE"
+          flock -w "$LOCK_TIMEOUT_SECONDS" 9 || { echo "::error::Outro deploy segura o ambiente há mais de ${LOCK_TIMEOUT_SECONDS}s."; exit 1; }
           cp infra/docker-compose.yml "infra/compose.$ENV_NAME.yml" infra/compose.sem-frontend.yml "$DIR/"
           if [ "$ENV_NAME" = hml ]; then
             mkdir -p "$DIR/tailscale" && cp -r infra/tailscale/. "$DIR/tailscale/"
@@ -222,6 +229,16 @@ jobs:
         working-directory: ${{ env.DIR }}
         run: |
           set -euo pipefail
+          exec 9>"$LOCK_FILE"
+          flock -w "$LOCK_TIMEOUT_SECONDS" 9 || { echo "::error::Outro deploy segura o ambiente há mais de ${LOCK_TIMEOUT_SECONDS}s."; exit 1; }
+
+          # O deploy do frontend pode ter trocado o FRONTEND_TAG depois do passo que gerou o .env:
+          # refaz a lista de arquivos com o valor atual, já com a trava.
+          FILES="docker-compose.yml:compose.$ENV_NAME.yml"
+          if grep -qx 'FRONTEND_TAG=sem-frontend' .env; then FILES="$FILES:compose.sem-frontend.yml"; fi
+          export COMPOSE_FILE="$FILES"
+          echo "COMPOSE_FILE=$FILES" >> "$GITHUB_ENV"
+
           # Guarda a versão que estava no ar, para o rollback automático.
           if [ -f .deployed-tag ]; then cp .deployed-tag .previous-tag; fi
           docker compose up -d postgres
@@ -259,6 +276,8 @@ jobs:
             echo "::error::Não existe versão anterior para voltar (primeiro deploy?). Nada foi revertido."
             exit 1
           fi
+          exec 9>"$LOCK_FILE"
+          flock -w "$LOCK_TIMEOUT_SECONDS" 9
           echo "::warning::Voltando o backend para a versão anterior: $PREV"
           umask 077
           sed -i "s/^BACKEND_TAG=.*/BACKEND_TAG=$PREV/" .env
