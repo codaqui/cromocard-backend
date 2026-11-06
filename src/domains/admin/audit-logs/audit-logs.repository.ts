@@ -1,7 +1,6 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 
 import type { AuditAction, AuditLogDetails } from './audit-logs.validator';
-import { create } from 'node:domain';
 
 const auditLogEntrySelect = {
   id: true,
@@ -40,7 +39,7 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
   private buildWhereClause(filters: FindAuditLogsFilters): Prisma.AuditLogWhereInput {
     return {
       ...(filters.adminId && { adminId: filters.adminId }),
-      ...(filters.action && { action: filters.action as AuditAction }),
+     ...(filters.action && { action: filters.action }),
       ...(filters.entityType && { entityType: filters.entityType }),
       ...(filters.entityId && { entityId: filters.entityId }),
 
