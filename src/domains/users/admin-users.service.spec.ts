@@ -14,11 +14,13 @@ import {
   UserNotFoundError,
 } from './users.errors';
 import type {
+  MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
   OauthIdentity,
   OauthLink,
   RegisteredUser,
+  SellersPage,
   UserCredentials,
   UserSummary,
   UsersPage,
@@ -82,6 +84,18 @@ class InMemoryUsersRepository implements UsersRepository {
       user.id === id ? { ...user, deletedAt: new Date() } : user,
     );
     return Promise.resolve();
+  }
+
+  countMembers(): Promise<number> {
+    return Promise.reject(new Error('não usado neste teste'));
+  }
+
+  countSignupsByMonth(): Promise<MonthlySignups[]> {
+    return Promise.reject(new Error('não usado neste teste'));
+  }
+
+  findSellersCreatedWithin(): Promise<SellersPage> {
+    return Promise.reject(new Error('não usado neste teste'));
   }
 
   findCredentialsByEmailIncludingDeleted(): Promise<UserCredentials | null> {
