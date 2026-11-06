@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { InvalidAuditLogError } from './audit-logs.errors';
-import type { AuditLogEntry, AuditLogRepository, NewAuditLog } from './audit-logs.repository';
+import type { AuditLogEntry, AuditLogRepository, NewAuditLog, FindAuditLogsFilters  } from './audit-logs.repository';
 import { AuditLogService } from './audit-logs.service';
 import type { RecordAuditLogInput } from './audit-logs.validator';
+import { promise } from 'zod';
 
 class InMemoryAuditLogRepository implements AuditLogRepository {
   auditLogs: AuditLogEntry[] = [];
@@ -18,6 +19,19 @@ class InMemoryAuditLogRepository implements AuditLogRepository {
     };
     this.auditLogs.push(entry);
     return Promise.resolve(entry);
+  }
+
+  findMany(filters: FindAuditLogsFilters): Promise<AuditLogEntry[]> {
+    return Promise.resolve(this.auditLogs)
+  }
+
+  count(filters: FindAuditLogsFilters): Promise<number> {
+    return Promise.resolve(this.auditLogs.length);
+  }
+
+  findById(id: string): Promise<AuditLogEntry | null> {
+    const log = this.auditLogs.find(log => log.id === id) || null;
+    return Promise.resolve(log)
   }
 }
 
