@@ -1,8 +1,6 @@
 import { passwordSchema } from '@/domains/auth/auth.validator';
 import { z } from '@/lib/zod';
 
-// Senha dos usuários de teste no banco local. Ela está no README, que é público: por isso não vale
-// num banco compartilhado (homologação), que está na internet.
 export const LOCAL_SEED_PASSWORD = 'CromoCard@2026';
 
 const LOCAL_DATABASE_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -44,8 +42,6 @@ function sharedDatabasePassword(password: string | undefined): string {
   return validPassword(password);
 }
 
-// Banco local: senha do README e banner de exemplo no storage local. Banco compartilhado: senha
-// obrigatória e sem banner, porque o arquivo ficaria no disco de quem roda o seed.
 export function seedOptionsFrom({ databaseUrl, userPassword }: SeedEnv): SeedOptions {
   const password = userPassword || undefined;
 

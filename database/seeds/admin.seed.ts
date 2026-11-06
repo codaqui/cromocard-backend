@@ -136,7 +136,6 @@ const toAuditLogData = ({
   createdAt: new Date(createdAt),
 });
 
-// Sem storage (banco compartilhado), o banner de exemplo fica sem imagem.
 export async function seedAdmin(prisma: PrismaClient, storage?: StorageProvider): Promise<void> {
   for (const data of catalogRequests.map(toCatalogRequestData)) {
     await prisma.catalogRequest.upsert({ where: { id: data.id }, create: data, update: data });
