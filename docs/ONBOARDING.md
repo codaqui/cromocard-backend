@@ -93,6 +93,21 @@ psql -h cromocard-hml-db -p 5432 -U cromocard_hml cromocard_hml
 
 A senha está no Bitwarden. Num cliente gráfico (DBeaver, pgAdmin), use os mesmos dados. Mudanças de estrutura do banco só por migration, nunca à mão: a próxima migration do deploy pode falhar.
 
+**Dados de teste em homologação:** o deploy só aplica as migrations; o seed roda do seu computador, com o Tailscale conectado, apontando para o banco de homologação. Combine antes no canal da equipe, porque o banco é de todos.
+
+```bash
+git checkout develop && git pull   # o mesmo commit que está em homologação: o seed grava nas tabelas que as migrations de lá criaram
+DATABASE_URL='postgresql://cromocard_hml:<senha do Bitwarden>@cromocard-hml-db:5432/cromocard_hml' \
+SEED_USER_PASSWORD='<senha nova para os usuários de teste>' \
+FRONTEND_URL='https://hml.cromocard.com.br' \
+npm run db:seed
+```
+
+- Passe as variáveis só no comando, sem gravar no `.env`: elas valem mais que o arquivo.
+- Fora do `localhost`, o seed exige a `SEED_USER_PASSWORD` e recusa a senha do README: o repositório é público e a API de homologação está na internet. Guarde a senha nova no Bitwarden para o time.
+- O banner de exemplo não é enviado: o arquivo ficaria no seu disco, fora do storage de homologação.
+- Rodar de novo não duplica nada, mas troca a senha dos usuários de teste pela que você passar.
+
 **Swagger:** a documentação em `/docs` fica desligada em homologação (só aparece localmente).
 
 ## 5. Release para produção
