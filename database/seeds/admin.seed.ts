@@ -99,7 +99,7 @@ const toCatalogRequestData = (request: (typeof catalogRequests)[number]) => ({
   data: toRequestPayload(request.data) as Prisma.InputJsonObject,
 });
 
-function buildGlobalSettings(bannerImageUrl: string): Prisma.GlobalSettingCreateManyInput[] {
+function buildGlobalSettings(bannerImageUrl?: string): Prisma.GlobalSettingCreateManyInput[] {
   const { description: bannerDescription, ctaPath, ...banner } = globalSettings.homeBanner;
   const { description: templatesDescription, templates } = globalSettings.notificationTemplates;
   const homeBanner = { ...banner, ctaUrl: `${frontendUrl}${ctaPath}`, imageUrl: bannerImageUrl };
@@ -136,12 +136,13 @@ const toAuditLogData = ({
   createdAt: new Date(createdAt),
 });
 
-export async function seedAdmin(prisma: PrismaClient, storage: StorageProvider): Promise<void> {
+// Sem storage (banco compartilhado), o banner de exemplo fica sem imagem.
+export async function seedAdmin(prisma: PrismaClient, storage?: StorageProvider): Promise<void> {
   for (const data of catalogRequests.map(toCatalogRequestData)) {
     await prisma.catalogRequest.upsert({ where: { id: data.id }, create: data, update: data });
   }
-  const banner = await storage.upload(sampleBanner);
-  for (const setting of buildGlobalSettings(banner.url)) {
+  const banner = storage ? await storage.upload(sampleBanner) : undefined;
+  for (const setting of buildGlobalSettings(banner?.url)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
   }
   for (const data of auditLogs.map(toAuditLogData)) {

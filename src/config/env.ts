@@ -34,6 +34,8 @@ const envSchema = z.object({
   PASSWORD_RESET_TTL: z.coerce.number().int().positive().default(3600),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
+  // Só o seed lê: senha dos usuários de teste num banco compartilhado (database/seeds/seed-options.ts).
+  SEED_USER_PASSWORD: optionalText,
 });
 
 const DEVELOPMENT_API_PUBLIC_URL = 'http://localhost:3000';
