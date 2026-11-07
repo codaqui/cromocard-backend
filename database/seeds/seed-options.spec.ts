@@ -14,11 +14,31 @@ describe('seedOptionsFrom', () => {
     expect(isLocalDatabase(SHARED_URL)).toBe(false);
   });
 
-  it('no banco local, usa a senha do README e envia o banner de exemplo', () => {
+  it('trata como compartilhado o host do parâmetro ?host=, que é onde o driver conecta', () => {
+    expect(isLocalDatabase('postgresql://u:p@localhost:5432/db?host=cromocard-hml-db')).toBe(false);
+    expect(
+      isLocalDatabase('postgresql://u:p@localhost:5432/db?host=localhost,cromocard-hml-db'),
+    ).toBe(false);
+  });
+
+  it('trata como local o socket Unix e a URL sem host', () => {
+    expect(isLocalDatabase('postgresql://u:p@localhost/db?host=/var/run/postgresql')).toBe(true);
+    expect(isLocalDatabase('postgresql:///db')).toBe(true);
+  });
+
+  it('recusa a DATABASE_URL malformada sem repetir a URL, que tem a senha do banco', () => {
+    const malformed = 'postgresql://cromocard_hml:senha-secreta@cromocard-hml-db:porta/db';
+
+    expect(() => seedOptionsFrom({ databaseUrl: malformed })).toThrow(
+      'Seed: DATABASE_URL malformada.',
+    );
+    expect(() => seedOptionsFrom({ databaseUrl: malformed })).not.toThrow(/senha-secreta/);
+  });
+
+  it('no banco local, usa a senha do README', () => {
     expect(seedOptionsFrom({ databaseUrl: LOCAL_URL })).toEqual({
       isLocalDatabase: true,
       userPassword: LOCAL_SEED_PASSWORD,
-      uploadsSampleFiles: true,
     });
   });
 
@@ -47,11 +67,10 @@ describe('seedOptionsFrom', () => {
     );
   });
 
-  it('no banco compartilhado, usa a senha informada e não envia o banner', () => {
+  it('no banco compartilhado, usa a senha informada', () => {
     expect(seedOptionsFrom({ databaseUrl: SHARED_URL, userPassword: CUSTOM_PASSWORD })).toEqual({
       isLocalDatabase: false,
       userPassword: CUSTOM_PASSWORD,
-      uploadsSampleFiles: false,
     });
   });
 });

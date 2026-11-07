@@ -136,12 +136,16 @@ const toAuditLogData = ({
   createdAt: new Date(createdAt),
 });
 
-export async function seedAdmin(prisma: PrismaClient, storage?: StorageProvider): Promise<void> {
+export async function uploadSampleBanner(storage: StorageProvider): Promise<string> {
+  const banner = await storage.upload(sampleBanner);
+  return banner.url;
+}
+
+export async function seedAdmin(prisma: PrismaClient, bannerImageUrl?: string): Promise<void> {
   for (const data of catalogRequests.map(toCatalogRequestData)) {
     await prisma.catalogRequest.upsert({ where: { id: data.id }, create: data, update: data });
   }
-  const banner = storage ? await storage.upload(sampleBanner) : undefined;
-  for (const setting of buildGlobalSettings(banner?.url)) {
+  for (const setting of buildGlobalSettings(bannerImageUrl)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
   }
   for (const data of auditLogs.map(toAuditLogData)) {

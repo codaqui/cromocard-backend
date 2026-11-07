@@ -22,6 +22,23 @@ const users = loadSeedData('users.json', usersSchema);
 
 export const userIdOf = keyResolver(SeedNamespace.users, users, 'users.json');
 
+export async function assertSeedEmailsAvailable(prisma: PrismaClient): Promise<void> {
+  const conflicts = await prisma.user.findMany({
+    where: {
+      email: { in: users.map(({ email }) => email) },
+      id: { notIn: users.map(({ key }) => userIdOf(key)) },
+    },
+    select: { email: true },
+  });
+
+  if (conflicts.length > 0) {
+    const emails = conflicts.map(({ email }) => email).join(', ');
+    throw new Error(
+      `Seed: e-mails do seed já usados por outras contas (nada foi gravado): ${emails}`,
+    );
+  }
+}
+
 export async function seedUsers(prisma: PrismaClient, password: string): Promise<void> {
   const passwordHash = await hashPassword(password);
 

@@ -3,7 +3,8 @@ import { z } from '@/lib/zod';
 
 export const LOCAL_SEED_PASSWORD = 'CromoCard@2026';
 
-const LOCAL_DATABASE_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const LOCAL_DATABASE_HOSTS = new Set(['', 'localhost', '127.0.0.1', '[::1]']);
+const UNIX_SOCKET_PREFIX = '/';
 
 export interface SeedEnv {
   databaseUrl: string;
@@ -13,11 +14,26 @@ export interface SeedEnv {
 export interface SeedOptions {
   isLocalDatabase: boolean;
   userPassword: string;
-  uploadsSampleFiles: boolean;
 }
 
+function parsedDatabaseUrl(databaseUrl: string): URL {
+  try {
+    return new URL(databaseUrl);
+  } catch {
+    throw new Error('Seed: DATABASE_URL malformada.');
+  }
+}
+
+function databaseHosts(databaseUrl: string): string[] {
+  const url = parsedDatabaseUrl(databaseUrl);
+  return (url.searchParams.get('host') ?? url.hostname).split(',');
+}
+
+const isLocalHost = (host: string) =>
+  LOCAL_DATABASE_HOSTS.has(host) || host.startsWith(UNIX_SOCKET_PREFIX);
+
 export function isLocalDatabase(databaseUrl: string): boolean {
-  return LOCAL_DATABASE_HOSTS.has(new URL(databaseUrl).hostname);
+  return databaseHosts(databaseUrl).every(isLocalHost);
 }
 
 function validPassword(password: string): string {
@@ -49,13 +65,8 @@ export function seedOptionsFrom({ databaseUrl, userPassword }: SeedEnv): SeedOpt
     return {
       isLocalDatabase: true,
       userPassword: password ? validPassword(password) : LOCAL_SEED_PASSWORD,
-      uploadsSampleFiles: true,
     };
   }
 
-  return {
-    isLocalDatabase: false,
-    userPassword: sharedDatabasePassword(password),
-    uploadsSampleFiles: false,
-  };
+  return { isLocalDatabase: false, userPassword: sharedDatabasePassword(password) };
 }
