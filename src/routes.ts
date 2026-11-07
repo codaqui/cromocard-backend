@@ -10,13 +10,7 @@ import { settingsModule } from '@/domains/admin/settings/settings.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { usersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
-import { PrismaAuditLogRepository } from './domains/admin/audit-logs/audit-logs.repository';
-import { prisma } from './lib/prisma';
-import { AuditLogService } from './domains/admin/audit-logs/audit-logs.service';
-import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module'
-
-const auditLogRepository = new PrismaAuditLogRepository(prisma);
-const auditLogService = new AuditLogService(auditLogRepository);
+import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
 
 const API_PREFIX = '/api/v1';
 
@@ -45,5 +39,3 @@ export function createRoutes({ withUploads }: RoutesOptions): Router {
 
   return routes;
 }
-
-export { auditLogService };

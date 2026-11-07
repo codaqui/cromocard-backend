@@ -1,4 +1,5 @@
 import { z } from '@/lib/zod';
+import { paginationQuerySchema } from '@/shared/utils/pagination';
 import { reasonSchema } from '@/shared/validators/reason';
 
 export const AUDIT_ACTIONS = [
@@ -56,18 +57,20 @@ export const recordAuditLogSchema = z
     message: 'Esta ação exige motivo',
   });
 
-export const FindAuditLogsFiltersSchema = z.object({
-  page: z.coerce.number().int().min(1).optional().default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).optional().default(10),
-  adminId: z.string().uuid().optional(),
+export const listAuditLogsQuerySchema = paginationQuerySchema.extend({
+  adminId: z.uuid().optional(),
   action: z.enum(AUDIT_ACTIONS).optional(),
-  entityType: z.string().optional(),
-  entityId: z.string().uuid().optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional()
-})
+  entityType: z.string().trim().min(1).max(60).optional(),
+  entityId: z.uuid().optional(),
+  from: z.iso.datetime({ offset: true }).or(z.iso.date()).optional(),
+  to: z.iso.datetime({ offset: true }).or(z.iso.date()).optional(),
+});
+
+export const auditLogIdParamSchema = z.object({
+  id: z.uuid(),
+});
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type RecordAuditLogInput = z.input<typeof recordAuditLogSchema>;
 export type AuditLogDetails = NonNullable<z.infer<typeof recordAuditLogSchema>['details']>;
-export type FindAuditLogsFilters = z.infer<typeof FindAuditLogsFiltersSchema>;
+export type ListAuditLogsQuery = z.infer<typeof listAuditLogsQuerySchema>;

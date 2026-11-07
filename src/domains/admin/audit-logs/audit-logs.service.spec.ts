@@ -1,35 +1,64 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { InvalidAuditLogError } from './audit-logs.errors';
-import type { AuditLogEntry, AuditLogRepository, NewAuditLog, FindAuditLogsFilters } from './audit-logs.repository';
+import { AuditLogNotFoundError, InvalidAuditLogError } from './audit-logs.errors';
+import type {
+  AuditLogEntry,
+  AuditLogListResult,
+  AuditLogRepository,
+  NewAuditLog,
+} from './audit-logs.repository';
 import { AuditLogService } from './audit-logs.service';
-import type { RecordAuditLogInput } from './audit-logs.validator';
+import type { ListAuditLogsQuery, RecordAuditLogInput } from './audit-logs.validator';
 
 class InMemoryAuditLogRepository implements AuditLogRepository {
   auditLogs: AuditLogEntry[] = [];
+  admins = new Map<string, { id: string; name: string }>();
+
   create(auditLog: NewAuditLog): Promise<AuditLogEntry> {
+    const admin = this.admins.get(auditLog.adminId) ?? {
+      id: auditLog.adminId,
+      name: 'Admin Padrão',
+    };
+
     const entry: AuditLogEntry = {
       id: crypto.randomUUID(),
       entityId: null,
       createdAt: new Date(),
       ...auditLog,
+      admin,
       details: auditLog.details ?? null,
     };
     this.auditLogs.push(entry);
     return Promise.resolve(entry);
   }
 
-  findMany(_filters: FindAuditLogsFilters): Promise<AuditLogEntry[]> {
-    return Promise.resolve(this.auditLogs)
+  findMany(filters: ListAuditLogsQuery): Promise<AuditLogListResult> {
+    const filtered = this.auditLogs
+      .filter((log) => {
+        if (filters.adminId && log.adminId !== filters.adminId) return false;
+        if (filters.action && log.action !== filters.action) return false;
+        if (filters.entityType && log.entityType !== filters.entityType) return false;
+        if (filters.entityId && log.entityId !== filters.entityId) return false;
+        if (filters.from && log.createdAt < new Date(filters.from)) return false;
+        if (filters.to && log.createdAt > new Date(filters.to)) return false;
+        return true;
+      })
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const start = (filters.page - 1) * filters.pageSize;
+    const items = filtered.slice(start, start + filters.pageSize);
+
+    return Promise.resolve({ items, total: filtered.length });
   }
 
-  count(_filters: FindAuditLogsFilters): Promise<number> {
-    return Promise.resolve(this.auditLogs.length);
+  countSince(since: Date): Promise<number> {
+    const count = this.auditLogs.filter((log) => log.createdAt >= since).length;
+    return Promise.resolve(count);
   }
 
   findById(id: string): Promise<AuditLogEntry | null> {
-    const log = this.auditLogs.find(log => log.id === id) || null;
-    return Promise.resolve(log)
+    const log = this.auditLogs.find((item) => item.id === id) ?? null;
+    return Promise.resolve(log);
   }
 }
 
@@ -129,61 +158,81 @@ describe('AuditLogService', () => {
     await expect(service.record(input)).rejects.toThrow(InvalidAuditLogError);
   });
 
-  describe('Consultas (list, count, getById)', () => {
-    it('deve listar os registros trazendo dados do admin, mesmo se o admin foi excluido (CA1/CA5)', async () => {
-      const log1 = {
-        id: 'log-1',
-        adminId: 'admin-excluido-id',
-        admin: { id: 'admin-excluido-id', name: 'Admin Excluido' },
-        action: 'USER_SUSPENDED',
-        entityType: 'USER',
-        entityId: 'user-1',
-        details: null,
-        createdAt: new Date(),
-      };
-      // CORREÇÃO 1 AQUI: apenas push(log1)
-      repository.auditLogs.push(log1);
+  describe('list e getById', () => {
+    it('lista registros ordenados do mais recente ao mais antigo, trazendo nome do admin excluído e total de 30 dias (CA1, CA5)', async () => {
+      const deletedAdminId = crypto.randomUUID();
+      repository.admins.set(deletedAdminId, { id: deletedAdminId, name: 'Moderador Excluído' });
 
-      const result = await service.list({});
-      const firstItem = result.items[0] as unknown as { admin: { name: string } };
+      const oldLog = await service.record(buildInput({ adminId: deletedAdminId }));
+      oldLog.createdAt = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000); // 40 dias atrás
+
+      const recentLog = await service.record(
+        buildInput({ adminId: deletedAdminId, action: 'GROUP_DELETED', reason: 'Grupo inativo' }),
+      );
+
+      const result = await service.list({ page: 1, pageSize: 20 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]?.id).toBe(recentLog.id);
+      expect(result.items[0]?.admin).toEqual({ id: deletedAdminId, name: 'Moderador Excluído' });
+      expect(result.items[0]?.reason).toBe('Grupo inativo');
+      expect(result.meta).toEqual({
+        page: 1,
+        pageSize: 20,
+        total: 2,
+        totalPages: 1,
+        last30Days: 1,
+      });
+    });
+
+    it('filtra registros por adminId, action, entityType, entityId e período (CA2)', async () => {
+      const targetAdminId = crypto.randomUUID();
+      const targetEntityId = crypto.randomUUID();
+
+      await service.record(buildInput({ action: 'USER_SUSPENDED' }));
+      const matching = await service.record(
+        buildInput({
+          adminId: targetAdminId,
+          action: 'GROUP_DELETED',
+          entityType: 'GROUP',
+          entityId: targetEntityId,
+          reason: 'Violação de regras',
+        }),
+      );
+
+      const result = await service.list({
+        page: 1,
+        pageSize: 10,
+        adminId: targetAdminId,
+        action: 'GROUP_DELETED',
+        entityType: 'GROUP',
+        entityId: targetEntityId,
+      });
 
       expect(result.items).toHaveLength(1);
-      expect(firstItem.admin).toMatchObject({ name: 'Admin Excluido' });
+      expect(result.items[0]?.id).toBe(matching.id);
     });
 
-    it('deve filtrar os registros repassando os parâmetros corretos para o repositório (CA2)', async () => {
-      const repositorySpy = vi.spyOn(repository, 'findMany');
-
-      await service.list({ action: 'GROUP_DELETED', pageSize: 10 });
-
-      expect(repositorySpy).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'GROUP_DELETED', pageSize: 10 })
+    it('retorna os detalhes completos de um registro existente (CA3)', async () => {
+      const created = await service.record(
+        buildInput({
+          details: { before: { status: 'ACTIVE' }, after: { status: 'SUSPENDED' } },
+          reason: 'Fraude comprovada',
+        }),
       );
+
+      const detail = await service.getById(created.id);
+
+      expect(detail.id).toBe(created.id);
+      expect(detail.details).toEqual({
+        before: { status: 'ACTIVE' },
+        after: { status: 'SUSPENDED' },
+        reason: 'Fraude comprovada',
+      });
     });
 
-    it('deve retornar os detalhes completos de um registro (CA3)', async () => {
-      const id = 'log-2';
-      const log2 = {
-        id,
-        adminId: 'admin-ativo-id',
-        admin: { id: 'admin-ativo-id', name: 'Admin Ativo' },
-        action: 'REPORT_DISMISSED',
-        entityType: 'REPORT',
-        entityId: null,
-        details: { reason: 'Resolvido sem punição' },
-        createdAt: new Date(),
-      };
-      repository.auditLogs.push(log2);
-
-      const result = await service.getById(id);
-
-      expect(result).toBeDefined();
-      expect(result?.details).toEqual({ reason: 'Resolvido sem punição' });
+    it('lança AuditLogNotFoundError (404 AUDIT_LOG_NOT_FOUND) quando o registro não existe (R6)', async () => {
+      await expect(service.getById(crypto.randomUUID())).rejects.toThrow(AuditLogNotFoundError);
     });
-})
-
-
-
+  });
 });
-
-
