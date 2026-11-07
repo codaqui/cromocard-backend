@@ -9,12 +9,12 @@ export function createUsersRoutes(controller: UsersController): Router {
   const router = Router();
 
   router.use(authenticate);
-  router.get('/', authorize('ADMIN'), controller.list);
   router.get('/me', controller.getMe);
   router.patch('/me', controller.updateMe);
   router.delete('/me', controller.deleteMe);
 
   router.use(authorize('ADMIN'));
+  router.get('/', controller.list);
   router.post('/', controller.create);
   router.get('/:id', controller.getById);
   router.patch('/:id', controller.update);

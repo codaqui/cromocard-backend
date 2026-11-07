@@ -42,4 +42,3 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
 export type ReasonInput = z.infer<typeof reasonSchema>;
-export type UserIdParam = z.infer<typeof userIdParamSchema>;

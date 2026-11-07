@@ -1,6 +1,6 @@
 import { env } from '@/config/env';
 import { logger } from '@/config/logger';
-import { usersService } from '@/domains/users/users.module';
+import { setAdminAuthService, usersService } from '@/domains/users/users.module';
 import { createGoogleVerifier } from '@/lib/google';
 import { prisma } from '@/lib/prisma';
 import { runInTransaction } from '@/lib/transaction';
@@ -39,6 +39,8 @@ const authService = new AuthService({
   runInTransaction,
   logger,
 });
+setAdminAuthService(authService);
+
 const authController = new AuthController(authService, { secure: env.COOKIE_SECURE });
 
 export const authModule: DomainModule = {
