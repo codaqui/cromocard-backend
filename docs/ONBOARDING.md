@@ -99,7 +99,7 @@ A senha está no Bitwarden. Num cliente gráfico (DBeaver, pgAdmin), use os mesm
 git checkout develop && git pull   # o mesmo commit que está em homologação: o seed grava nas tabelas que as migrations de lá criaram
 npm ci && npm run db:generate      # dependências e cliente do Prisma da versão que você acabou de baixar
 read -rs -p 'Senha do banco de homologação (Bitwarden): ' HML_DB_PASSWORD; echo
-read -rs -p 'Senha dos usuários de teste de homologação (Bitwarden): ' SEED_USER_PASSWORD; echo
+read -rs -p 'Senha dos usuários de teste de homologação: ' SEED_USER_PASSWORD; echo
 DATABASE_URL="postgresql://cromocard_hml:${HML_DB_PASSWORD}@cromocard-hml-db:5432/cromocard_hml" \
 SEED_USER_PASSWORD="$SEED_USER_PASSWORD" \
 FRONTEND_URL='https://hml.cromocard.com.br' \
@@ -108,7 +108,8 @@ unset HML_DB_PASSWORD SEED_USER_PASSWORD
 ```
 
 - O `read -rs` pede as senhas sem mostrar na tela e sem gravar no histórico do shell. Não grave as senhas no `.env`.
-- Fora do `localhost`, o seed exige a `SEED_USER_PASSWORD` e recusa a senha do README: o repositório é público e a API de homologação está na internet. Use a senha dos usuários de teste que já está no Bitwarden; só crie uma nova (e atualize o Bitwarden) se o time combinar.
+- Fora do `localhost`, o seed exige a `SEED_USER_PASSWORD` e recusa a senha do README: o repositório é público e a API de homologação está na internet.
+- **A senha dos usuários de teste de homologação ainda não está no Bitwarden** (só a do banco está). Quem rodar o seed pela primeira vez escolhe a senha, cria o item *CromoCard — usuários de teste de homologação* no Bitwarden e avisa o time. Daí em diante, use a desse item: uma senha nova troca a de todos os usuários de teste.
 - Antes de gravar, o seed confere se algum e-mail dele já pertence a outra conta. Se pertencer, ele para sem gravar nada e lista os e-mails.
 - O banner de exemplo não é enviado: o arquivo ficaria no seu disco, fora do storage de homologação.
 - **Rodar de novo não duplica nada, mas sobrescreve:** os usuários de teste voltam ao nome, e-mail, papel e senha do seed, e os dados de catálogo e comunidade do seed voltam ao original, desfazendo o que alguém mudou neles em hml. O seed não roda numa transação: se falhar no meio, o que já foi gravado fica.
