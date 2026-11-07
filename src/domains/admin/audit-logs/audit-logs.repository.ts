@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { toSkipTake } from '@/shared/utils/pagination';
+import { BRASILIA_TIME_ZONE, DAY_IN_MS, startOfDayIn } from '@/shared/utils/time-zone';
 
 import type { AuditAction, AuditLogDetails, ListAuditLogsQuery } from './audit-logs.validator';
 
@@ -18,6 +19,23 @@ const auditLogEntrySelect = {
   details: true,
   createdAt: true,
 } satisfies Prisma.AuditLogSelect;
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseAuditLogFromDate(value: string): Date {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    return startOfDayIn(new Date(`${value}T12:00:00Z`), BRASILIA_TIME_ZONE);
+  }
+  return new Date(value);
+}
+
+export function parseAuditLogToDate(value: string): Date {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const start = startOfDayIn(new Date(`${value}T12:00:00Z`), BRASILIA_TIME_ZONE);
+    return new Date(start.getTime() + DAY_IN_MS - 1);
+  }
+  return new Date(value);
+}
 
 export type AuditLogEntry = Prisma.AuditLogGetPayload<{ select: typeof auditLogEntrySelect }>;
 
@@ -49,15 +67,26 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
   }
 
   private buildWhereClause(filters: ListAuditLogsQuery): Prisma.AuditLogWhereInput {
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined;
+
+    if (filters.from) {
+      fromDate = new Date(`${filters.from.split('T')[0]}T00:00:00-03:00`);
+    }
+
+    if (filters.to) {
+      toDate = new Date(`${filters.to.split('T')[0]}T23:59:59.999-03:00`);
+    }
+
     return {
       ...(filters.adminId && { adminId: filters.adminId }),
       ...(filters.action && { action: filters.action }),
       ...(filters.entityType && { entityType: filters.entityType }),
       ...(filters.entityId && { entityId: filters.entityId }),
-      ...((filters.from || filters.to) && {
+      ...((fromDate || toDate) && {
         createdAt: {
-          ...(filters.from && { gte: new Date(filters.from) }),
-          ...(filters.to && { lte: new Date(filters.to) }),
+          ...(fromDate && { gte: fromDate }),
+          ...(toDate && { lte: toDate }),
         },
       }),
     };

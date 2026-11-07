@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { DAY_IN_MS } from '@/shared/utils/time-zone';
+
 import { AuditLogNotFoundError, InvalidAuditLogError } from './audit-logs.errors';
-import type {
-  AuditLogEntry,
-  AuditLogListResult,
-  AuditLogRepository,
-  NewAuditLog,
+import {
+  type AuditLogEntry,
+  type AuditLogListResult,
+  type AuditLogRepository,
+  type NewAuditLog,
+  parseAuditLogFromDate,
+  parseAuditLogToDate,
 } from './audit-logs.repository';
 import { AuditLogService } from './audit-logs.service';
 import type { ListAuditLogsQuery, RecordAuditLogInput } from './audit-logs.validator';
@@ -39,8 +43,8 @@ class InMemoryAuditLogRepository implements AuditLogRepository {
         if (filters.action && log.action !== filters.action) return false;
         if (filters.entityType && log.entityType !== filters.entityType) return false;
         if (filters.entityId && log.entityId !== filters.entityId) return false;
-        if (filters.from && log.createdAt < new Date(filters.from)) return false;
-        if (filters.to && log.createdAt > new Date(filters.to)) return false;
+        if (filters.from && log.createdAt < parseAuditLogFromDate(filters.from)) return false;
+        if (filters.to && log.createdAt > parseAuditLogToDate(filters.to)) return false;
         return true;
       })
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -159,12 +163,12 @@ describe('AuditLogService', () => {
   });
 
   describe('list e getById', () => {
-    it('lista registros ordenados do mais recente ao mais antigo, trazendo nome do admin excluído e total de 30 dias (CA1, CA5)', async () => {
+    it('lista registros ordenados do mais recente ao mais antigo, trazendo createdAt, nome do admin excluído e total de 30 dias (CA1, CA5)', async () => {
       const deletedAdminId = crypto.randomUUID();
       repository.admins.set(deletedAdminId, { id: deletedAdminId, name: 'Moderador Excluído' });
 
       const oldLog = await service.record(buildInput({ adminId: deletedAdminId }));
-      oldLog.createdAt = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000); // 40 dias atrás
+      oldLog.createdAt = new Date(Date.now() - 40 * DAY_IN_MS);
 
       const recentLog = await service.record(
         buildInput({ adminId: deletedAdminId, action: 'GROUP_DELETED', reason: 'Grupo inativo' }),
@@ -174,6 +178,7 @@ describe('AuditLogService', () => {
 
       expect(result.items).toHaveLength(2);
       expect(result.items[0]?.id).toBe(recentLog.id);
+      expect(result.items[0]?.createdAt).toBeInstanceOf(Date);
       expect(result.items[0]?.admin).toEqual({ id: deletedAdminId, name: 'Moderador Excluído' });
       expect(result.items[0]?.reason).toBe('Grupo inativo');
       expect(result.meta).toEqual({
@@ -185,7 +190,7 @@ describe('AuditLogService', () => {
       });
     });
 
-    it('filtra registros por adminId, action, entityType, entityId e período (CA2)', async () => {
+    it('filtra registros por adminId, action, entityType, entityId e período no fuso de Brasília (CA2)', async () => {
       const targetAdminId = crypto.randomUUID();
       const targetEntityId = crypto.randomUUID();
 
@@ -199,6 +204,7 @@ describe('AuditLogService', () => {
           reason: 'Violação de regras',
         }),
       );
+      matching.createdAt = new Date('2026-11-07T15:00:00.000Z');
 
       const result = await service.list({
         page: 1,
@@ -207,6 +213,8 @@ describe('AuditLogService', () => {
         action: 'GROUP_DELETED',
         entityType: 'GROUP',
         entityId: targetEntityId,
+        from: '2026-11-07',
+        to: '2026-11-07',
       });
 
       expect(result.items).toHaveLength(1);
