@@ -51,6 +51,7 @@ Os nomes seguem o contrato da infraestrutura: os mesmos do `.env.example`, do `i
 | `MAIL_DRIVER` | Não | `ethereal` (padrão: o link de cada e-mail sai no log), `smtp` ou `memory` (testes); com `APP_ENV=production`, só `smtp` |
 | `MAIL_FROM` | Não | Remetente dos e-mails |
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASSWORD` | Com `smtp` | Servidor SMTP; `MAIL_HOST` é obrigatório com `MAIL_DRIVER=smtp` |
+| `SEED_USER_PASSWORD` | Para o seed fora do `localhost` | Só o `npm run db:seed` lê: senha dos usuários de teste num banco compartilhado (homologação). Passe no comando, não no `.env` ([guia da equipe](docs/ONBOARDING.md#4-homologação)) |
 | `PORT` | Não | Padrão 3000 (API); o serviço ws usa 3001 |
 | `NODE_ENV` | Não | `development`, `test` ou `production` |
 | `LOG_LEVEL` | Não | Padrão `info` |
