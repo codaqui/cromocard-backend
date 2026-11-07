@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { InvalidAuditLogError } from './audit-logs.errors';
-import type { AuditLogEntry, AuditLogRepository, NewAuditLog, FindAuditLogsFilters  } from './audit-logs.repository';
+import type { AuditLogEntry, AuditLogRepository, NewAuditLog, FindAuditLogsFilters } from './audit-logs.repository';
 import { AuditLogService } from './audit-logs.service';
 import type { RecordAuditLogInput } from './audit-logs.validator';
 
@@ -26,7 +26,7 @@ class InMemoryAuditLogRepository implements AuditLogRepository {
   count(_filters: FindAuditLogsFilters): Promise<number> {
     return Promise.resolve(this.auditLogs.length);
   }
-  
+
   findById(id: string): Promise<AuditLogEntry | null> {
     const log = this.auditLogs.find(log => log.id === id) || null;
     return Promise.resolve(log)
@@ -132,16 +132,17 @@ describe('AuditLogService', () => {
   describe('Consultas (list, count, getById)', () => {
     it('deve listar os registros trazendo dados do admin, mesmo se o admin foi excluido (CA1/CA5)', async () => {
       const log1 = {
-          id: 'log-1',
-          adminId: 'admin-excluido-id',
-          admin: { id: 'admin-excluido-id', name: 'Admin Excluido'},
-          action: 'USER_SUSPENDED',
-          entityType: 'USER',
-          entityId: 'user-1',
-          details: null,
-          createdAt: new Date(),
+        id: 'log-1',
+        adminId: 'admin-excluido-id',
+        admin: { id: 'admin-excluido-id', name: 'Admin Excluido' },
+        action: 'USER_SUSPENDED',
+        entityType: 'USER',
+        entityId: 'user-1',
+        details: null,
+        createdAt: new Date(),
       };
-      repository.auditLogs.push(log1 as unknown as typeof repository.auditLogs[0]);
+      // CORREÇÃO 1 AQUI: apenas push(log1)
+      repository.auditLogs.push(log1);
 
       const result = await service.list({});
       const firstItem = result.items[0] as unknown as { admin: { name: string } };
@@ -152,9 +153,9 @@ describe('AuditLogService', () => {
 
     it('deve filtrar os registros repassando os parâmetros corretos para o repositório (CA2)', async () => {
       const repositorySpy = vi.spyOn(repository, 'findMany');
-      
+
       await service.list({ action: 'GROUP_DELETED', pageSize: 10 });
-      
+
       expect(repositorySpy).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'GROUP_DELETED', pageSize: 10 })
       );
@@ -172,10 +173,10 @@ describe('AuditLogService', () => {
         details: { reason: 'Resolvido sem punição' },
         createdAt: new Date(),
       };
-      repository.auditLogs.push(log2 as unknown as typeof repository.auditLogs[0]);
+      repository.auditLogs.push(log2);
 
       const result = await service.getById(id);
-      
+
       expect(result).toBeDefined();
       expect(result?.details).toEqual({ reason: 'Resolvido sem punição' });
     });
