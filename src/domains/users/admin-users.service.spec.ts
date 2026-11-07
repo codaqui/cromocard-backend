@@ -239,6 +239,16 @@ describe('AdminUsersService', () => {
       ).rejects.toBeInstanceOf(LastAdminError);
     });
 
+    it('rebaixa um ADMIN quando há outro ADMIN ativo', async () => {
+      const admin1 = buildUser({ role: 'ADMIN', status: 'ACTIVE' });
+      const admin2 = buildUser({ role: 'ADMIN', status: 'ACTIVE' });
+      repository.users = [admin1, admin2];
+
+      const updated = await service.update(admin1.id, { role: 'CUSTOMER' }, adminId);
+
+      expect(updated.role).toBe('CUSTOMER');
+    });
+
     it('lança UserNotFoundError quando o usuário não existe', async () => {
       await expect(
         service.update(crypto.randomUUID(), { name: 'Ana' }, adminId),

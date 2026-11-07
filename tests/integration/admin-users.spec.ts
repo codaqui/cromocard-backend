@@ -162,6 +162,17 @@ describe('POST /api/v1/users', () => {
     expect(res.status).toBe(409);
     expect((res.body as ErrorResponse).error).toBe('EMAIL_ALREADY_REGISTERED');
   });
+
+  it('R11: e-mail inválido responde 400', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({ name: 'Outro', email: 'não-é-email', role: 'CUSTOMER' });
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('PATCH /api/v1/users/:id', () => {
@@ -244,6 +255,18 @@ describe('POST /api/v1/users/:id/suspend', () => {
 
     expect(res.status).toBe(422);
     expect((res.body as ErrorResponse).error).toBe('CANNOT_SUSPEND_SELF');
+  });
+
+  it('R11/R19: motivo ausente responde 400', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/suspend`)
+      .set('Authorization', bearer(admin))
+      .send({});
+
+    expect(res.status).toBe(400);
   });
 });
 
