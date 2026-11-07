@@ -1,5 +1,5 @@
 import { InvalidAuditLogError } from './audit-logs.errors';
-import type { AuditLogEntry, AuditLogRepository } from './audit-logs.repository';
+import type { AuditLogEntry, AuditLogRepository, FindAuditLogsFilters } from './audit-logs.repository';
 import {
   type AuditLogDetails,
   recordAuditLogSchema,
@@ -27,5 +27,35 @@ export class AuditLogService {
   async record(input: RecordAuditLogInput): Promise<AuditLogEntry> {
     const { reason, details, ...auditLog } = parseAuditLog(input);
     return this.auditLogRepository.create({ ...auditLog, details: buildDetails(details, reason) });
+  }
+
+  async list(filters: FindAuditLogsFilters){
+      const page = filters.page || 1;
+      const pageSize = filters.pageSize || 10;
+
+      const [items, total] = await Promise.all([
+        this.auditLogRepository.findMany(filters),
+        this.auditLogRepository.count(filters)
+      ]);
+
+      return{
+        items,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize)
+      };
+  }
+
+  async getById(id: string): Promise<AuditLogEntry>{
+    const log = await this.auditLogRepository.findById(id);
+    if (!log){
+      throw new Error('Log de auditoria não encontrado');
+    }
+    return log;
+  }
+
+  async count(filters: FindAuditLogsFilters): Promise<number>{
+    return this.auditLogRepository.count(filters)
   }
 }

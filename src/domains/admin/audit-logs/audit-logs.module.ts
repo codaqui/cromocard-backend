@@ -1,9 +1,11 @@
-import { prisma } from '@/lib/prisma';
+import { auditLogsRoutes, auditLogService } from './audit-logs.routes';
 
-import { PrismaAuditLogRepository } from './audit-logs.repository';
-import { AuditLogService } from './audit-logs.service';
-
-const auditLogRepository = new PrismaAuditLogRepository(prisma);
-const auditLogService = new AuditLogService(auditLogRepository);
+export const auditLogsModule = {
+    basePath: '/admin/audit-logs',
+    router: auditLogsRoutes,
+    registerDocs: () => {
+        
+    }
+}
 
 export { auditLogService };
