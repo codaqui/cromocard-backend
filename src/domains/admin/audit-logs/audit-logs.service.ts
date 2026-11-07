@@ -31,7 +31,7 @@ export class AuditLogService {
 
   async list(filters: FindAuditLogsFilters){
       const page = filters.page || 1;
-      const limit = filters.limit || 10;
+      const pageSize = filters.pageSize || 10;
 
       const [items, total] = await Promise.all([
         this.auditLogRepository.findMany(filters),
@@ -42,8 +42,8 @@ export class AuditLogService {
         items,
         total,
         page,
-        limit,
-        totalPages: Math.ceil(total / limit)
+        pageSize,
+        totalPages: Math.ceil(total / pageSize)
       };
   }
 
@@ -53,5 +53,9 @@ export class AuditLogService {
       throw new Error('Log de auditoria não encontrado');
     }
     return log;
+  }
+
+  async count(filters: FindAuditLogsFilters): Promise<number>{
+    return this.auditLogRepository.count(filters)
   }
 }

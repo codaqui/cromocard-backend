@@ -43,10 +43,10 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
       ...(filters.entityType && { entityType: filters.entityType }),
       ...(filters.entityId && { entityId: filters.entityId }),
 
-      ...((filters.startDate || filters.endDate) && {
+      ...((filters.from || filters.to) && {
         createdAt: {
-          ...(filters.startDate && { gte: new Date(filters.startDate) }),
-          ...(filters.endDate && { lte: new Date(filters.endDate) }),
+          ...(filters.from && { gte: new Date(filters.from) }),
+          ...(filters.to && { lte: new Date(filters.to) }),
         },
       }),
     };
@@ -54,15 +54,15 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
 
   async findMany(filters: FindAuditLogsFilters): Promise<AuditLogEntry[]> {
     const page = filters.page || 1;
-    const limit = filters.limit || 10;
-    const skip = (page - 1) * limit;
+    const pageSize = filters.pageSize || 10;
+    const skip = (page - 1) * pageSize;
 
     return this.prisma.auditLog.findMany({
       where: this.buildWhereClause(filters),
       select: auditLogEntrySelect,
       orderBy: { createdAt: 'desc' },
       skip,
-      take: limit,
+      take: pageSize,
     });
   }
 
@@ -83,11 +83,11 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
 
 export interface FindAuditLogsFilters{
   page?: number;
-  limit?: number;
+  pageSize?: number;
   adminId?: string;
   action?: string;
   entityType?: string;
   entityId?: string;
-  startDate?: string;
-  endDate?: string
+  from?: string;
+  to?: string
 }

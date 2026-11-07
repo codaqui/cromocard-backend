@@ -56,6 +56,18 @@ export const recordAuditLogSchema = z
     message: 'Esta ação exige motivo',
   });
 
+export const FindAuditLogsFiltersSchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).optional().default(10),
+  adminId: z.string().uuid().optional(),
+  action: z.enum(AUDIT_ACTIONS).optional(),
+  entityType: z.string().optional(),
+  entityId: z.string().uuid().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional()
+})
+
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type RecordAuditLogInput = z.input<typeof recordAuditLogSchema>;
 export type AuditLogDetails = NonNullable<z.infer<typeof recordAuditLogSchema>['details']>;
+export type FindAuditLogsFilters = z.infer<typeof FindAuditLogsFiltersSchema>;
