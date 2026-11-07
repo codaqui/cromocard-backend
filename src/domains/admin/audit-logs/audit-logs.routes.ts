@@ -41,19 +41,19 @@ auditLogsRoutes.get('/', async (req, res, next) => {
 });
 
 auditLogsRoutes.get('/:id', async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const result = await auditLogService.getById(id);
-
-        if(!result) {
-            res.status(404).json({ message: 'AUDIT_LOG_NOT_FOUND' });
-            return;
-        }
-
-        res.json(result);
-    } catch(error) {
-        next(error);
+    const { id } = req.params;
+    const result = await auditLogService.getById(id).catch(next);
+    
+    if (result === undefined) {
+        return;
     }
+    
+    if (result === null) {
+        res.status(404).json({ message: 'AUDIT_LOG_NOT_FOUND' });
+        return;
+    }
+
+    res.json(result);
 });
 
 export { auditLogsRoutes };

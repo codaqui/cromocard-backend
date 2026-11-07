@@ -133,8 +133,7 @@ describe('AuditLogService', () => {
 
   describe('Consultas (list, count, getById)', () => {
   it('deve listar os registros trazendo dados do admin, mesmo se o admin foi excluido (CA1/CA5)', async () => {
-
-    repository.auditLogs.push({
+    const log1 = {
         id: 'log-1',
         adminId: 'admin-excluido-id',
         admin: { id: 'admin-excluido-id', name: 'Admin Excluido'},
@@ -143,41 +142,45 @@ describe('AuditLogService', () => {
         entityId: 'user-1',
         details: null,
         createdAt: new Date(),
-    } as any)
+    };
+    repository.auditLogs.push(log1 as unknown as typeof repository.auditLogs[0]);
 
     const result = await service.list({});
+    const firstItem = result.items[0] as unknown as { admin: { name: string } };
 
     expect(result.items).toHaveLength(1);
-    expect((result.items[0] as any).admin).toMatchObject({ name: 'Admin Excluido' })
+    expect(firstItem.admin).toMatchObject({ name: 'Admin Excluido' });
   });
 
-  it('deve filtrar os registros repassando os parametros corretos para o repositorio (CA2)', async () => {
+  it('deve filtrar os registros repassando os parâmetros corretos para o repositório (CA2)', async () => {
     const repositorySpy = vi.spyOn(repository, 'findMany');
-
-    await service.list({action: 'GROUP_DELETED', pageSize: 10});
-
+    
+    await service.list({ action: 'GROUP_DELETED', pageSize: 10 });
+    
     expect(repositorySpy).toHaveBeenCalledWith(
-      expect.objectContaining({action: 'GROUP_DELETED', pageSize: 10})
+      expect.objectContaining({ action: 'GROUP_DELETED', pageSize: 10 })
     );
   });
 
   it('deve retornar os detalhes completos de um registro (CA3)', async () => {
-    const id = 'log-2'
-    repository.auditLogs.push({
+    const id = 'log-2';
+    const log2 = {
       id,
       adminId: 'admin-ativo-id',
-      admin: {id: 'admin-ativo-id', name: 'Admin Ativo'},
+      admin: { id: 'admin-ativo-id', name: 'Admin Ativo' },
       action: 'REPORT_DISMISSED',
       entityType: 'REPORT',
       entityId: null,
-      details: { reason: 'Resolvido sem punição'},
+      details: { reason: 'Resolvido sem punição' },
       createdAt: new Date(),
-    } as any);
+    };
+    repository.auditLogs.push(log2 as unknown as typeof repository.auditLogs[0]);
 
-    const result = await service.getById(id);
+    const result = await service.getById(id) as unknown as { details: { reason: string } };
+    
     expect(result).toBeDefined();
-    expect(result?.details).toEqual({reason: 'Resolvido sem punição' });
-  })
+    expect(result.details).toEqual({ reason: 'Resolvido sem punição' });
+  });
 })
 
 
