@@ -333,6 +333,10 @@ export class AuthService {
     }
   }
 
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.deps.authRepository.revokeAllRefreshTokens(userId);
+  }
+
   async deleteExpiredTokens(): Promise<number> {
     const { authRepository } = this.deps;
     const [refreshTokens, resetTokens] = await Promise.all([

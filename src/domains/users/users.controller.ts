@@ -1,13 +1,24 @@
 import type { Request, Response } from 'express';
 
 import { getAuthenticatedUser } from '@/shared/middlewares/authenticate';
-import { noContent, ok, paginated } from '@/shared/utils/http-response';
+import { created, noContent, ok, paginated } from '@/shared/utils/http-response';
 
+import type { AdminUsersService } from './admin-users.service';
 import type { UsersService } from './users.service';
-import { listUsersQuerySchema, updateUserSchema } from './users.validator';
+import {
+  adminUpdateUserSchema,
+  createUserSchema,
+  listUsersQuerySchema,
+  reasonSchema,
+  updateUserSchema,
+  userIdParamSchema,
+} from './users.validator';
 
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly adminUsersService: AdminUsersService,
+  ) {}
 
   list = async (req: Request, res: Response): Promise<void> => {
     const { items, meta } = await this.usersService.list(listUsersQuerySchema.parse(req.query));
@@ -27,6 +38,46 @@ export class UsersController {
   deleteMe = async (req: Request, res: Response): Promise<void> => {
     const { id } = getAuthenticatedUser(req);
     await this.usersService.remove(id);
+    noContent(res);
+  };
+
+  getById = async (req: Request, res: Response): Promise<void> => {
+    const { id } = userIdParamSchema.parse(req.params);
+    ok(res, await this.usersService.findById(id));
+  };
+
+  create = async (req: Request, res: Response): Promise<void> => {
+    const { id: adminId } = getAuthenticatedUser(req);
+    const input = createUserSchema.parse(req.body);
+    created(res, await this.adminUsersService.create(input, adminId));
+  };
+
+  update = async (req: Request, res: Response): Promise<void> => {
+    const { id } = userIdParamSchema.parse(req.params);
+    const { id: adminId } = getAuthenticatedUser(req);
+    const input = adminUpdateUserSchema.parse(req.body);
+    ok(res, await this.adminUsersService.update(id, input, adminId));
+  };
+
+  suspend = async (req: Request, res: Response): Promise<void> => {
+    const { id } = userIdParamSchema.parse(req.params);
+    const { id: adminId } = getAuthenticatedUser(req);
+    const input = reasonSchema.parse(req.body);
+    ok(res, await this.adminUsersService.suspend(id, input, adminId));
+  };
+
+  reactivate = async (req: Request, res: Response): Promise<void> => {
+    const { id } = userIdParamSchema.parse(req.params);
+    const { id: adminId } = getAuthenticatedUser(req);
+    const input = reasonSchema.parse(req.body);
+    ok(res, await this.adminUsersService.reactivate(id, input, adminId));
+  };
+
+  remove = async (req: Request, res: Response): Promise<void> => {
+    const { id } = userIdParamSchema.parse(req.params);
+    const { id: adminId } = getAuthenticatedUser(req);
+    const input = reasonSchema.parse(req.body);
+    await this.adminUsersService.remove(id, input, adminId);
     noContent(res);
   };
 }
