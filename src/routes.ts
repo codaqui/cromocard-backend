@@ -10,7 +10,6 @@ import { settingsModule } from '@/domains/admin/settings/settings.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { usersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
-import { auditLogsRoutes } from './domains/admin/audit-logs/audit-logs.routes';
 import { PrismaAuditLogRepository } from './domains/admin/audit-logs/audit-logs.repository';
 import { prisma } from './lib/prisma';
 import { AuditLogService } from './domains/admin/audit-logs/audit-logs.service';
