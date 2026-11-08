@@ -6,8 +6,6 @@ import { z } from '@/lib/zod';
 import { daysAgo, loadSeedData, seedKey } from './load-seed-data';
 import { keyResolver, SeedNamespace } from './seed-id';
 
-const SEED_PASSWORD = 'CromoCard@2026';
-
 const usersSchema = z.array(
   z.object({
     key: seedKey,
@@ -24,8 +22,25 @@ const users = loadSeedData('users.json', usersSchema);
 
 export const userIdOf = keyResolver(SeedNamespace.users, users, 'users.json');
 
-export async function seedUsers(prisma: PrismaClient): Promise<void> {
-  const passwordHash = await hashPassword(SEED_PASSWORD);
+export async function assertSeedEmailsAvailable(prisma: PrismaClient): Promise<void> {
+  const conflicts = await prisma.user.findMany({
+    where: {
+      email: { in: users.map(({ email }) => email) },
+      id: { notIn: users.map(({ key }) => userIdOf(key)) },
+    },
+    select: { email: true },
+  });
+
+  if (conflicts.length > 0) {
+    const emails = conflicts.map(({ email }) => email).join(', ');
+    throw new Error(
+      `Seed: e-mails do seed já usados por outras contas (nada foi gravado): ${emails}`,
+    );
+  }
+}
+
+export async function seedUsers(prisma: PrismaClient, password: string): Promise<void> {
+  const passwordHash = await hashPassword(password);
 
   for (const { key, createdDaysAgo, ...user } of users) {
     const id = userIdOf(key);

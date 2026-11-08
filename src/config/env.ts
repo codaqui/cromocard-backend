@@ -35,6 +35,7 @@ const envSchema = z.object({
   INVITE_TTL: z.coerce.number().int().positive().default(259200),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
+  SEED_USER_PASSWORD: optionalText,
 });
 
 const DEVELOPMENT_API_PUBLIC_URL = 'http://localhost:3000';
