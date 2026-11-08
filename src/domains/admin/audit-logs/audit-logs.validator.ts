@@ -1,5 +1,9 @@
 import { z } from '@/lib/zod';
+import { paginationQuerySchema } from '@/shared/utils/pagination';
 import { reasonSchema } from '@/shared/validators/reason';
+import { BRASILIA_TIME_ZONE, DAY_IN_MS, startOfDayIn } from '@/shared/utils/time-zone';
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const AUDIT_ACTIONS = [
   'USER_CREATED',
@@ -56,6 +60,35 @@ export const recordAuditLogSchema = z
     message: 'Esta ação exige motivo',
   });
 
+export const listAuditLogsQuerySchema = paginationQuerySchema.extend({
+  adminId: z.uuid().optional(),
+  action: z.enum(AUDIT_ACTIONS).optional(),
+  entityType: z.string().trim().min(1).max(60).optional(),
+  entityId: z.uuid().optional(),
+  from: z.iso.datetime({ offset: true }).or(z.iso.date()).optional(),
+  to: z.iso.datetime({ offset: true }).or(z.iso.date()).optional(),
+});
+
+export const auditLogIdParamSchema = z.object({
+  id: z.uuid(),
+});
+
+export function parseAuditLogFromDate(value: string): Date {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    return startOfDayIn(new Date(`${value}T12:00:00Z`), BRASILIA_TIME_ZONE);
+  }
+  return new Date(value);
+}
+
+export function parseAuditLogToDate(value: string): Date {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const start = startOfDayIn(new Date(`${value}T12:00:00Z`), BRASILIA_TIME_ZONE);
+    return new Date(start.getTime() + DAY_IN_MS - 1);
+  }
+  return new Date(value);
+}
+
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type RecordAuditLogInput = z.input<typeof recordAuditLogSchema>;
 export type AuditLogDetails = NonNullable<z.infer<typeof recordAuditLogSchema>['details']>;
+export type ListAuditLogsQuery = z.infer<typeof listAuditLogsQuerySchema>;
