@@ -3,11 +3,10 @@ import type {
   RecordAuditLogInput,
 } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { AppError } from '@/shared/errors/app-error';
-import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
-import type { Album, AlbumsRepository } from './albums.repository';
-import type { Card, CardsRepository } from './cards.repository';
+import type { Album, AlbumsRepository } from './catalog-albums.repository';
+import type { Card, CardsRepository } from './catalog-cards.repository';
 import {
   AlbumHasCardsError,
   AlbumNotFoundError,
@@ -17,8 +16,10 @@ import {
   CategoryInUseError,
   CategoryNotFoundError,
   CategoryParentInvalidError,
+  CategoryTypeMismatchError,
   LanguageNotFoundError,
   RarityNotFoundError,
+  rejectDuplicateNumber,
 } from './catalog.errors';
 import type {
   CreateAlbumInput,
@@ -31,8 +32,9 @@ import type {
   UpdateCardInput,
   UpdateCategoryInput,
 } from './catalog.validator';
-import type { CategoriesRepository, Category } from './categories.repository';
-import type { CatalogReference, ReferencesRepository } from './references.repository';
+import type { CategoryType } from '@/generated/prisma/enums';
+import type { CategoriesRepository, Category } from './catalog-categories.repository';
+import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
 export interface CatalogAuditLog {
   record(input: RecordAuditLogInput): Promise<unknown>;
@@ -83,11 +85,6 @@ function keepOrReplace<T>(replacement: T | undefined, current: T): T {
   return replacement === undefined ? current : replacement;
 }
 
-function rejectDuplicateNumber(error: unknown): never {
-  if (isUniqueConstraintError(error)) throw new CardNumberTakenError();
-  throw error;
-}
-
 export class CatalogService {
   constructor(private readonly deps: CatalogServiceDeps) {}
 
@@ -103,7 +100,7 @@ export class CatalogService {
   }
 
   async createAlbum(adminId: string, input: CreateAlbumInput): Promise<Album> {
-    await this.ensureCategory(input.categoryId);
+    await this.ensureCategory(input.categoryId, 'ALBUM');
     const album = await this.deps.albums.create(input);
     await this.audit(adminId, { action: 'ALBUM_CREATED', entityType: 'album', entityId: album.id });
     return album;
@@ -111,7 +108,7 @@ export class CatalogService {
 
   async updateAlbum(adminId: string, id: string, input: UpdateAlbumInput): Promise<Album> {
     await this.findAlbum(id);
-    await this.ensureCategory(input.categoryId);
+    await this.ensureCategory(input.categoryId, 'ALBUM');
     const album = await this.deps.albums.update(id, input);
     await this.audit(adminId, { action: 'ALBUM_UPDATED', entityType: 'album', entityId: id });
     return album;
@@ -127,6 +124,10 @@ export class CatalogService {
   async listCards(query: ListCardsQuery): Promise<Paginated<Card>> {
     const { items, total } = await this.deps.cards.findPage(query);
     return { items, meta: buildPaginationMeta(query, total) };
+  }
+
+  countCards(): Promise<number> {
+    return this.deps.cards.count();
   }
 
   async findCard(id: string): Promise<Card> {
@@ -173,7 +174,7 @@ export class CatalogService {
   }
 
   async createCategory(adminId: string, input: CreateCategoryInput): Promise<Category> {
-    await this.ensureCategory(input.parentCategoryId);
+    await this.ensureCategory(input.parentCategoryId, input.type);
     const category = await this.deps.categories.create(input);
     await this.audit(adminId, {
       action: 'CATEGORY_CREATED',
@@ -184,8 +185,12 @@ export class CatalogService {
   }
 
   async updateCategory(adminId: string, id: string, input: UpdateCategoryInput): Promise<Category> {
-    await this.findCategory(id);
-    await this.ensureCategory(input.parentCategoryId);
+    const current = await this.findCategory(id);
+    await this.ensureTypeChangeAllowed(current, input.type);
+    await this.ensureCategory(
+      keepOrReplace(input.parentCategoryId, current.parentCategoryId),
+      keepOrReplace(input.type, current.type),
+    );
     await this.ensureNotOwnAncestor(id, input.parentCategoryId);
     const category = await this.deps.categories.update(id, input);
     await this.audit(adminId, { action: 'CATEGORY_UPDATED', entityType: 'category', entityId: id });
@@ -227,7 +232,7 @@ export class CatalogService {
   private async ensureCardReferences(input: CardReferences): Promise<void> {
     await Promise.all([
       this.ensureAlbum(input.albumId),
-      this.ensureCategory(input.categoryId),
+      this.ensureCategory(input.categoryId, 'CARD'),
       this.ensureRarity(input.rarityId),
       this.ensureLanguage(input.languageId),
     ]);
@@ -260,13 +265,19 @@ export class CatalogService {
     );
   }
 
-  private ensureCategory(categoryId: string | null | undefined): Promise<void> {
-    const { categories } = this.deps;
-    return ensureReference(
-      categoryId,
-      async (id) => (await categories.findById(id)) !== null,
-      () => new CategoryNotFoundError(),
-    );
+  private async ensureCategory(
+    categoryId: string | null | undefined,
+    type: CategoryType,
+  ): Promise<void> {
+    if (!categoryId) return;
+    const category = await this.deps.categories.findById(categoryId);
+    if (!category) throw new CategoryNotFoundError();
+    if (category.type !== type) throw new CategoryTypeMismatchError();
+  }
+
+  private async ensureTypeChangeAllowed(current: Category, type: CategoryType | undefined) {
+    if (!type || type === current.type) return;
+    if (await this.deps.categories.isInUse(current.id)) throw new CategoryTypeMismatchError();
   }
 
   private async ensureNotOwnAncestor(id: string, parentId: string | null | undefined) {

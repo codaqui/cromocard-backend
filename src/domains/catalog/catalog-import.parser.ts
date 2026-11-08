@@ -46,19 +46,31 @@ const cardImportRowSchema = z.object({
 export type CardImportColumn = (typeof CARD_IMPORT_COLUMNS)[number];
 export type CardImportRow = z.infer<typeof cardImportRowSchema> & { line: number };
 
+export interface LineErrors {
+  line: number;
+  errors: ErrorDetail[];
+}
+
 export interface ParsedCardImport {
   rows: CardImportRow[];
-  errors: ErrorDetail[];
+  errors: LineErrors[];
 }
+
+type CsvCells = Partial<Record<CardImportColumn, string>>;
 
 interface CsvRecord {
-  record: string[];
-  info: { lines: number };
+  record: CsvCells;
+  info: { lines: number; invalid_field_length: number };
 }
 
-interface ParsedLine {
+interface CsvLine {
+  cells: CsvCells;
+  line: number;
+  hasWrongColumnCount: boolean;
+}
+
+interface ParsedLine extends LineErrors {
   row?: CardImportRow;
-  errors: ErrorDetail[];
 }
 
 function fileError(message: string): CsvInvalidError {
@@ -71,55 +83,62 @@ function toCsvInvalid(error: unknown): unknown {
     : error;
 }
 
+function headerColumns(header: string[]): string[] {
+  const columns = header.map((column) => column.toLowerCase());
+  if (columns.join(CSV_DELIMITER) !== EXPECTED_HEADER) {
+    throw fileError(`A primeira linha deve ser ${EXPECTED_HEADER}`);
+  }
+  return columns;
+}
+
 function readRecords(content: Buffer): CsvRecord[] {
   try {
-    // A tipagem do csv-parse declara string[][] mesmo com info: true, que devolve { record, info }.
-    return parse(content, {
+    return parse<CsvRecord>(content, {
+      columns: headerColumns,
       delimiter: CSV_DELIMITER,
       bom: true,
       info: true,
       skip_empty_lines: true,
       trim: true,
       relax_column_count: true,
-    }) as unknown as CsvRecord[];
+    });
   } catch (error) {
     throw toCsvInvalid(error);
   }
 }
 
-function ensureHeader(header: string[] | undefined): void {
-  const received = header?.map((column) => column.toLowerCase()).join(CSV_DELIMITER);
-  if (received !== EXPECTED_HEADER) {
-    throw fileError(`A primeira linha deve ser ${EXPECTED_HEADER}`);
-  }
+function toCsvLines(records: CsvRecord[]): CsvLine[] {
+  return records.map(({ record, info }, index) => ({
+    cells: record,
+    line: info.lines,
+    hasWrongColumnCount:
+      info.invalid_field_length > (records[index - 1]?.info.invalid_field_length ?? 0),
+  }));
 }
 
-function parseLine({ record, info }: CsvRecord): ParsedLine {
-  const line = info.lines;
-  if (record.length !== CARD_IMPORT_COLUMNS.length) {
+function parseLine({ cells, line, hasWrongColumnCount }: CsvLine): ParsedLine {
+  if (hasWrongColumnCount) {
     const message = `A linha deve ter ${CARD_IMPORT_COLUMNS.length} colunas separadas por ;`;
-    return { errors: [{ field: `${line}.columns`, message }] };
+    return { line, errors: [{ field: `${line}.columns`, message }] };
   }
 
-  const cells = Object.fromEntries(CARD_IMPORT_COLUMNS.map((column, i) => [column, record[i]]));
   const result = cardImportRowSchema.safeParse(cells);
-  if (result.success) return { row: { ...result.data, line }, errors: [] };
+  if (result.success) return { row: { ...result.data, line }, line, errors: [] };
 
   const errors = result.error.issues.map((issue) => ({
     field: `${line}.${issue.path.join('.')}`,
     message: issue.message,
   }));
-  return { errors };
+  return { line, errors };
 }
 
 export function parseCardImport(content: Buffer): ParsedCardImport {
-  const [header, ...records] = readRecords(content);
-  ensureHeader(header?.record);
+  const records = readRecords(content);
   if (records.length === 0) throw fileError('O arquivo não tem nenhuma carta');
 
-  const lines = records.map(parseLine);
+  const lines = toCsvLines(records).map(parseLine);
   return {
     rows: lines.flatMap(({ row }) => (row ? [row] : [])),
-    errors: lines.flatMap(({ errors }) => errors),
+    errors: lines.filter(({ errors }) => errors.length > 0),
   };
 }

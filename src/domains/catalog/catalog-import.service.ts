@@ -1,14 +1,14 @@
-import { CsvInvalidError } from './catalog.errors';
+import { CsvInvalidError, rejectDuplicateNumber } from './catalog.errors';
 import type { CatalogAuditLog } from './catalog.service';
 import { type CardImportRow, parseCardImport } from './catalog-import.parser';
 import type { CatalogImportRepository } from './catalog-import.repository';
 import {
   checkNumbers,
+  errorsInLineOrder,
   indexByName,
   type ReferenceIndexes,
   resolveReferences,
   type ResolvedRow,
-  sortByLine,
 } from './catalog-import.rows';
 
 export interface CardImportResult {
@@ -32,11 +32,11 @@ export class CatalogImportService {
   async importCards(adminId: string, content: Buffer): Promise<CardImportResult> {
     const { rows, errors } = parseCardImport(content);
     const resolved = await this.resolveRows(rows);
-    const problems = [...errors, ...resolved.flatMap((row) => row.errors)];
-    if (problems.length > 0) throw new CsvInvalidError(sortByLine(problems));
+    const problems = errorsInLineOrder([...errors, ...resolved]);
+    if (problems.length > 0) throw new CsvInvalidError(problems);
 
     const cards = resolved.map(({ card }) => card);
-    await this.repository.saveCards(cards);
+    await this.repository.saveCards(cards).catch(rejectDuplicateNumber);
     await this.auditLog.record({
       adminId,
       action: 'CARDS_IMPORTED',
@@ -49,7 +49,9 @@ export class CatalogImportService {
   private async resolveRows(rows: CardImportRow[]): Promise<ResolvedRow[]> {
     const indexes = await this.loadIndexes(rows);
     const withReferences = rows.map((row) => resolveReferences(row, indexes));
-    const existing = await this.repository.findCardNumbers(albumIdsOf(withReferences));
+    const existing = await this.repository.findCardNumbersIncludingDeleted(
+      albumIdsOf(withReferences),
+    );
     return checkNumbers(withReferences, existing);
   }
 

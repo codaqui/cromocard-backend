@@ -1,5 +1,6 @@
 import { AppError, type ErrorDetail } from '@/shared/errors/app-error';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/shared/errors/http-errors';
+import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
 
 export class AlbumNotFoundError extends NotFoundError {
   constructor() {
@@ -65,6 +66,20 @@ export class CategoryParentInvalidError extends BusinessRuleError {
       'CATEGORY_PARENT_INVALID',
     );
   }
+}
+
+export class CategoryTypeMismatchError extends BusinessRuleError {
+  constructor() {
+    super(
+      'A categoria precisa ser do tipo do item: álbum com categoria de álbum, carta com categoria de carta e subcategoria do mesmo tipo da categoria pai',
+      'CATEGORY_TYPE_MISMATCH',
+    );
+  }
+}
+
+export function rejectDuplicateNumber(error: unknown): never {
+  if (isUniqueConstraintError(error)) throw new CardNumberTakenError();
+  throw error;
 }
 
 export class CsvInvalidError extends AppError {

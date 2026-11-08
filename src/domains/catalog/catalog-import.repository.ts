@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@/generated/prisma/client';
 import { notDeleted } from '@/shared/utils/soft-delete';
 
-import { emptyOptionalCardFields, refreshAlbumTotals } from './cards.repository';
+import { emptyOptionalCardFields, refreshAlbumTotals } from './catalog-cards.repository';
 
 export interface NamedReference {
   id: string;
@@ -30,11 +30,11 @@ export interface CatalogImportRepository {
   findCardCategoriesByNames(names: string[]): Promise<NamedReference[]>;
   findRarities(): Promise<NamedReference[]>;
   findLanguagesByCode(): Promise<NamedReference[]>;
-  findCardNumbers(albumIds: string[]): Promise<CardNumberRecord[]>;
+  findCardNumbersIncludingDeleted(albumIds: string[]): Promise<CardNumberRecord[]>;
   saveCards(cards: ImportedCard[]): Promise<void>;
 }
 
-function cardData({ restoreId: _restoreId, ...card }: ImportedCard) {
+function withoutRestoreId({ restoreId: _restoreId, ...card }: ImportedCard) {
   return card;
 }
 
@@ -68,7 +68,7 @@ export class PrismaCatalogImportRepository implements CatalogImportRepository {
     return languages.map(({ id, code }) => ({ id, name: code }));
   }
 
-  findCardNumbers(albumIds: string[]): Promise<CardNumberRecord[]> {
+  findCardNumbersIncludingDeleted(albumIds: string[]): Promise<CardNumberRecord[]> {
     return this.prisma.card.findMany({
       where: { albumId: { in: albumIds }, number: { not: null } },
       select: { id: true, albumId: true, number: true, deletedAt: true },
@@ -76,7 +76,7 @@ export class PrismaCatalogImportRepository implements CatalogImportRepository {
   }
 
   async saveCards(cards: ImportedCard[]): Promise<void> {
-    const created = cards.filter(({ restoreId }) => !restoreId).map(cardData);
+    const created = cards.filter(({ restoreId }) => !restoreId).map(withoutRestoreId);
     const restored = cards.filter(({ restoreId }) => restoreId);
 
     await this.prisma.$transaction(async (tx) => {
@@ -87,7 +87,7 @@ export class PrismaCatalogImportRepository implements CatalogImportRepository {
           data: {
             ...emptyOptionalCardFields,
             frontImageUrl: null,
-            ...cardData(card),
+            ...withoutRestoreId(card),
             deletedAt: null,
           },
         });

@@ -1,3 +1,4 @@
+import { catalogService } from '@/domains/catalog/catalog.module';
 import { usersService } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
 
@@ -6,7 +7,11 @@ import { createDashboardRoutes } from './dashboard.routes';
 import { DashboardService } from './dashboard.service';
 import { registerDashboardDocs } from './dashboard.swagger';
 
-const dashboardService = new DashboardService({ users: usersService, now: () => new Date() });
+const dashboardService = new DashboardService({
+  users: usersService,
+  catalog: catalogService,
+  now: () => new Date(),
+});
 
 export const dashboardModule: DomainModule = {
   basePath: '/admin/dashboard',

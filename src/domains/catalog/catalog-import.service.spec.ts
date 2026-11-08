@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
+import { Prisma } from '@/generated/prisma/client';
 import type { ErrorDetail } from '@/shared/errors/app-error';
 
-import { CsvInvalidError } from './catalog.errors';
+import { CardNumberTakenError, CsvInvalidError } from './catalog.errors';
 import { CARD_IMPORT_TEMPLATE } from './catalog-import.parser';
 import type {
   CardNumberRecord,
@@ -49,7 +50,7 @@ class InMemoryCatalogImportRepository implements CatalogImportRepository {
     return Promise.resolve(this.languages);
   }
 
-  findCardNumbers(albumIds: string[]): Promise<CardNumberRecord[]> {
+  findCardNumbersIncludingDeleted(albumIds: string[]): Promise<CardNumberRecord[]> {
     return Promise.resolve(
       this.cardNumbers.filter(({ albumId }) => albumId && albumIds.includes(albumId)),
     );
@@ -198,11 +199,26 @@ describe('CatalogImportService', () => {
     expect(repository.saved[0]).toMatchObject({ restoreId: deletedId, name: 'Volta' });
   });
 
-  it('CA6: aponta linha com quantidade errada de colunas', async () => {
-    const errors = await importErrors(service.importCards(ADMIN_ID, csv('Copa 2026;1;Jogador')));
+  it('R7: importação simultânea barrada pelo índice único responde CARD_NUMBER_TAKEN', async () => {
+    const duplicate = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'teste',
+    });
+    vi.spyOn(repository, 'saveCards').mockRejectedValueOnce(duplicate);
+
+    await expect(service.importCards(ADMIN_ID, csv('Copa 2026;1;Jogador;;;'))).rejects.toThrow(
+      CardNumberTakenError,
+    );
+    expect(auditLog.entries).toEqual([]);
+  });
+
+  it('CA6: aponta linha com colunas a menos ou a mais', async () => {
+    const lines = ['Copa 2026;1;Jogador', 'Copa 2026;2;Jogador;Comum;pt-BR;;sobra'];
+    const errors = await importErrors(service.importCards(ADMIN_ID, csv(...lines)));
 
     expect(errors).toEqual([
       { field: '2.columns', message: 'A linha deve ter 6 colunas separadas por ;' },
+      { field: '3.columns', message: 'A linha deve ter 6 colunas separadas por ;' },
     ]);
   });
 

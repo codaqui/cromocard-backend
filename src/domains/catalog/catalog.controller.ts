@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 
-import { MissingFileError } from '@/domains/uploads/uploads.errors';
+import { MissingFileError } from '@/domains/uploads/uploads.module';
 import { getAuthenticatedUser } from '@/shared/middlewares/authenticate';
 import { created, noContent, ok, paginated } from '@/shared/utils/http-response';
 

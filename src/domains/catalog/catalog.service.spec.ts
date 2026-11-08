@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { Prisma } from '@/generated/prisma/client';
 
-import type { Album, AlbumsPage, AlbumsRepository } from './albums.repository';
+import type { Album, AlbumsPage, AlbumsRepository } from './catalog-albums.repository';
 import type {
   AlbumCardNumber,
   Card,
   CardNumberOwner,
   CardsPage,
   CardsRepository,
-} from './cards.repository';
+} from './catalog-cards.repository';
 import {
   AlbumHasCardsError,
   AlbumNotFoundError,
@@ -20,6 +20,7 @@ import {
   CategoryInUseError,
   CategoryNotFoundError,
   CategoryParentInvalidError,
+  CategoryTypeMismatchError,
   LanguageNotFoundError,
   RarityNotFoundError,
 } from './catalog.errors';
@@ -32,8 +33,12 @@ import type {
   UpdateCardInput,
   UpdateCategoryInput,
 } from './catalog.validator';
-import type { CategoriesPage, CategoriesRepository, Category } from './categories.repository';
-import type { CatalogReference, ReferencesRepository } from './references.repository';
+import type {
+  CategoriesPage,
+  CategoriesRepository,
+  Category,
+} from './catalog-categories.repository';
+import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
 type Stored<T> = T & { deletedAt: Date | null };
 
@@ -172,6 +177,10 @@ class InMemoryCardsRepository implements CardsRepository {
     const count = this.cards.filter((card) => card.albumId === albumId && !card.deletedAt).length;
     return Promise.resolve(count);
   }
+
+  count(): Promise<number> {
+    return Promise.resolve(this.cards.filter((card) => !card.deletedAt).length);
+  }
 }
 
 class InMemoryCategoriesRepository implements CategoriesRepository {
@@ -270,6 +279,8 @@ describe('CatalogService', () => {
   });
 
   const newAlbum = () => service.createAlbum(ADMIN_ID, { title: 'Copa 2026' });
+  const categoryOfType = (type: CreateCategoryInput['type']) =>
+    service.createCategory(ADMIN_ID, { name: `Categoria ${type}`, type });
   const newCard = (input: Partial<CreateCardInput> = {}) =>
     service.createCard(ADMIN_ID, { name: 'Pikachu', frontImageUrl: FRONT_IMAGE_URL, ...input });
 
@@ -299,6 +310,19 @@ describe('CatalogService', () => {
       const input = { title: 'Copa', categoryId: crypto.randomUUID() };
 
       await expect(service.createAlbum(ADMIN_ID, input)).rejects.toThrow(CategoryNotFoundError);
+    });
+
+    it('L9: álbum só aceita categoria de álbum', async () => {
+      const cardCategory = await categoryOfType('CARD');
+      const albumCategory = await categoryOfType('ALBUM');
+      const album = await newAlbum();
+
+      await expect(
+        service.createAlbum(ADMIN_ID, { title: 'Copa', categoryId: cardCategory.id }),
+      ).rejects.toThrow(CategoryTypeMismatchError);
+      await expect(
+        service.updateAlbum(ADMIN_ID, album.id, { categoryId: albumCategory.id }),
+      ).resolves.toMatchObject({ categoryId: albumCategory.id });
     });
 
     it('R4: responde 404 para álbum inexistente', async () => {
@@ -411,6 +435,26 @@ describe('CatalogService', () => {
       await expect(newCard({ languageId: missing })).rejects.toThrow(LanguageNotFoundError);
     });
 
+    it('L9: carta só aceita categoria de carta', async () => {
+      const albumCategory = await categoryOfType('ALBUM');
+      const cardCategory = await categoryOfType('CARD');
+
+      await expect(newCard({ categoryId: albumCategory.id })).rejects.toThrow(
+        CategoryTypeMismatchError,
+      );
+      await expect(newCard({ categoryId: cardCategory.id })).resolves.toMatchObject({
+        categoryId: cardCategory.id,
+      });
+    });
+
+    it('conta as cartas ativas do catálogo para o dashboard', async () => {
+      await newCard();
+      const deleted = await newCard({ name: 'Excluída' });
+      await service.deleteCard(ADMIN_ID, deleted.id);
+
+      await expect(service.countCards()).resolves.toBe(1);
+    });
+
     it('R6: aceita raridade e idioma do seed', async () => {
       const rarityId = references.rarities[0]?.id;
       const languageId = references.languages[0]?.id;
@@ -498,6 +542,35 @@ describe('CatalogService', () => {
       });
 
       expect(moved.parentCategoryId).toBe(games.id);
+    });
+
+    it('L7, L9: a categoria pai precisa ser do mesmo tipo', async () => {
+      const albumRoot = await newCategory({ name: 'Esportes' });
+      const cardRoot = await newCategory({ name: 'Jogadores', type: 'CARD' });
+
+      await expect(
+        newCategory({ name: 'Atacantes', type: 'CARD', parentCategoryId: albumRoot.id }),
+      ).rejects.toThrow(CategoryTypeMismatchError);
+      await expect(
+        service.updateCategory(ADMIN_ID, cardRoot.id, { parentCategoryId: albumRoot.id }),
+      ).rejects.toThrow(CategoryTypeMismatchError);
+    });
+
+    it('L9: trocar o tipo confere a categoria pai e o uso da categoria', async () => {
+      const root = await newCategory({ name: 'Esportes' });
+      const child = await newCategory({ name: 'Futebol', parentCategoryId: root.id });
+      const free = await newCategory({ name: 'Livre' });
+      categories.inUse.add(root.id);
+
+      await expect(service.updateCategory(ADMIN_ID, child.id, { type: 'CARD' })).rejects.toThrow(
+        CategoryTypeMismatchError,
+      );
+      await expect(service.updateCategory(ADMIN_ID, root.id, { type: 'CARD' })).rejects.toThrow(
+        CategoryTypeMismatchError,
+      );
+      await expect(
+        service.updateCategory(ADMIN_ID, free.id, { type: 'CARD' }),
+      ).resolves.toMatchObject({ type: 'CARD' });
     });
 
     it('R15: recusa categoria pai inexistente', async () => {

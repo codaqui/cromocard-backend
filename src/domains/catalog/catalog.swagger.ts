@@ -1,5 +1,6 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
+import { MAX_UPLOAD_SIZE_IN_MEGABYTES } from '@/domains/uploads/uploads.module';
 import { z } from '@/lib/zod';
 
 import {
@@ -95,6 +96,7 @@ interface CatalogResource {
   response: z.ZodType;
   notFound: string;
   writeErrors: RouteConfig['responses'];
+  updateErrors?: RouteConfig['responses'];
   deleteError: string;
 }
 
@@ -149,6 +151,7 @@ function updatePath(resource: CatalogResource): RouteConfig {
       ...accessErrors,
       404: { description: resource.notFound },
       ...resource.writeErrors,
+      ...resource.updateErrors,
     },
   };
 }
@@ -175,6 +178,9 @@ function resourcePaths(resource: CatalogResource): RouteConfig[] {
   return [listPath(resource), createPath(resource), updatePath(resource), deletePath(resource)];
 }
 
+const CATEGORY_TYPE_MISMATCH = 'CATEGORY_TYPE_MISMATCH';
+const CATEGORY_PARENT_TYPE_MISMATCH = `${CATEGORY_TYPE_MISMATCH}: a categoria pai é de outro tipo`;
+
 const resources: CatalogResource[] = [
   {
     path: '/albums',
@@ -184,7 +190,10 @@ const resources: CatalogResource[] = [
     updateBody: updateAlbumSchema,
     response: albumResponse,
     notFound: 'ALBUM_NOT_FOUND',
-    writeErrors: { 404: { description: 'ALBUM_NOT_FOUND ou CATEGORY_NOT_FOUND' } },
+    writeErrors: {
+      404: { description: 'ALBUM_NOT_FOUND ou CATEGORY_NOT_FOUND' },
+      422: { description: `${CATEGORY_TYPE_MISMATCH}: o álbum só aceita categoria de álbum` },
+    },
     deleteError: 'ALBUM_HAS_CARDS: o álbum tem cartas',
   },
   {
@@ -201,6 +210,7 @@ const resources: CatalogResource[] = [
           'CARD_NOT_FOUND, ALBUM_NOT_FOUND, CATEGORY_NOT_FOUND, RARITY_NOT_FOUND ou LANGUAGE_NOT_FOUND',
       },
       409: { description: 'CARD_NUMBER_TAKEN: número já usado no álbum' },
+      422: { description: `${CATEGORY_TYPE_MISMATCH}: a carta só aceita categoria de carta` },
     },
     deleteError: 'CARD_IN_USE: a carta está em coleções',
   },
@@ -214,9 +224,11 @@ const resources: CatalogResource[] = [
     notFound: 'CATEGORY_NOT_FOUND',
     writeErrors: {
       404: { description: 'CATEGORY_NOT_FOUND (a categoria ou a categoria pai)' },
+      422: { description: CATEGORY_PARENT_TYPE_MISMATCH },
+    },
+    updateErrors: {
       422: {
-        description:
-          'CATEGORY_PARENT_INVALID: a categoria pai é ela mesma ou uma subcategoria dela',
+        description: `${CATEGORY_PARENT_TYPE_MISMATCH}, ou o tipo mudou com a categoria em uso; CATEGORY_PARENT_INVALID: a categoria pai é ela mesma ou uma subcategoria dela`,
       },
     },
     deleteError: 'CATEGORY_IN_USE: a categoria tem álbuns, cartas ou subcategorias',
@@ -257,7 +269,10 @@ const importPaths: RouteConfig[] = [
       201: { description: 'Cartas importadas', ...single(z.object({ created: count })) },
       400: { description: 'Arquivo ausente no campo file' },
       ...accessErrors,
-      413: { description: 'Arquivo acima de 4 MB' },
+      409: {
+        description: 'CARD_NUMBER_TAKEN: outro administrador ocupou um número durante a importação',
+      },
+      413: { description: `Arquivo acima de ${MAX_UPLOAD_SIZE_IN_MEGABYTES} MB` },
       422: { description: 'CSV_INVALID: `details` lista cada erro como `<linha>.<coluna>`' },
     },
   },

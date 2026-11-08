@@ -71,6 +71,7 @@ export interface CardsRepository {
   update(id: string, input: UpdateCardInput): Promise<Card>;
   softDelete(id: string): Promise<void>;
   countByAlbum(albumId: string): Promise<number>;
+  count(): Promise<number>;
 }
 
 function buildSearchFilter(q?: string): Prisma.CardWhereInput {
@@ -169,5 +170,9 @@ export class PrismaCardsRepository implements CardsRepository {
 
   countByAlbum(albumId: string): Promise<number> {
     return this.prisma.card.count({ where: { albumId, ...notDeleted } });
+  }
+
+  count(): Promise<number> {
+    return this.prisma.card.count({ where: notDeleted });
   }
 }

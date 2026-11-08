@@ -1,6 +1,6 @@
 import type { ErrorDetail } from '@/shared/errors/app-error';
 
-import type { CardImportColumn, CardImportRow } from './catalog-import.parser';
+import type { CardImportColumn, CardImportRow, LineErrors } from './catalog-import.parser';
 import type { CardNumberRecord, ImportedCard, NamedReference } from './catalog-import.repository';
 
 export type NameIndex = Map<string, string[]>;
@@ -12,10 +12,8 @@ type ReferenceColumn = Extract<
 
 export type ReferenceIndexes = Record<ReferenceColumn, NameIndex>;
 
-export interface ResolvedRow {
-  line: number;
+export interface ResolvedRow extends LineErrors {
   card: ImportedCard;
-  errors: ErrorDetail[];
 }
 
 interface ResolvedReference {
@@ -79,6 +77,17 @@ function numberKey(albumId: string, number: string): string {
   return `${albumId}:${number}`;
 }
 
+type NumberedCard = CardNumberRecord & AlbumNumber;
+
+interface AlbumNumber {
+  albumId: string;
+  number: string;
+}
+
+function hasAlbumNumber(owner: CardNumberRecord): owner is NumberedCard {
+  return owner.albumId !== null && owner.number !== null;
+}
+
 function withNumberError(row: ResolvedRow, message: string): ResolvedRow {
   return { ...row, errors: [...row.errors, { field: `${row.line}.number`, message }] };
 }
@@ -103,20 +112,14 @@ function checkRowNumber(
 
 export function checkNumbers(rows: ResolvedRow[], existing: CardNumberRecord[]): ResolvedRow[] {
   const owners = new Map(
-    existing.flatMap(({ albumId, number, ...owner }) =>
-      albumId && number
-        ? [[numberKey(albumId, number), { albumId, number, ...owner }] as const]
-        : [],
-    ),
+    existing.filter(hasAlbumNumber).map((owner) => [numberKey(owner.albumId, owner.number), owner]),
   );
   const seen = new Set<string>();
   return rows.map((row) => checkRowNumber(row, owners, seen));
 }
 
-function lineOf({ field }: ErrorDetail): number {
-  return Number.parseInt(field, 10);
-}
-
-export function sortByLine(errors: ErrorDetail[]): ErrorDetail[] {
-  return [...errors].sort((first, second) => lineOf(first) - lineOf(second));
+export function errorsInLineOrder(lines: LineErrors[]): ErrorDetail[] {
+  return [...lines]
+    .sort((first, second) => first.line - second.line)
+    .flatMap(({ errors }) => errors);
 }

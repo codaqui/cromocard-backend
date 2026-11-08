@@ -10,7 +10,7 @@
     "requester": "bruno",
     "type": "ALBUM",
     "data": {
-      "category": "pokemon",
+      "category": "pokemon-tcg",
       "title": "Pokémon Jungle",
       "publisher": "Wizards of the Coast",
       "year": 1999

@@ -21,7 +21,7 @@ const dashboardSummaryResponse = z.object({
     kpis: z.object({
       totalUsers: count,
       totalCards: count.nullable().openapi({
-        description: 'null até o catálogo (CCD061) expor a contagem de cartas',
+        description: 'Cartas ativas do catálogo (CCD061); null quando o catálogo não está ligado',
       }),
       newUsers: count,
       newSellers: count,
