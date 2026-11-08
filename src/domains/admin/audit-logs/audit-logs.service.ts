@@ -46,7 +46,7 @@ function extractReason(details: unknown): string | null {
   if (!details || typeof details !== 'object' || !('reason' in details)) {
     return null;
   }
-  
+
   const reason = (details as { reason?: unknown }).reason;
   return typeof reason === 'string' ? reason : null;
 }

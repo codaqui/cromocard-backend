@@ -8,11 +8,14 @@ import {
   type AuditLogListResult,
   type AuditLogRepository,
   type NewAuditLog,
-  parseAuditLogFromDate,
-  parseAuditLogToDate,
 } from './audit-logs.repository';
 import { AuditLogService } from './audit-logs.service';
-import type { ListAuditLogsQuery, RecordAuditLogInput } from './audit-logs.validator';
+import {
+  type ListAuditLogsQuery,
+  type RecordAuditLogInput,
+  parseAuditLogFromDate,
+  parseAuditLogToDate,
+} from './audit-logs.validator';
 
 class InMemoryAuditLogRepository implements AuditLogRepository {
   auditLogs: AuditLogEntry[] = [];
@@ -241,6 +244,28 @@ describe('AuditLogService', () => {
 
     it('lança AuditLogNotFoundError (404 AUDIT_LOG_NOT_FOUND) quando o registro não existe (R6)', async () => {
       await expect(service.getById(crypto.randomUUID())).rejects.toThrow(AuditLogNotFoundError);
+    });
+
+    it('respeita a hora exata quando from e to incluem horário ISO', async () => {
+      const first = await service.record(buildInput({ action: 'USER_SUSPENDED' }));
+      first.createdAt = new Date('2026-11-07T15:00:00.000Z');
+
+      const second = await service.record(buildInput({ action: 'GROUP_DELETED' }));
+      second.createdAt = new Date('2026-11-07T20:00:00.000Z');
+
+      const afterEighteen = await service.list({
+        page: 1,
+        pageSize: 10,
+        from: '2026-11-07T18:00:00Z',
+      });
+      const beforeSixteen = await service.list({
+        page: 1,
+        pageSize: 10,
+        to: '2026-11-07T16:00:00Z',
+      });
+
+      expect(afterEighteen.items.map((item) => item.id)).toEqual([second.id]);
+      expect(beforeSixteen.items.map((item) => item.id)).toEqual([first.id]);
     });
   });
 });

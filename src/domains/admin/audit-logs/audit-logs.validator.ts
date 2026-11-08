@@ -1,6 +1,9 @@
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 import { reasonSchema } from '@/shared/validators/reason';
+import { BRASILIA_TIME_ZONE, DAY_IN_MS, startOfDayIn } from '@/shared/utils/time-zone';
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const AUDIT_ACTIONS = [
   'USER_CREATED',
@@ -69,6 +72,21 @@ export const listAuditLogsQuerySchema = paginationQuerySchema.extend({
 export const auditLogIdParamSchema = z.object({
   id: z.uuid(),
 });
+
+export function parseAuditLogFromDate(value: string): Date {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    return startOfDayIn(new Date(`${value}T12:00:00Z`), BRASILIA_TIME_ZONE);
+  }
+  return new Date(value);
+}
+
+export function parseAuditLogToDate(value: string): Date {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const start = startOfDayIn(new Date(`${value}T12:00:00Z`), BRASILIA_TIME_ZONE);
+    return new Date(start.getTime() + DAY_IN_MS - 1);
+  }
+  return new Date(value);
+}
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type RecordAuditLogInput = z.input<typeof recordAuditLogSchema>;
