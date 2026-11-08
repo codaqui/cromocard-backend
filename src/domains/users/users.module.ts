@@ -1,5 +1,6 @@
 import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
 import { prisma } from '@/lib/prisma';
+import { runInTransaction } from '@/lib/transaction';
 import type { DomainModule } from '@/shared/types/domain-module';
 
 import type { AdminAuthService } from './admin-users.service';
@@ -23,14 +24,16 @@ function getAdminAuthService(): AdminAuthService {
 
 const usersRepository = new PrismaUsersRepository(prisma);
 const usersService = new UsersService(usersRepository);
-const adminUsersService = new AdminUsersService(
+const adminUsersService = new AdminUsersService({
   usersRepository,
-  {
-    forgotPassword: (email) => getAdminAuthService().forgotPassword(email),
+  authService: {
+    inviteUser: (email) => getAdminAuthService().inviteUser(email),
     revokeAllSessions: (userId) => getAdminAuthService().revokeAllSessions(userId),
+    resendVerification: (email) => getAdminAuthService().resendVerification(email),
   },
   auditLogService,
-);
+  runInTransaction,
+});
 const usersController = new UsersController(usersService, adminUsersService);
 
 export const usersModule: DomainModule = {

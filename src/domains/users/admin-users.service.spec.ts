@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Prisma } from '@/generated/prisma/client';
 
-import { AdminUsersService, type AdminAuditLog, type AdminAuthService } from './admin-users.service';
+import {
+  AdminUsersService,
+  type AdminAuditLog,
+  type AdminAuthService,
+} from './admin-users.service';
 import {
   AlreadySuspendedError,
   CannotChangeOwnRoleError,
@@ -69,8 +73,16 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(user);
   }
 
-  update(id: string, input: AdminUpdateUserInput): Promise<UserSummary> {
-    this.users = this.users.map((user) => (user.id === id ? { ...user, ...input } : user));
+  update(
+    id: string,
+    input: AdminUpdateUserInput,
+    resetEmailVerification?: boolean,
+  ): Promise<UserSummary> {
+    this.users = this.users.map((user) =>
+      user.id === id
+        ? { ...user, ...input, ...(resetEmailVerification && { emailVerified: false }) }
+        : user,
+    );
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
@@ -106,7 +118,9 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(null);
   }
 
-  findCredentialsByOauthIncludingDeleted(_identity: OauthIdentity): Promise<UserCredentials | null> {
+  findCredentialsByOauthIncludingDeleted(
+    _identity: OauthIdentity,
+  ): Promise<UserCredentials | null> {
     return Promise.resolve(null);
   }
 
@@ -134,13 +148,19 @@ class InMemoryUsersRepository implements UsersRepository {
 class FakeAuthService implements AdminAuthService {
   invites: string[] = [];
   revoked: string[] = [];
+  resentVerifications: string[] = [];
 
-  forgotPassword(email: string): void {
+  inviteUser(email: string): void {
     this.invites.push(email);
   }
 
   revokeAllSessions(userId: string): Promise<void> {
     this.revoked.push(userId);
+    return Promise.resolve();
+  }
+
+  resendVerification(email: string): Promise<void> {
+    this.resentVerifications.push(email);
     return Promise.resolve();
   }
 }
@@ -172,16 +192,29 @@ describe('AdminUsersService', () => {
     repository = new InMemoryUsersRepository();
     authService = new FakeAuthService();
     auditLog = new FakeAuditLog();
-    service = new AdminUsersService(repository, authService, auditLog);
+    service = new AdminUsersService({
+      usersRepository: repository,
+      authService,
+      auditLogService: auditLog,
+      runInTransaction: (work) => work({} as never),
+    });
   });
 
   describe('create', () => {
     it('CA2: cria o usuário, envia o convite e grava USER_CREATED', async () => {
-      const input: CreateUserInput = { name: 'Bia Vendedora', email: 'bia@cromocard.dev', role: 'SELLER' };
+      const input: CreateUserInput = {
+        name: 'Bia Vendedora',
+        email: 'bia@cromocard.dev',
+        role: 'SELLER',
+      };
 
       const user = await service.create(input, adminId);
 
-      expect(user).toMatchObject({ name: 'Bia Vendedora', email: 'bia@cromocard.dev', role: 'SELLER' });
+      expect(user).toMatchObject({
+        name: 'Bia Vendedora',
+        email: 'bia@cromocard.dev',
+        role: 'SELLER',
+      });
       expect(authService.invites).toEqual(['bia@cromocard.dev']);
       expect(auditLog.entries).toEqual([
         { adminId, action: 'USER_CREATED', entityType: 'user', entityId: user.id },
@@ -192,7 +225,9 @@ describe('AdminUsersService', () => {
       vi.spyOn(repository, 'create').mockRejectedValueOnce(uniqueConstraintError());
       const input: CreateUserInput = { name: 'Bia', email: 'bia@cromocard.dev', role: 'SELLER' };
 
-      await expect(service.create(input, adminId)).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
+      await expect(service.create(input, adminId)).rejects.toBeInstanceOf(
+        EmailAlreadyRegisteredError,
+      );
       expect(authService.invites).toHaveLength(0);
       expect(auditLog.entries).toHaveLength(0);
     });
@@ -209,6 +244,26 @@ describe('AdminUsersService', () => {
       expect(auditLog.entries).toEqual([
         { adminId, action: 'USER_UPDATED', entityType: 'user', entityId: user.id },
       ]);
+    });
+
+    it('R18: troca de e-mail reseta emailVerified e reenvia a confirmação', async () => {
+      const user = buildUser();
+      repository.users = [user];
+
+      const updated = await service.update(user.id, { email: 'nova@cromocard.dev' }, adminId);
+
+      expect(updated.emailVerified).toBe(false);
+      expect(authService.resentVerifications).toEqual(['nova@cromocard.dev']);
+    });
+
+    it('não reseta emailVerified nem reenvia confirmação quando o e-mail não muda', async () => {
+      const user = buildUser();
+      repository.users = [user];
+
+      const updated = await service.update(user.id, { name: 'Ana Silva' }, adminId);
+
+      expect(updated.emailVerified).toBe(true);
+      expect(authService.resentVerifications).toHaveLength(0);
     });
 
     it('e-mail já cadastrado ao editar responde 409', async () => {
@@ -309,7 +364,11 @@ describe('AdminUsersService', () => {
       const user = buildUser({ status: 'SUSPENDED' });
       repository.users = [user];
 
-      const updated = await service.reactivate(user.id, { reason: 'Prazo da suspensão terminou' }, adminId);
+      const updated = await service.reactivate(
+        user.id,
+        { reason: 'Prazo da suspensão terminou' },
+        adminId,
+      );
 
       expect(updated.status).toBe('ACTIVE');
       expect(auditLog.entries).toEqual([

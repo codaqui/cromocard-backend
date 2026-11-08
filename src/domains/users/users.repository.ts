@@ -97,9 +97,13 @@ export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserSummary | null>;
   create(input: CreateUserInput): Promise<UserSummary>;
-  update(id: string, input: AdminUpdateUserInput): Promise<UserSummary>;
-  updateStatus(id: string, status: UserStatus): Promise<UserSummary>;
-  softDelete(id: string): Promise<void>;
+  update(
+    id: string,
+    input: AdminUpdateUserInput,
+    resetEmailVerification?: boolean,
+  ): Promise<UserSummary>;
+  updateStatus(id: string, status: UserStatus, tx?: Transaction): Promise<UserSummary>;
+  softDelete(id: string, tx?: Transaction): Promise<void>;
   countMembers(): Promise<number>;
   countSignupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   findSellersCreatedWithin(range: DateRange, pagination: PaginationQuery): Promise<SellersPage>;
@@ -174,16 +178,28 @@ export class PrismaUsersRepository implements UsersRepository {
     });
   }
 
-  update(id: string, input: AdminUpdateUserInput): Promise<UserSummary> {
-    return this.prisma.user.update({ where: { id }, data: input, select: userSummarySelect });
+  update(
+    id: string,
+    input: AdminUpdateUserInput,
+    resetEmailVerification?: boolean,
+  ): Promise<UserSummary> {
+    return this.prisma.user.update({
+      where: { id },
+      data: { ...input, ...(resetEmailVerification && { emailVerified: false }) },
+      select: userSummarySelect,
+    });
   }
 
-  updateStatus(id: string, status: UserStatus): Promise<UserSummary> {
-    return this.prisma.user.update({ where: { id }, data: { status }, select: userSummarySelect });
+  updateStatus(
+    id: string,
+    status: UserStatus,
+    tx: Transaction = this.prisma,
+  ): Promise<UserSummary> {
+    return tx.user.update({ where: { id }, data: { status }, select: userSummarySelect });
   }
 
-  async softDelete(id: string): Promise<void> {
-    await this.prisma.user.update({ where: { id }, data: softDeleteData() });
+  async softDelete(id: string, tx: Transaction = this.prisma): Promise<void> {
+    await tx.user.update({ where: { id }, data: softDeleteData() });
   }
 
   countMembers(): Promise<number> {

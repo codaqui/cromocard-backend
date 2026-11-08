@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 
 import type { AuditAction, AuditLogDetails } from './audit-logs.validator';
 
@@ -23,13 +24,13 @@ export interface NewAuditLog {
 }
 
 export interface AuditLogRepository {
-  create(auditLog: NewAuditLog): Promise<AuditLogEntry>;
+  create(auditLog: NewAuditLog, tx?: Transaction): Promise<AuditLogEntry>;
 }
 
 export class PrismaAuditLogRepository implements AuditLogRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  create(auditLog: NewAuditLog): Promise<AuditLogEntry> {
-    return this.prisma.auditLog.create({ data: auditLog, select: auditLogEntrySelect });
+  create(auditLog: NewAuditLog, tx?: Transaction): Promise<AuditLogEntry> {
+    return (tx ?? this.prisma).auditLog.create({ data: auditLog, select: auditLogEntrySelect });
   }
 }

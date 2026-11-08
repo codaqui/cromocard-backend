@@ -1,3 +1,5 @@
+import type { Transaction } from '@/lib/transaction';
+
 import { InvalidAuditLogError } from './audit-logs.errors';
 import type { AuditLogEntry, AuditLogRepository } from './audit-logs.repository';
 import {
@@ -24,8 +26,11 @@ function parseAuditLog(input: RecordAuditLogInput) {
 export class AuditLogService {
   constructor(private readonly auditLogRepository: AuditLogRepository) {}
 
-  async record(input: RecordAuditLogInput): Promise<AuditLogEntry> {
+  async record(input: RecordAuditLogInput, tx?: Transaction): Promise<AuditLogEntry> {
     const { reason, details, ...auditLog } = parseAuditLog(input);
-    return this.auditLogRepository.create({ ...auditLog, details: buildDetails(details, reason) });
+    return this.auditLogRepository.create(
+      { ...auditLog, details: buildDetails(details, reason) },
+      tx,
+    );
   }
 }

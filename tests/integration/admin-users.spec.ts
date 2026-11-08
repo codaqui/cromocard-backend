@@ -200,6 +200,39 @@ describe('PATCH /api/v1/users/:id', () => {
     expect(res.status).toBe(422);
     expect((res.body as ErrorResponse).error).toBe('CANNOT_CHANGE_OWN_ROLE');
   });
+
+  it('R18: trocar o e-mail reseta emailVerified e reenvia a confirmação', async () => {
+    const admin = await createAdmin();
+    const target = await createUser();
+    const newEmail = uniqueEmail('novo-email');
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({ email: newEmail });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored.emailVerified).toBe(false);
+
+    await waitForMail(1);
+    expect(sentMails[0]?.to).toBe(newEmail);
+  });
+
+  it('mantém emailVerified quando o e-mail não muda', async () => {
+    const admin = await createAdmin();
+    const target = await createUser();
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({ name: 'Nome Só' });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored.emailVerified).toBe(true);
+    expect(sentMails).toHaveLength(0);
+  });
 });
 
 describe('POST /api/v1/users/:id/suspend', () => {

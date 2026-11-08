@@ -25,19 +25,15 @@ describe.each(adminUserRoutes)('CA9: rota de gestão $method $path', ({ method, 
   });
 
   it('aceita só administradores', async () => {
-    const res = await request(createApp())[method](path).set(
-      'Authorization',
-      `Bearer ${customerToken}`,
-    );
+    const req = request(createApp());
+    const res = await req[method](path).set('Authorization', `Bearer ${customerToken}`);
 
     expect(res.status).toBe(403);
   });
 
   it('não barra o administrador antes de chegar no controller', async () => {
-    const res = await request(createApp())[method](path).set(
-      'Authorization',
-      `Bearer ${adminToken}`,
-    );
+    const req = request(createApp());
+    const res = await req[method](path).set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);

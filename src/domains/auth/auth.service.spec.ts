@@ -222,6 +222,7 @@ describe('AuthService', () => {
         frontendUrl: 'http://localhost:5173',
         verificationTtlInSeconds: DAY_IN_SECONDS,
         passwordResetTtlInSeconds: 60 * 60,
+        inviteTtlInSeconds: 3 * DAY_IN_SECONDS,
       },
       refreshTokenTtl: {
         defaultInSeconds: DAY_IN_SECONDS,
