@@ -10,6 +10,7 @@ import { settingsModule } from '@/domains/admin/settings/settings.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { usersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
+import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
 
 const API_PREFIX = '/api/v1';
 
@@ -19,6 +20,7 @@ const sharedModules: DomainModule[] = [
   dashboardModule,
   reportsModule,
   settingsModule,
+  auditLogsModule,
 ];
 
 export interface RoutesOptions {

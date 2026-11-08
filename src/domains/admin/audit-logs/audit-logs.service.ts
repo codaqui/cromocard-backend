@@ -1,36 +1,114 @@
 import type { Transaction } from '@/lib/transaction';
+import { buildPaginationMeta, type PaginationMeta } from '@/shared/utils/pagination';
+import { DAY_IN_MS } from '@/shared/utils/time-zone';
 
-import { InvalidAuditLogError } from './audit-logs.errors';
+import { AuditLogNotFoundError, InvalidAuditLogError } from './audit-logs.errors';
 import type { AuditLogEntry, AuditLogRepository } from './audit-logs.repository';
 import {
   type AuditLogDetails,
-  recordAuditLogSchema,
+  type ListAuditLogsQuery,
   type RecordAuditLogInput,
+  recordAuditLogSchema,
 } from './audit-logs.validator';
 
-function buildDetails(details?: AuditLogDetails, reason?: string): AuditLogDetails | undefined {
-  if (!details && !reason) return undefined;
-  return reason ? { ...details, reason } : details;
+const THIRTY_DAYS_IN_MS = 30 * DAY_IN_MS;
+
+export interface AuditLogListItem {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  reason: string | null;
+  admin: {
+    id: string;
+    name: string;
+  };
+  createdAt: Date;
 }
 
-function parseAuditLog(input: RecordAuditLogInput) {
-  const result = recordAuditLogSchema.safeParse(input);
+export interface AuditLogListMeta extends PaginationMeta {
+  last30Days: number;
+}
 
-  if (!result.success) {
-    throw new InvalidAuditLogError(result.error.issues);
+export interface AuditLogListResponse {
+  items: AuditLogListItem[];
+  meta: AuditLogListMeta;
+}
+
+function buildDetails(
+  details: AuditLogDetails | undefined,
+  reason: string | undefined,
+): AuditLogDetails | undefined {
+  if (reason === undefined) return details;
+  return { ...details, reason };
+}
+
+function extractReason(details: unknown): string | null {
+  if (!details || typeof details !== 'object' || !('reason' in details)) {
+    return null;
   }
 
-  return result.data;
+  const reason = (details as { reason?: unknown }).reason;
+  return typeof reason === 'string' ? reason : null;
+}
+
+function toListItem(entry: AuditLogEntry): AuditLogListItem {
+  return {
+    id: entry.id,
+    action: entry.action,
+    entityType: entry.entityType,
+    entityId: entry.entityId,
+    reason: extractReason(entry.details),
+    admin: entry.admin,
+    createdAt: entry.createdAt,
+  };
 }
 
 export class AuditLogService {
   constructor(private readonly auditLogRepository: AuditLogRepository) {}
 
   async record(input: RecordAuditLogInput, tx?: Transaction): Promise<AuditLogEntry> {
-    const { reason, details, ...auditLog } = parseAuditLog(input);
+    const parsed = recordAuditLogSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new InvalidAuditLogError(parsed.error.issues);
+    }
+
+    const { adminId, action, entityType, entityId, reason, details } = parsed.data;
+
     return this.auditLogRepository.create(
-      { ...auditLog, details: buildDetails(details, reason) },
+      {
+        adminId,
+        action,
+        entityType,
+        entityId,
+        details: buildDetails(details, reason),
+      },
       tx,
     );
+  }
+
+  async list(filters: ListAuditLogsQuery): Promise<AuditLogListResponse> {
+    const thirtyDaysAgo = new Date(Date.now() - THIRTY_DAYS_IN_MS);
+
+    const [{ items, total }, last30Days] = await Promise.all([
+      this.auditLogRepository.findMany(filters),
+      this.auditLogRepository.countSince(thirtyDaysAgo),
+    ]);
+
+    return {
+      items: items.map(toListItem),
+      meta: {
+        ...buildPaginationMeta(filters, total),
+        last30Days,
+      },
+    };
+  }
+
+  async getById(id: string): Promise<AuditLogEntry> {
+    const entry = await this.auditLogRepository.findById(id);
+    if (!entry) {
+      throw new AuditLogNotFoundError();
+    }
+    return entry;
   }
 }

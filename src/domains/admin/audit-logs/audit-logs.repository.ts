@@ -1,11 +1,19 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import type { Transaction } from '@/lib/transaction';
+import { toSkipTake } from '@/shared/utils/pagination';
 
-import type { AuditAction, AuditLogDetails } from './audit-logs.validator';
+import { parseAuditLogFromDate, parseAuditLogToDate } from './audit-logs.validator';
+import type { AuditAction, AuditLogDetails, ListAuditLogsQuery } from './audit-logs.validator';
 
 const auditLogEntrySelect = {
   id: true,
   adminId: true,
+  admin: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
   action: true,
   entityType: true,
   entityId: true,
@@ -23,8 +31,16 @@ export interface NewAuditLog {
   details?: AuditLogDetails;
 }
 
+export interface AuditLogListResult {
+  items: AuditLogEntry[];
+  total: number;
+}
+
 export interface AuditLogRepository {
   create(auditLog: NewAuditLog, tx?: Transaction): Promise<AuditLogEntry>;
+  findMany(filters: ListAuditLogsQuery): Promise<AuditLogListResult>;
+  countSince(since: Date): Promise<number>;
+  findById(id: string): Promise<AuditLogEntry | null>;
 }
 
 export class PrismaAuditLogRepository implements AuditLogRepository {
@@ -32,5 +48,51 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
 
   create(auditLog: NewAuditLog, tx?: Transaction): Promise<AuditLogEntry> {
     return (tx ?? this.prisma).auditLog.create({ data: auditLog, select: auditLogEntrySelect });
+  }
+
+  private buildWhereClause(filters: ListAuditLogsQuery): Prisma.AuditLogWhereInput {
+    return {
+      ...(filters.adminId && { adminId: filters.adminId }),
+      ...(filters.action && { action: filters.action }),
+      ...(filters.entityType && { entityType: filters.entityType }),
+      ...(filters.entityId && { entityId: filters.entityId }),
+      ...((filters.from || filters.to) && {
+        createdAt: {
+          ...(filters.from && { gte: parseAuditLogFromDate(filters.from) }),
+          ...(filters.to && { lte: parseAuditLogToDate(filters.to) }),
+        },
+      }),
+    };
+  }
+
+  async findMany(filters: ListAuditLogsQuery): Promise<AuditLogListResult> {
+    const where = this.buildWhereClause(filters);
+    const { skip, take } = toSkipTake(filters);
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.auditLog.findMany({
+        where,
+        select: auditLogEntrySelect,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip,
+        take,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  countSince(since: Date): Promise<number> {
+    return this.prisma.auditLog.count({
+      where: { createdAt: { gte: since } },
+    });
+  }
+
+  findById(id: string): Promise<AuditLogEntry | null> {
+    return this.prisma.auditLog.findUnique({
+      where: { id },
+      select: auditLogEntrySelect,
+    });
   }
 }
