@@ -15,7 +15,7 @@ const communityAdminService = new CommunityAdminService({
 });
 
 export const communityAdminModule: DomainModule = {
-  basePath: '/admin',
+  basePath: '/admin/community',
   router: createCommunityAdminRoutes(new CommunityAdminController(communityAdminService)),
   registerDocs: registerCommunityAdminDocs,
 };

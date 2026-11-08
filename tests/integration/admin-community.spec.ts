@@ -40,15 +40,20 @@ async function createUser(label: string, role: 'CUSTOMER' | 'ADMIN' = 'CUSTOMER'
   return user.id;
 }
 
-async function createReport(): Promise<string> {
+async function createReport(groupMessageId = messageId): Promise<string> {
   const report = await prisma.report.create({
-    data: { reporterId, targetType: 'GROUP_MESSAGE', groupMessageId: messageId, reason: 'Spam' },
+    data: { reporterId, targetType: 'GROUP_MESSAGE', groupMessageId, reason: 'Spam' },
   });
   return report.id;
 }
 
+async function queuedReportIds(): Promise<string[]> {
+  const res = await asAdmin('get', '/reports').query({ pageSize: 100 });
+  return dataOf<{ id: string }[]>(res).map(({ id }) => id);
+}
+
 function asAdmin(method: Method, path: string) {
-  const url = `/api/v1/admin${path}`;
+  const url = `/api/v1/admin/community${path}`;
   return request(createApp())[method](url).set('Authorization', `Bearer ${adminToken}`);
 }
 
@@ -98,7 +103,7 @@ beforeAll(async () => {
 afterAll(async () => {
   const groups = { groupId: { in: [groupId, suspendedGroupId] } };
   await prisma.auditLog.deleteMany({ where: { adminId } });
-  await prisma.report.deleteMany({ where: { groupMessageId: messageId } });
+  await prisma.report.deleteMany({ where: { groupMessage: groups } });
   await prisma.groupMessage.deleteMany({ where: groups });
   await prisma.groupMember.deleteMany({ where: groups });
   await prisma.group.deleteMany({ where: { id: { in: [groupId, suspendedGroupId] } } });
@@ -175,7 +180,7 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
   it('CA5: lista a denúncia com o autor, o grupo, o texto, o motivo e quem denunciou', async () => {
     const reportId = await createReport();
 
-    const res = await asAdmin('get', '/reports/group-messages').query({ pageSize: 100 });
+    const res = await asAdmin('get', '/reports').query({ pageSize: 100 });
 
     const reports = dataOf<{ id: string }[]>(res);
     expect(reports.find(({ id }) => id === reportId)).toEqual({
@@ -208,6 +213,7 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
   });
 
   it('CA6: remove a mensagem, resolve a denúncia com o moderador e registra o log', async () => {
+    const otherReportId = await createReport();
     const reportId = await createReport();
 
     const res = await asAdmin('post', `/reports/${reportId}/remove-message`).send(REASON);
@@ -218,8 +224,21 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
     expect(report.resolvedAt).toBeInstanceOf(Date);
     const message = await prisma.groupMessage.findUniqueOrThrow({ where: { id: messageId } });
     expect(message.deletedAt).toBeInstanceOf(Date);
+    const other = await prisma.report.findUniqueOrThrow({ where: { id: otherReportId } });
+    expect(other).toMatchObject({ status: 'RESOLVED', moderatorId: adminId });
     const audit = await auditOf('GROUP_MESSAGE_REMOVED', messageId);
-    expect(audit).toMatchObject({ entityType: 'group_message', details: { ...REASON, reportId } });
+    expect(audit).toMatchObject({
+      entityType: 'group_message',
+      details: {
+        ...REASON,
+        reportId,
+        before: { status: 'PENDING' },
+        after: { status: 'RESOLVED' },
+      },
+    });
+    expect((audit?.details as { resolvedReportIds: string[] }).resolvedReportIds).toContain(
+      otherReportId,
+    );
   });
 
   it('responde 404 para denúncia inexistente', async () => {
@@ -230,7 +249,38 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
   });
 });
 
+describe('acesso à administração da comunidade (PostgreSQL real)', () => {
+  it('CA8: responde 403 para token de CUSTOMER', async () => {
+    const customerToken = signAccessToken({ id: reporterId, role: 'CUSTOMER' });
+
+    const res = await request(createApp())
+      .get('/api/v1/admin/community/groups')
+      .set('Authorization', `Bearer ${customerToken}`);
+
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('exclusão de grupo (PostgreSQL real)', () => {
+  it('tira da fila e dos pendentes as denúncias das mensagens do grupo excluído', async () => {
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: reporterId, content: 'Mais uma mensagem denunciada' },
+    });
+    const reportId = await createReport(message.id);
+    expect(await queuedReportIds()).toContain(reportId);
+    const before = dataOf<{ pendingReports: number }>(await asAdmin('get', '/groups/summary'));
+
+    await prisma.group.update({ where: { id: groupId }, data: { deletedAt: new Date() } });
+    const after = dataOf<{ pendingReports: number }>(await asAdmin('get', '/groups/summary'));
+    const queuedAfter = await queuedReportIds();
+    const blocked = await asAdmin('post', `/reports/${reportId}/dismiss`).send(REASON);
+    await prisma.group.update({ where: { id: groupId }, data: { deletedAt: null } });
+
+    expect(queuedAfter).not.toContain(reportId);
+    expect(after.pendingReports).toBe(before.pendingReports - 1);
+    expect(blocked.status).toBe(409);
+  });
+
   it('CA4: exclui o grupo com motivo, ele some da lista e o log registra', async () => {
     const res = await asAdmin('delete', `/groups/${groupId}`).send(REASON);
 

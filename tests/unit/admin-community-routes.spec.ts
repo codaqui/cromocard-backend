@@ -11,15 +11,15 @@ type Method = 'get' | 'post' | 'delete';
 const ID = '0199a000-0000-7000-8000-000000000010';
 
 const communityAdminRoutes: [Method, string][] = [
-  ['get', '/api/v1/admin/groups'],
-  ['get', '/api/v1/admin/groups/summary'],
-  ['get', `/api/v1/admin/groups/${ID}`],
-  ['post', `/api/v1/admin/groups/${ID}/suspend`],
-  ['post', `/api/v1/admin/groups/${ID}/reactivate`],
-  ['delete', `/api/v1/admin/groups/${ID}`],
-  ['get', '/api/v1/admin/reports/group-messages'],
-  ['post', `/api/v1/admin/reports/${ID}/remove-message`],
-  ['post', `/api/v1/admin/reports/${ID}/dismiss`],
+  ['get', '/api/v1/admin/community/groups'],
+  ['get', '/api/v1/admin/community/groups/summary'],
+  ['get', `/api/v1/admin/community/groups/${ID}`],
+  ['post', `/api/v1/admin/community/groups/${ID}/suspend`],
+  ['post', `/api/v1/admin/community/groups/${ID}/reactivate`],
+  ['delete', `/api/v1/admin/community/groups/${ID}`],
+  ['get', '/api/v1/admin/community/reports'],
+  ['post', `/api/v1/admin/community/reports/${ID}/remove-message`],
+  ['post', `/api/v1/admin/community/reports/${ID}/dismiss`],
 ];
 
 const customerToken = signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' });
@@ -47,7 +47,7 @@ describe.each(communityAdminRoutes)('rota de administração da comunidade %s %s
 
 describe('validação da administração da comunidade', () => {
   it('recusa id que não é UUID com 400', async () => {
-    const res = await asAdmin('post', '/api/v1/admin/groups/123/suspend').send({
+    const res = await asAdmin('post', '/api/v1/admin/community/groups/123/suspend').send({
       reason: 'Spam no grupo',
     });
 
@@ -56,9 +56,9 @@ describe('validação da administração da comunidade', () => {
   });
 
   it.each([
-    ['post', `/api/v1/admin/groups/${ID}/suspend`],
-    ['delete', `/api/v1/admin/groups/${ID}`],
-    ['post', `/api/v1/admin/reports/${ID}/dismiss`],
+    ['post', `/api/v1/admin/community/groups/${ID}/suspend`],
+    ['delete', `/api/v1/admin/community/groups/${ID}`],
+    ['post', `/api/v1/admin/community/reports/${ID}/dismiss`],
   ] as [Method, string][])('exige o motivo em %s %s', async (method, path) => {
     const res = await asAdmin(method, path).send({ reason: 'ok' });
 
@@ -66,7 +66,7 @@ describe('validação da administração da comunidade', () => {
   });
 
   it('recusa status de grupo fora da lista com 400', async () => {
-    const res = await asAdmin('get', '/api/v1/admin/groups?status=ARCHIVED');
+    const res = await asAdmin('get', '/api/v1/admin/community/groups?status=ARCHIVED');
 
     expect(res.status).toBe(400);
   });
@@ -77,14 +77,14 @@ describe('documentação da administração da comunidade', () => {
     const document = buildOpenApiDocument([communityAdminModule]);
 
     expect(Object.keys(document.paths ?? {})).toEqual([
-      '/admin/groups',
-      '/admin/groups/summary',
-      '/admin/groups/{id}',
-      '/admin/groups/{id}/suspend',
-      '/admin/groups/{id}/reactivate',
-      '/admin/reports/group-messages',
-      '/admin/reports/{id}/remove-message',
-      '/admin/reports/{id}/dismiss',
+      '/admin/community/groups',
+      '/admin/community/groups/summary',
+      '/admin/community/groups/{id}',
+      '/admin/community/groups/{id}/suspend',
+      '/admin/community/groups/{id}/reactivate',
+      '/admin/community/reports',
+      '/admin/community/reports/{id}/remove-message',
+      '/admin/community/reports/{id}/dismiss',
     ]);
   });
 });

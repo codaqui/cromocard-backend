@@ -5,6 +5,7 @@ import type {
 import { GroupStatus, ReportStatus } from '@/generated/prisma/enums';
 import type { AppError } from '@/shared/errors/app-error';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
+import { daysBefore } from '@/shared/utils/time-zone';
 
 import {
   GroupAlreadySuspendedError,
@@ -19,17 +20,16 @@ import {
   type CommunityAdminRepository,
   type CommunitySummary,
   type GroupMessageReport,
-  OPEN_REPORT_STATUSES,
   type ReportState,
 } from './community-admin.repository';
-import type {
-  ListGroupMessageReportsQuery,
-  ListGroupsQuery,
-  ModerationReasonInput,
+import {
+  isOpenReportStatus,
+  type ListGroupMessageReportsQuery,
+  type ListGroupsQuery,
+  type ModerationReasonInput,
 } from './community-admin.validator';
 
 const MESSAGES_WINDOW_IN_DAYS = 7;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface CommunityAuditLog {
   record(input: RecordAuditLogInput): Promise<unknown>;
@@ -38,7 +38,7 @@ export interface CommunityAuditLog {
 export interface CommunityAdminServiceDeps {
   repository: CommunityAdminRepository;
   auditLog: CommunityAuditLog;
-  now?: () => Date;
+  now: () => Date;
 }
 
 export interface ReportResolution {
@@ -55,7 +55,11 @@ interface AuditedModeration {
   action: AuditAction;
   entityType: 'group' | 'group_message' | 'report';
   entityId: string;
-  details?: Record<string, string>;
+  details?: RecordAuditLogInput['details'];
+}
+
+function statusChange(before: string, after: string) {
+  return { before: { status: before }, after: { status: after } };
 }
 
 interface GroupTransition {
@@ -81,10 +85,6 @@ const REACTIVATE: GroupTransition = {
   conflict: () => new GroupNotSuspendedError(),
 };
 
-function isOpen(report: ReportState): boolean {
-  return OPEN_REPORT_STATUSES.includes(report.status);
-}
-
 export class CommunityAdminService {
   constructor(private readonly deps: CommunityAdminServiceDeps) {}
 
@@ -94,8 +94,7 @@ export class CommunityAdminService {
   }
 
   getSummary(): Promise<CommunitySummary> {
-    const now = this.deps.now?.() ?? new Date();
-    const since = new Date(now.getTime() - MESSAGES_WINDOW_IN_DAYS * MS_PER_DAY);
+    const since = daysBefore(this.deps.now(), MESSAGES_WINDOW_IN_DAYS);
     return this.deps.repository.countSummary(since);
   }
 
@@ -122,8 +121,7 @@ export class CommunityAdminService {
   }
 
   async deleteGroup(id: string, { reason }: ModerationReasonInput, adminId: string): Promise<void> {
-    await this.getGroup(id);
-    await this.deps.repository.softDeleteGroup(id);
+    if (!(await this.deps.repository.softDeleteGroup(id))) throw new GroupNotFoundError();
     await this.audit(
       { reason, adminId },
       { action: 'GROUP_DELETED', entityType: 'group', entityId: id },
@@ -142,19 +140,19 @@ export class CommunityAdminService {
     { reason }: ModerationReasonInput,
     adminId: string,
   ): Promise<ReportResolution> {
-    const { groupMessageId: messageId } = await this.findOpenReport(reportId);
+    const { groupMessageId: messageId, status } = await this.findOpenReport(reportId);
     const removal = { reportId, messageId, moderatorId: adminId };
-    if (!(await this.deps.repository.removeReportedMessage(removal))) {
-      throw new ReportAlreadyResolvedError();
-    }
+    const resolvedReportIds = await this.deps.repository.removeReportedMessage(removal);
+    if (resolvedReportIds.length === 0) throw new ReportAlreadyResolvedError();
 
+    const details = { reportId, resolvedReportIds, ...statusChange(status, ReportStatus.RESOLVED) };
     await this.audit(
       { reason, adminId },
       {
         action: 'GROUP_MESSAGE_REMOVED',
         entityType: 'group_message',
         entityId: messageId,
-        details: { reportId },
+        details,
       },
     );
     return { id: reportId, status: ReportStatus.RESOLVED };
@@ -165,14 +163,15 @@ export class CommunityAdminService {
     { reason }: ModerationReasonInput,
     adminId: string,
   ): Promise<ReportResolution> {
-    await this.findOpenReport(reportId);
+    const { status } = await this.findOpenReport(reportId);
     if (!(await this.deps.repository.dismissReport(reportId, adminId))) {
       throw new ReportAlreadyResolvedError();
     }
 
+    const details = statusChange(status, ReportStatus.DISMISSED);
     await this.audit(
       { reason, adminId },
-      { action: 'REPORT_DISMISSED', entityType: 'report', entityId: reportId },
+      { action: 'REPORT_DISMISSED', entityType: 'report', entityId: reportId, details },
     );
     return { id: reportId, status: ReportStatus.DISMISSED };
   }
@@ -187,14 +186,15 @@ export class CommunityAdminService {
       group.status === from && (await this.deps.repository.changeGroupStatus({ id, from, to }));
     if (!changed) throw conflict();
 
-    await this.audit(moderation, { action, entityType: 'group', entityId: id });
+    const details = statusChange(from, to);
+    await this.audit(moderation, { action, entityType: 'group', entityId: id, details });
     return { ...group, status: to };
   }
 
   private async findOpenReport(id: string): Promise<OpenReport> {
     const report = await this.deps.repository.findGroupMessageReportState(id);
     if (!report?.groupMessageId) throw new ReportNotFoundError();
-    if (!isOpen(report)) throw new ReportAlreadyResolvedError();
+    if (!isOpenReportStatus(report.status)) throw new ReportAlreadyResolvedError();
     return { ...report, groupMessageId: report.groupMessageId };
   }
 

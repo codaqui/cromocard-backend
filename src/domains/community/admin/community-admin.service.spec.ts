@@ -58,7 +58,7 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
   lastGroupsQuery?: ListGroupsQuery;
   lastReportsQuery?: ListGroupMessageReportsQuery;
   summarySince?: Date;
-  failNextChange = false;
+  simulateConcurrentChange = false;
 
   findGroupsPage(query: ListGroupsQuery): Promise<Page<AdminGroupDetail>> {
     this.lastGroupsQuery = query;
@@ -77,14 +77,13 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
 
   changeGroupStatus({ id, from, to }: GroupStatusChange): Promise<boolean> {
     const group = this.groups.get(id);
-    if (this.failNextChange || group?.status !== from) return Promise.resolve(false);
+    if (this.simulateConcurrentChange || group?.status !== from) return Promise.resolve(false);
     this.groups.set(id, { ...group, status: to });
     return Promise.resolve(true);
   }
 
-  softDeleteGroup(id: string): Promise<void> {
-    this.groups.delete(id);
-    return Promise.resolve();
+  softDeleteGroup(id: string): Promise<boolean> {
+    return Promise.resolve(!this.simulateConcurrentChange && this.groups.delete(id));
   }
 
   findGroupMessageReportsPage(
@@ -98,10 +97,19 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
     return Promise.resolve(this.reports.get(id) ?? null);
   }
 
-  removeReportedMessage({ reportId, messageId, moderatorId }: MessageRemoval): Promise<boolean> {
-    if (!this.resolve(reportId, ReportStatus.RESOLVED, moderatorId)) return Promise.resolve(false);
+  removeReportedMessage({ reportId, messageId, moderatorId }: MessageRemoval): Promise<string[]> {
+    if (!this.resolve(reportId, ReportStatus.RESOLVED, moderatorId)) return Promise.resolve([]);
+    const others = this.openReportsOf(messageId).filter((id) => id !== reportId);
+    others.forEach((id) => this.resolve(id, ReportStatus.RESOLVED, moderatorId));
     this.deletedMessages.add(messageId);
-    return Promise.resolve(true);
+    return Promise.resolve([reportId, ...others]);
+  }
+
+  private openReportsOf(messageId: string): string[] {
+    const open: ReportStatus[] = [ReportStatus.PENDING, ReportStatus.UNDER_REVIEW];
+    return [...this.reports.values()]
+      .filter((report) => report.groupMessageId === messageId && open.includes(report.status))
+      .map(({ id }) => id);
   }
 
   dismissReport(reportId: string, moderatorId: string): Promise<boolean> {
@@ -110,7 +118,7 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
 
   private resolve(id: string, status: ReportStatus, moderatorId: string): boolean {
     const report = this.reports.get(id);
-    if (this.failNextChange || !report) return false;
+    if (this.simulateConcurrentChange || !report) return false;
     this.reports.set(id, { ...report, status, moderatorId });
     return true;
   }
@@ -172,6 +180,7 @@ describe('CommunityAdminService', () => {
           action: 'GROUP_SUSPENDED',
           entityType: 'group',
           entityId: GROUP_ID,
+          details: { before: { status: 'ACTIVE' }, after: { status: 'SUSPENDED' } },
           ...REASON,
         },
       ]);
@@ -188,7 +197,7 @@ describe('CommunityAdminService', () => {
 
     it('CA2: responde 409 se outro admin suspendeu o grupo ao mesmo tempo', async () => {
       repository.groups.set(GROUP_ID, buildGroup());
-      repository.failNextChange = true;
+      repository.simulateConcurrentChange = true;
 
       await expect(service.suspendGroup(GROUP_ID, REASON, ADMIN_ID)).rejects.toThrow(
         GroupAlreadySuspendedError,
@@ -228,6 +237,16 @@ describe('CommunityAdminService', () => {
           ...REASON,
         },
       ]);
+    });
+
+    it('CA4: responde 404 se outro admin excluiu o grupo ao mesmo tempo', async () => {
+      repository.groups.set(GROUP_ID, buildGroup());
+      repository.simulateConcurrentChange = true;
+
+      await expect(service.deleteGroup(GROUP_ID, REASON, ADMIN_ID)).rejects.toThrow(
+        GroupNotFoundError,
+      );
+      expect(auditLog.entries).toEqual([]);
     });
 
     it('CA4: responde 404 ao excluir um grupo inexistente', async () => {
@@ -280,10 +299,31 @@ describe('CommunityAdminService', () => {
           action: 'GROUP_MESSAGE_REMOVED',
           entityType: 'group_message',
           entityId: MESSAGE_ID,
-          details: { reportId: REPORT_ID },
+          details: {
+            reportId: REPORT_ID,
+            resolvedReportIds: [REPORT_ID],
+            before: { status: 'PENDING' },
+            after: { status: 'RESOLVED' },
+          },
           ...REASON,
         },
       ]);
+    });
+
+    it('CA6: resolve também as outras denúncias abertas da mesma mensagem', async () => {
+      const OTHER_REPORT_ID = '0199a000-0000-7000-8000-000000000021';
+      repository.reports.set(REPORT_ID, buildReport());
+      repository.reports.set(OTHER_REPORT_ID, { ...buildReport(), id: OTHER_REPORT_ID });
+
+      await service.removeReportedMessage(REPORT_ID, REASON, ADMIN_ID);
+
+      expect(repository.reports.get(OTHER_REPORT_ID)).toMatchObject({
+        status: ReportStatus.RESOLVED,
+        moderatorId: ADMIN_ID,
+      });
+      expect(auditLog.entries[0]?.details).toMatchObject({
+        resolvedReportIds: [REPORT_ID, OTHER_REPORT_ID],
+      });
     });
 
     it('CA6: aceita uma denúncia em análise', async () => {
@@ -308,6 +348,7 @@ describe('CommunityAdminService', () => {
           action: 'REPORT_DISMISSED',
           entityType: 'report',
           entityId: REPORT_ID,
+          details: { before: { status: 'PENDING' }, after: { status: 'DISMISSED' } },
           ...REASON,
         },
       ]);
@@ -330,7 +371,7 @@ describe('CommunityAdminService', () => {
 
     it('responde 409 se outro admin resolveu a denúncia ao mesmo tempo', async () => {
       repository.reports.set(REPORT_ID, buildReport());
-      repository.failNextChange = true;
+      repository.simulateConcurrentChange = true;
 
       await expect(service.removeReportedMessage(REPORT_ID, REASON, ADMIN_ID)).rejects.toThrow(
         ReportAlreadyResolvedError,

@@ -23,7 +23,7 @@ function createModerationRoutes(controller: CommunityAdminController): Router {
   const router = Router();
 
   router.use(authenticate, authorize('ADMIN'));
-  router.get('/group-messages', controller.listGroupMessageReports);
+  router.get('/', controller.listGroupMessageReports);
   router.post('/:id/remove-message', controller.removeReportedMessage);
   router.post('/:id/dismiss', controller.dismissReport);
 

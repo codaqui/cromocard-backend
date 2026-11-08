@@ -119,7 +119,7 @@ function reportAction(path: string, summary: string): RouteConfig {
 const groupsPaths: RouteConfig[] = [
   {
     method: 'get',
-    path: '/admin/groups',
+    path: '/admin/community/groups',
     tags: groupsTags,
     security,
     summary: 'Lista os grupos, sem os excluídos, com busca e filtro de status (CCD062)',
@@ -132,7 +132,7 @@ const groupsPaths: RouteConfig[] = [
   },
   {
     method: 'get',
-    path: '/admin/groups/summary',
+    path: '/admin/community/groups/summary',
     tags: groupsTags,
     security,
     summary: 'Indicadores da comunidade: grupos ativos, mensagens de 7 dias e denúncias pendentes',
@@ -143,7 +143,7 @@ const groupsPaths: RouteConfig[] = [
   },
   {
     method: 'get',
-    path: '/admin/groups/{id}',
+    path: '/admin/community/groups/{id}',
     tags: groupsTags,
     security,
     summary: 'Detalhe de um grupo (CCD062)',
@@ -156,18 +156,18 @@ const groupsPaths: RouteConfig[] = [
     },
   },
   groupAction(
-    '/admin/groups/{id}/suspend',
+    '/admin/community/groups/{id}/suspend',
     'Suspende um grupo ativo, com motivo',
     'GROUP_ALREADY_SUSPENDED',
   ),
   groupAction(
-    '/admin/groups/{id}/reactivate',
+    '/admin/community/groups/{id}/reactivate',
     'Reativa um grupo suspenso, com motivo',
     'GROUP_NOT_SUSPENDED',
   ),
   {
     method: 'delete',
-    path: '/admin/groups/{id}',
+    path: '/admin/community/groups/{id}',
     tags: groupsTags,
     security,
     summary: 'Exclui um grupo (soft delete), com motivo',
@@ -184,7 +184,7 @@ const groupsPaths: RouteConfig[] = [
 const moderationPaths: RouteConfig[] = [
   {
     method: 'get',
-    path: '/admin/reports/group-messages',
+    path: '/admin/community/reports',
     tags: moderationTags,
     security,
     summary: 'Fila de denúncias de mensagens de grupo, das mais antigas para as mais novas',
@@ -196,10 +196,13 @@ const moderationPaths: RouteConfig[] = [
     },
   },
   reportAction(
-    '/admin/reports/{id}/remove-message',
+    '/admin/community/reports/{id}/remove-message',
     'Remove a mensagem denunciada e resolve a denúncia',
   ),
-  reportAction('/admin/reports/{id}/dismiss', 'Dispensa a denúncia sem remover a mensagem'),
+  reportAction(
+    '/admin/community/reports/{id}/dismiss',
+    'Dispensa a denúncia sem remover a mensagem',
+  ),
 ];
 
 export function registerCommunityAdminDocs(registry: OpenAPIRegistry): void {
