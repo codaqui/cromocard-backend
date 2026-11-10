@@ -111,6 +111,17 @@ describe('cartas', () => {
     await expect(totalCardsOf(album.id)).resolves.toBe(1);
   });
 
+  it('R3: a carta da lista traz a editora, o ano e o total de cartas do álbum', async () => {
+    const album = await createAlbum();
+    await createCard(album.id, '1');
+
+    const list = await asAdmin().get(`/cards?albumId=${album.id}`);
+
+    expect(list.body).toMatchObject({
+      data: [{ album: { id: album.id, publisher: null, year: null, totalCards: 1 } }],
+    });
+  });
+
   it('R14: o cadastro grava a auditoria com o admin', async () => {
     const album = await createAlbum();
 

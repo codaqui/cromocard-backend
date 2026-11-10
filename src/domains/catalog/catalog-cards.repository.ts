@@ -16,7 +16,7 @@ const cardSelect = {
   categoryId: true,
   rarityId: true,
   languageId: true,
-  album: { select: { id: true, title: true } },
+  album: { select: { id: true, title: true, publisher: true, year: true, totalCards: true } },
   category: { select: { id: true, name: true } },
   rarity: { select: { id: true, name: true } },
   language: { select: { id: true, name: true } },

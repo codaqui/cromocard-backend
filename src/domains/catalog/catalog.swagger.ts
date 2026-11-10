@@ -58,7 +58,15 @@ const cardResponse = z.object({
   categoryId: z.uuid().nullable(),
   rarityId: z.uuid().nullable(),
   languageId: z.uuid().nullable(),
-  album: z.object({ id: z.uuid(), title: z.string() }).nullable(),
+  album: z
+    .object({
+      id: z.uuid(),
+      title: z.string(),
+      publisher: z.string().nullable(),
+      year: z.number().int().nullable(),
+      totalCards: count,
+    })
+    .nullable(),
   category: reference.nullable(),
   rarity: reference.nullable(),
   language: reference.nullable(),
