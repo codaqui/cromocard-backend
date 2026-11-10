@@ -16,6 +16,7 @@ const SENSITIVE_KEYS = [
   'refreshToken',
   'idToken',
   'email',
+  'cpf',
   'cookie',
   'authorization',
 ];

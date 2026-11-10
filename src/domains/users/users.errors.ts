@@ -12,9 +12,27 @@ export class EmailAlreadyRegisteredError extends ConflictError {
   }
 }
 
+export class UsernameTakenError extends ConflictError {
+  constructor() {
+    super('Este nome de usuário já está em uso', 'USERNAME_TAKEN');
+  }
+}
+
+export class CpfTakenError extends ConflictError {
+  constructor() {
+    super('Já existe um usuário cadastrado com este CPF', 'CPF_TAKEN');
+  }
+}
+
 export class AlreadySuspendedError extends ConflictError {
   constructor() {
     super('Usuário já está suspenso', 'ALREADY_SUSPENDED');
+  }
+}
+
+export class AlreadyActivatedError extends ConflictError {
+  constructor() {
+    super('Este usuário já definiu a senha', 'ALREADY_ACTIVATED');
   }
 }
 

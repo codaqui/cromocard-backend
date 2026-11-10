@@ -1,15 +1,18 @@
 import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
-import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
+import { isUniqueConstraintError, uniqueConstraintTarget } from '@/shared/errors/unique-constraint';
 
 import {
+  AlreadyActivatedError,
   AlreadySuspendedError,
   CannotChangeOwnRoleError,
   CannotDeleteSelfError,
   CannotSuspendSelfError,
+  CpfTakenError,
   EmailAlreadyRegisteredError,
   LastAdminError,
   NotSuspendedError,
+  UsernameTakenError,
   UserNotFoundError,
 } from './users.errors';
 import type { UserSummary, UsersRepository } from './users.repository';
@@ -41,7 +44,10 @@ export interface AdminUsersServiceDeps {
   runInTransaction: TransactionRunner;
 }
 
-function rejectDuplicateEmail(error: unknown): never {
+function rejectDuplicateField(error: unknown): never {
+  const target = uniqueConstraintTarget(error);
+  if (target.includes('username')) throw new UsernameTakenError();
+  if (target.includes('cpf')) throw new CpfTakenError();
   if (isUniqueConstraintError(error)) throw new EmailAlreadyRegisteredError();
   throw error;
 }
@@ -51,8 +57,8 @@ export class AdminUsersService {
 
   async create(input: CreateUserInput, adminId: string): Promise<UserSummary> {
     const { usersRepository, authService, auditLogService } = this.deps;
-    const user = await usersRepository.create(input).catch(rejectDuplicateEmail);
-    authService.inviteUser(user.email);
+    const user = await usersRepository.create(input).catch(rejectDuplicateField);
+    if (input.sendActivation) authService.inviteUser(user.email);
     await auditLogService.record({
       adminId,
       action: 'USER_CREATED',
@@ -60,6 +66,21 @@ export class AdminUsersService {
       entityId: user.id,
     });
     return user;
+  }
+
+  async resendActivation(id: string, adminId: string): Promise<void> {
+    const { usersRepository, authService, auditLogService } = this.deps;
+    const target = await usersRepository.findCredentialsByIdIncludingDeleted(id);
+    if (!target || target.deletedAt) throw new UserNotFoundError();
+    if (target.passwordHash) throw new AlreadyActivatedError();
+
+    authService.inviteUser(target.email);
+    await auditLogService.record({
+      adminId,
+      action: 'USER_ACTIVATION_RESENT',
+      entityType: 'user',
+      entityId: id,
+    });
   }
 
   async update(id: string, input: AdminUpdateUserInput, adminId: string): Promise<UserSummary> {
@@ -72,7 +93,7 @@ export class AdminUsersService {
 
     const updated = await usersRepository
       .update(id, input, emailChanged)
-      .catch(rejectDuplicateEmail);
+      .catch(rejectDuplicateField);
     if (emailChanged) await authService.resendVerification(updated.email);
     await auditLogService.record({
       adminId,

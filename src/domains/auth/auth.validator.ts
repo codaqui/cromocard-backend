@@ -24,7 +24,7 @@ export const passwordSchema = z
 const rememberMeSchema = z.boolean().default(false);
 
 export const loginSchema = z.object({
-  email: emailSchema,
+  login: z.string().trim().toLowerCase().min(1, { error: 'Informe o e-mail ou o nome de usuário' }),
   password: z.string().min(1, { error: 'Informe a senha' }),
   rememberMe: rememberMeSchema,
 });

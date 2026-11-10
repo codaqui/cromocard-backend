@@ -17,6 +17,7 @@ const authService = new AuthService({
   authRepository: new PrismaAuthRepository(prisma),
   users: {
     findCredentialsByEmail: (email) => usersService.findCredentialsByEmail(email),
+    findCredentialsByLogin: (login) => usersService.findCredentialsByLogin(login),
     findCredentialsById: (id) => usersService.findCredentialsById(id),
     findCredentialsByGoogleId: (sub) => usersService.findCredentialsByGoogleId(sub),
     createGoogleAccount: (profile) => usersService.createGoogleAccount(profile),
@@ -24,6 +25,7 @@ const authService = new AuthService({
     createWithPassword: (account) => usersService.createWithPassword(account),
     markEmailVerified: (id) => usersService.markEmailVerified(id),
     changePassword: (id, passwordHash, tx) => usersService.changePassword(id, passwordHash, tx),
+    recordLogin: (id, ipAddress) => usersService.recordLogin(id, ipAddress),
   },
   googleVerifier: createGoogleVerifier(env.GOOGLE_CLIENT_ID),
   refreshTokenTtl: {

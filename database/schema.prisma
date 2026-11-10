@@ -34,6 +34,11 @@ model User {
   termsAccepted Boolean    @default(false) @map("terms_accepted")
   oauthProvider String?    @map("oauth_provider") @db.VarChar(30)
   oauthId       String?    @map("oauth_id") @db.VarChar(120)
+  username      String?    @unique @db.VarChar(30)
+  phone         String?    @db.VarChar(20)
+  cpf           String?    @unique @db.VarChar(14)
+  lastLoginAt   DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  lastLoginIp   String?    @map("last_login_ip") @db.VarChar(45)
   createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(6)
@@ -52,6 +57,8 @@ model User {
   notifications           Notification[]
   refreshTokens           RefreshToken[]
   passwordResetTokens     PasswordResetToken[]
+  sellerVerification      SellerVerification?  @relation("SellerVerificationSeller")
+  reviewedVerifications   SellerVerification[] @relation("SellerVerificationReviewer")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -447,4 +454,46 @@ model Notification {
   globalNotification GlobalNotification? @relation(fields: [globalNotificationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notifications_global_notification_id")
 
   @@map("notifications")
+}
+
+enum SellerVerificationStatus {
+  UNDER_REVIEW
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("seller_verification_status")
+}
+
+model SellerVerification {
+  id                     String                   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId                 String                   @unique @map("user_id") @db.Uuid
+  reviewedById           String?                  @map("reviewed_by_id") @db.Uuid
+  addressId              String?                  @map("address_id") @db.Uuid
+  status                 SellerVerificationStatus @default(UNDER_REVIEW)
+  legalName              String                   @map("legal_name") @db.VarChar(160)
+  tradeName              String?                  @map("trade_name") @db.VarChar(160)
+  cnpj                   String                   @unique @db.VarChar(18)
+  stateRegistration      String?                  @map("state_registration") @db.VarChar(30)
+  openingDate            DateTime?                @map("opening_date") @db.Date
+  companySize            String?                  @map("company_size") @db.VarChar(40)
+  cnae                   String?                  @db.VarChar(120)
+  responsibleName        String                   @map("responsible_name") @db.VarChar(120)
+  responsibleCpf         String                   @map("responsible_cpf") @db.VarChar(14)
+  responsiblePhone       String?                  @map("responsible_phone") @db.VarChar(20)
+  bankName               String?                  @map("bank_name") @db.VarChar(80)
+  bankBranch             String?                  @map("bank_branch") @db.VarChar(10)
+  bankAccount            String?                  @map("bank_account") @db.VarChar(20)
+  pixKey                 String?                  @map("pix_key") @db.VarChar(120)
+  rejectionReason        String?                  @map("rejection_reason") @db.VarChar(255)
+  regularizationDeadline DateTime?                @map("regularization_deadline") @db.Timestamptz(6)
+  reviewedAt             DateTime?                @map("reviewed_at") @db.Timestamptz(6)
+  createdAt              DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt              DateTime?                @map("deleted_at") @db.Timestamptz(6)
+
+  seller   User  @relation("SellerVerificationSeller", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_user_id")
+  reviewer User? @relation("SellerVerificationReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_reviewed_by_id")
+
+  @@map("seller_verifications")
 }

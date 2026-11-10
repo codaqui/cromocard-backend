@@ -18,6 +18,7 @@ interface UserOverrides {
   status?: UserStatus;
   emailVerified?: boolean;
   deletedAt?: Date;
+  username?: string;
 }
 
 interface SessionBody {
@@ -39,8 +40,8 @@ async function createUser(overrides: UserOverrides = {}) {
   return user;
 }
 
-function login(email: string, password = PASSWORD, rememberMe = false) {
-  return request(app).post('/api/v1/auth/login').send({ email, password, rememberMe });
+function login(login: string, password = PASSWORD, rememberMe = false) {
+  return request(app).post('/api/v1/auth/login').send({ login, password, rememberMe });
 }
 
 function refreshCookie(res: request.Response): string {
@@ -135,19 +136,26 @@ describe('POST /api/v1/auth/login', () => {
     });
   });
 
-  it('CA5: e-mail inválido e senha vazia respondem 400 com o erro em cada campo', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email: 'nao-e-email', password: '' });
+  it('CA5: login e senha vazios respondem 400 com o erro em cada campo', async () => {
+    const res = await request(app).post('/api/v1/auth/login').send({ login: '', password: '' });
 
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       error: 'VALIDATION_ERROR',
       details: [
-        { field: 'email', message: 'Informe um e-mail válido' },
+        { field: 'login', message: 'Informe o e-mail ou o nome de usuário' },
         { field: 'password', message: 'Informe a senha' },
       ],
     });
+  });
+
+  it('R10: entra com o nome de usuário e a senha', async () => {
+    const user = await createUser({ username: `login-${crypto.randomUUID().slice(0, 8)}` });
+
+    const res = await login(user.username!);
+
+    expect(res.status).toBe(200);
+    expect((res.body as SessionBody).data.user.id).toBe(user.id);
   });
 
   it('CA6: conta suspensa responde 403 sem emitir token', async () => {

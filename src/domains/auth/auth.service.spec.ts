@@ -123,6 +123,14 @@ class InMemoryUsers implements AuthUsers {
     return Promise.resolve(this.accounts.find((account) => account.email === email) ?? null);
   }
 
+  findCredentialsByLogin(login: string): Promise<AccountCredentials | null> {
+    return this.findCredentialsByEmail(login);
+  }
+
+  recordLogin(): Promise<void> {
+    return Promise.resolve();
+  }
+
   findCredentialsById(id: string): Promise<AccountCredentials | null> {
     return Promise.resolve(this.accounts.find((account) => account.id === id) ?? null);
   }
@@ -233,8 +241,9 @@ describe('AuthService', () => {
   });
 
   function login(overrides: { email?: string; password?: string; rememberMe?: boolean } = {}) {
+    const { email, ...rest } = overrides;
     return service.login(
-      { email: 'ana@cromocard.dev', password: PASSWORD, rememberMe: false, ...overrides },
+      { login: email ?? 'ana@cromocard.dev', password: PASSWORD, rememberMe: false, ...rest },
       context,
     );
   }
@@ -406,7 +415,7 @@ describe('AuthService', () => {
     async function loggedInSession(overrides: Partial<StoredAccount> = {}, rememberMe = false) {
       const account = buildAccount(overrides);
       users.accounts = [account];
-      return service.login({ email: account.email, password: PASSWORD, rememberMe }, context);
+      return service.login({ login: account.email, password: PASSWORD, rememberMe }, context);
     }
 
     it('CA12: emite novo access token, revoga o refresh usado e grava um novo', async () => {

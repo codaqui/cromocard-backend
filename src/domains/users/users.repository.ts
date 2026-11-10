@@ -15,6 +15,11 @@ const userSummarySelect = {
   status: true,
   emailVerified: true,
   createdAt: true,
+  username: true,
+  phone: true,
+  cpf: true,
+  lastLoginAt: true,
+  lastLoginIp: true,
 } satisfies Prisma.UserSelect;
 
 export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
@@ -108,6 +113,7 @@ export interface UsersRepository {
   countSignupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   findSellersCreatedWithin(range: DateRange, pagination: PaginationQuery): Promise<SellersPage>;
   findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null>;
+  findCredentialsByLoginIncludingDeleted(login: string): Promise<UserCredentials | null>;
   findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null>;
   findCredentialsByOauthIncludingDeleted(identity: OauthIdentity): Promise<UserCredentials | null>;
   createOauthAccount(account: NewOauthAccount): Promise<UserCredentials>;
@@ -115,19 +121,28 @@ export interface UsersRepository {
   createPasswordAccount(account: NewPasswordAccount): Promise<RegisteredUser>;
   markEmailVerified(id: string): Promise<void>;
   changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void>;
+  recordLogin(id: string, ipAddress: string | undefined): Promise<void>;
 }
 
 const activeMembers = { ...notDeleted, role: { not: 'ADMIN' } } satisfies Prisma.UserWhereInput;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function buildSearchFilter(q?: string): Prisma.UserWhereInput {
   if (!q) return {};
+  const digits = q.replace(/\D/g, '');
+  const username = q.replace(/^@/, '');
 
-  return {
-    OR: [
-      { name: { contains: q, mode: 'insensitive' } },
-      { email: { contains: q, mode: 'insensitive' } },
-    ],
-  };
+  const or: Prisma.UserWhereInput[] = [
+    { name: { contains: q, mode: 'insensitive' } },
+    { email: { contains: q, mode: 'insensitive' } },
+    { username: { contains: username, mode: 'insensitive' } },
+  ];
+  if (digits.length >= 3) {
+    or.push({ cpf: { contains: digits } }, { sellerVerification: { cnpj: { contains: digits } } });
+  }
+  if (UUID_PATTERN.test(q)) or.push({ id: q });
+
+  return { OR: or };
 }
 
 function buildWhere({ q, role, status }: Pick<ListUsersQuery, 'q' | 'role' | 'status'>) {
@@ -171,9 +186,9 @@ export class PrismaUsersRepository implements UsersRepository {
     return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userSummarySelect });
   }
 
-  create(input: CreateUserInput): Promise<UserSummary> {
+  create({ sendActivation: _sendActivation, ...data }: CreateUserInput): Promise<UserSummary> {
     return this.prisma.user.create({
-      data: { ...input, emailVerified: true },
+      data: { ...data, emailVerified: true },
       select: userSummarySelect,
     });
   }
@@ -247,6 +262,18 @@ export class PrismaUsersRepository implements UsersRepository {
     });
   }
 
+  findCredentialsByLoginIncludingDeleted(login: string): Promise<UserCredentials | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: login, mode: 'insensitive' } },
+          { username: login.replace(/^@/, '').toLowerCase() },
+        ],
+      },
+      select: userCredentialsSelect,
+    });
+  }
+
   findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null> {
     return this.prisma.user.findUnique({ where: { id }, select: userCredentialsSelect });
   }
@@ -288,6 +315,13 @@ export class PrismaUsersRepository implements UsersRepository {
 
   async changePassword(id: string, passwordHash: string, tx: Transaction = this.prisma) {
     await tx.user.update({ where: { id }, data: { passwordHash, emailVerified: true } });
+  }
+
+  async recordLogin(id: string, ipAddress: string | undefined): Promise<void> {
+    await this.prisma.user.update({
+      where: { id },
+      data: { lastLoginAt: new Date(), lastLoginIp: ipAddress },
+    });
   }
 
   linkOauthAccount(id: string, { provider, oauthId, discardPassword }: OauthLink) {

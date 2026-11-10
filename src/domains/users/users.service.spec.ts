@@ -39,6 +39,11 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     oauthProvider: null,
     oauthId: null,
     deletedAt: null,
+    username: null,
+    phone: null,
+    cpf: null,
+    lastLoginAt: null,
+    lastLoginIp: null,
     ...overrides,
   };
 }
@@ -55,7 +60,7 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
   }
 
-  create(input: CreateUserInput): Promise<UserSummary> {
+  create({ sendActivation: _sendActivation, ...input }: CreateUserInput): Promise<UserSummary> {
     const user = buildUser({ ...input, emailVerified: true });
     this.users = [...this.users, user];
     return Promise.resolve(user);
@@ -99,6 +104,16 @@ class InMemoryUsersRepository implements UsersRepository {
 
   findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null> {
     return Promise.resolve(this.users.find((user) => user.email === email) ?? null);
+  }
+
+  findCredentialsByLoginIncludingDeleted(login: string): Promise<UserCredentials | null> {
+    return Promise.resolve(
+      this.users.find((user) => user.email === login || user.username === login) ?? null,
+    );
+  }
+
+  recordLogin(): Promise<void> {
+    return Promise.resolve();
   }
 
   findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null> {

@@ -63,7 +63,7 @@ const usersPaths: RouteConfig[] = [
       201: { description: 'Usuário cadastrado' },
       400: { description: 'Dados inválidos' },
       403: { description: 'Apenas administradores' },
-      409: { description: 'E-mail já cadastrado' },
+      409: { description: 'E-mail, nome de usuário ou CPF já cadastrado' },
     },
   },
   {
@@ -90,7 +90,7 @@ const usersPaths: RouteConfig[] = [
       400: { description: 'Dados inválidos' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
-      409: { description: 'E-mail já cadastrado' },
+      409: { description: 'E-mail, nome de usuário ou CPF já cadastrado' },
       422: { description: 'Não pode alterar o próprio papel ou rebaixar o último administrador' },
     },
   },
@@ -121,6 +121,19 @@ const usersPaths: RouteConfig[] = [
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
       409: { description: 'Usuário não está suspenso' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/users/{id}/resend-activation',
+    tags,
+    security,
+    summary: 'Reenvia o link de ativação por e-mail (administrador)',
+    responses: {
+      202: { description: 'Link reenviado' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      409: { description: 'Usuário já definiu a senha' },
     },
   },
   {

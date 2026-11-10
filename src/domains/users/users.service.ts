@@ -68,6 +68,10 @@ export class UsersService {
     return this.usersRepository.findCredentialsByEmailIncludingDeleted(email);
   }
 
+  findCredentialsByLogin(login: string): Promise<UserCredentials | null> {
+    return this.usersRepository.findCredentialsByLoginIncludingDeleted(login);
+  }
+
   findCredentialsById(id: string): Promise<UserCredentials | null> {
     return this.usersRepository.findCredentialsByIdIncludingDeleted(id);
   }
@@ -106,6 +110,10 @@ export class UsersService {
 
   changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void> {
     return this.usersRepository.changePassword(id, passwordHash, tx);
+  }
+
+  recordLogin(id: string, ipAddress: string | undefined): Promise<void> {
+    return this.usersRepository.recordLogin(id, ipAddress);
   }
 
   async remove(id: string): Promise<void> {

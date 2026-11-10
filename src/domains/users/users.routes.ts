@@ -20,6 +20,7 @@ export function createUsersRoutes(controller: UsersController): Router {
   router.patch('/:id', controller.update);
   router.post('/:id/suspend', controller.suspend);
   router.post('/:id/reactivate', controller.reactivate);
+  router.post('/:id/resend-activation', controller.resendActivation);
   router.delete('/:id', controller.remove);
 
   return router;

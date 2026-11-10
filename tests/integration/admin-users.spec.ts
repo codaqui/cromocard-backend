@@ -39,6 +39,27 @@ interface UserOverrides {
   role?: UserRole;
   status?: UserStatus;
   deletedAt?: Date;
+  username?: string;
+  cpf?: string;
+  passwordHash?: string | null;
+}
+
+function uniqueUsername(prefix: string): string {
+  return `${prefix}${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+}
+
+function cpfCheckDigit(digits: number[], length: number): number {
+  const sum = digits
+    .slice(0, length)
+    .reduce((acc, digit, index) => acc + digit * (length + 1 - index), 0);
+  const remainder = (sum * 10) % 11;
+  return remainder === 10 ? 0 : remainder;
+}
+
+function randomCpf(): string {
+  const base = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+  const withFirstDigit = [...base, cpfCheckDigit(base, 9)];
+  return [...withFirstDigit, cpfCheckDigit(withFirstDigit, 10)].join('');
 }
 
 function uniqueEmail(prefix: string): string {
@@ -113,6 +134,22 @@ describe('GET /api/v1/users', () => {
     expect((res.body as UsersPageResponse).data).toHaveLength(0);
   });
 
+  it('CA2 (CCD098): busca por CPF mostra só o usuário dono do CPF', async () => {
+    const admin = await createAdmin();
+    const cpf = randomCpf();
+    const target = await createUser({ cpf });
+    await createUser();
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: cpf })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.id).toBe(target.id);
+  });
+
   it('CA9: token de CUSTOMER responde 403', async () => {
     const res = await request(app)
       .get('/api/v1/users')
@@ -170,6 +207,80 @@ describe('POST /api/v1/users', () => {
       .post('/api/v1/users')
       .set('Authorization', bearer(admin))
       .send({ name: 'Outro', email: 'não-é-email', role: 'CUSTOMER' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('R4/R5: cria com @, CPF e telefone e, sem marcar o envio, não manda convite', async () => {
+    const admin = await createAdmin();
+    const email = uniqueEmail('bia');
+    const username = uniqueUsername('bia');
+    const cpf = randomCpf();
+
+    const res = await request(app).post('/api/v1/users').set('Authorization', bearer(admin)).send({
+      name: 'Bia Vendedora',
+      email,
+      role: 'SELLER',
+      username,
+      cpf,
+      phone: '(11) 91234-5678',
+      sendActivation: false,
+    });
+
+    const body = res.body as UserResponse;
+    expect(res.status).toBe(201);
+    createdUserIds.push(body.data.id);
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: body.data.id } });
+    expect(stored).toMatchObject({ username, cpf, phone: '11912345678' });
+    expect(sentMails).toHaveLength(0);
+  });
+
+  it('R6: @ já cadastrado responde 409 USERNAME_TAKEN', async () => {
+    const admin = await createAdmin();
+    const username = uniqueUsername('tomado');
+    await createUser({ username });
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({ name: 'Outro', email: uniqueEmail('outro'), role: 'CUSTOMER', username });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('USERNAME_TAKEN');
+  });
+
+  it('R6: CPF já cadastrado responde 409 CPF_TAKEN', async () => {
+    const admin = await createAdmin();
+    const cpf = randomCpf();
+    await createUser({ cpf });
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Outro',
+        email: uniqueEmail('outro'),
+        role: 'CUSTOMER',
+        cpf,
+      });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('CPF_TAKEN');
+  });
+
+  it('R7: CPF com dígito errado responde 400', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Outro',
+        email: uniqueEmail('outro'),
+        role: 'CUSTOMER',
+        cpf: '111.111.111-11',
+      });
 
     expect(res.status).toBe(400);
   });
@@ -368,5 +479,45 @@ describe('DELETE /api/v1/users/:id', () => {
 
     expect(res.status).toBe(422);
     expect((res.body as ErrorResponse).error).toBe('CANNOT_DELETE_SELF');
+  });
+});
+
+describe('POST /api/v1/users/:id/resend-activation', () => {
+  it('R15: reenvia o link e grava USER_ACTIVATION_RESENT', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ passwordHash: null });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/resend-activation`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(202);
+    await waitForMail(1);
+    expect(sentMails[0]?.to).toBe(target.email);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_ACTIVATION_RESENT' },
+    });
+    expect(log.adminId).toBe(admin.id);
+  });
+
+  it('usuário que já definiu senha responde 409 ALREADY_ACTIVATED', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ passwordHash: 'hash-qualquer' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/resend-activation`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('ALREADY_ACTIVATED');
+  });
+
+  it('CA9: token de CUSTOMER responde 403', async () => {
+    const res = await request(app)
+      .post(`/api/v1/users/${crypto.randomUUID()}/resend-activation`)
+      .set('Authorization', bearer({ id: crypto.randomUUID(), role: 'CUSTOMER' }));
+
+    expect(res.status).toBe(403);
   });
 });

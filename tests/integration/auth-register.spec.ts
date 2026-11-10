@@ -136,7 +136,7 @@ describe('POST /api/v1/auth/verify-email', () => {
     expect(user.emailVerified).toBe(true);
     const login = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: body.email, password: body.password });
+      .send({ login: body.email, password: body.password });
     expect(login.status).toBe(200);
   });
 

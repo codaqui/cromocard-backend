@@ -8,13 +8,16 @@ import {
   type AdminAuthService,
 } from './admin-users.service';
 import {
+  AlreadyActivatedError,
   AlreadySuspendedError,
   CannotChangeOwnRoleError,
   CannotDeleteSelfError,
   CannotSuspendSelfError,
+  CpfTakenError,
   EmailAlreadyRegisteredError,
   LastAdminError,
   NotSuspendedError,
+  UsernameTakenError,
   UserNotFoundError,
 } from './users.errors';
 import type {
@@ -46,12 +49,18 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     emailVerified: true,
     createdAt: new Date(),
     deletedAt: null,
+    username: null,
+    phone: null,
+    cpf: null,
+    lastLoginAt: null,
+    lastLoginIp: null,
     ...overrides,
   };
 }
 
 class InMemoryUsersRepository implements UsersRepository {
   users: StoredUser[] = [];
+  credentials: UserCredentials | null = null;
 
   findPage(query: { role?: string; status?: string } = {}): Promise<UsersPage> {
     const items = this.users.filter(
@@ -67,7 +76,7 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
   }
 
-  create(input: CreateUserInput): Promise<UserSummary> {
+  create({ sendActivation: _sendActivation, ...input }: CreateUserInput): Promise<UserSummary> {
     const user = buildUser({ ...input, emailVerified: true });
     this.users = [...this.users, user];
     return Promise.resolve(user);
@@ -114,8 +123,16 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(null);
   }
 
-  findCredentialsByIdIncludingDeleted(): Promise<UserCredentials | null> {
+  findCredentialsByLoginIncludingDeleted(): Promise<UserCredentials | null> {
     return Promise.resolve(null);
+  }
+
+  findCredentialsByIdIncludingDeleted(): Promise<UserCredentials | null> {
+    return Promise.resolve(this.credentials);
+  }
+
+  recordLogin(): Promise<void> {
+    return Promise.resolve();
   }
 
   findCredentialsByOauthIncludingDeleted(
@@ -174,10 +191,11 @@ class FakeAuditLog implements AdminAuditLog {
   }
 }
 
-function uniqueConstraintError() {
+function uniqueConstraintError(target?: string[]) {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
     clientVersion: 'teste',
+    meta: target ? { target } : undefined,
   });
 }
 
@@ -206,6 +224,7 @@ describe('AdminUsersService', () => {
         name: 'Bia Vendedora',
         email: 'bia@cromocard.dev',
         role: 'SELLER',
+        sendActivation: true,
       };
 
       const user = await service.create(input, adminId);
@@ -223,13 +242,87 @@ describe('AdminUsersService', () => {
 
     it('CA2: e-mail já cadastrado responde 409 sem convite nem auditoria', async () => {
       vi.spyOn(repository, 'create').mockRejectedValueOnce(uniqueConstraintError());
-      const input: CreateUserInput = { name: 'Bia', email: 'bia@cromocard.dev', role: 'SELLER' };
+      const input: CreateUserInput = {
+        name: 'Bia',
+        email: 'bia@cromocard.dev',
+        role: 'SELLER',
+        sendActivation: true,
+      };
 
       await expect(service.create(input, adminId)).rejects.toBeInstanceOf(
         EmailAlreadyRegisteredError,
       );
       expect(authService.invites).toHaveLength(0);
       expect(auditLog.entries).toHaveLength(0);
+    });
+
+    it('R5: sem marcar o envio do link, cria sem convite', async () => {
+      const input: CreateUserInput = {
+        name: 'Bia Vendedora',
+        email: 'bia@cromocard.dev',
+        role: 'SELLER',
+        sendActivation: false,
+      };
+
+      await service.create(input, adminId);
+
+      expect(authService.invites).toHaveLength(0);
+    });
+
+    it('R6: @ já cadastrado responde 409 USERNAME_TAKEN', async () => {
+      vi.spyOn(repository, 'create').mockRejectedValueOnce(uniqueConstraintError(['username']));
+      const input: CreateUserInput = {
+        name: 'Bia',
+        email: 'bia@cromocard.dev',
+        role: 'SELLER',
+        username: 'bia',
+        sendActivation: true,
+      };
+
+      await expect(service.create(input, adminId)).rejects.toBeInstanceOf(UsernameTakenError);
+    });
+
+    it('R6: CPF já cadastrado responde 409 CPF_TAKEN', async () => {
+      vi.spyOn(repository, 'create').mockRejectedValueOnce(uniqueConstraintError(['cpf']));
+      const input: CreateUserInput = {
+        name: 'Bia',
+        email: 'bia@cromocard.dev',
+        role: 'SELLER',
+        cpf: '52998224725',
+        sendActivation: true,
+      };
+
+      await expect(service.create(input, adminId)).rejects.toBeInstanceOf(CpfTakenError);
+    });
+  });
+
+  describe('resendActivation', () => {
+    it('R15: reenvia o convite e grava USER_ACTIVATION_RESENT', async () => {
+      const user = buildUser({ email: 'bia@cromocard.dev' });
+      repository.credentials = { ...user, passwordHash: null };
+
+      await service.resendActivation(user.id, adminId);
+
+      expect(authService.invites).toEqual(['bia@cromocard.dev']);
+      expect(auditLog.entries).toEqual([
+        { adminId, action: 'USER_ACTIVATION_RESENT', entityType: 'user', entityId: user.id },
+      ]);
+    });
+
+    it('R15: usuário que já definiu senha responde 409 ALREADY_ACTIVATED', async () => {
+      const user = buildUser();
+      repository.credentials = { ...user, passwordHash: 'hash' };
+
+      await expect(service.resendActivation(user.id, adminId)).rejects.toBeInstanceOf(
+        AlreadyActivatedError,
+      );
+      expect(authService.invites).toHaveLength(0);
+    });
+
+    it('usuário inexistente responde 404', async () => {
+      await expect(service.resendActivation(crypto.randomUUID(), adminId)).rejects.toBeInstanceOf(
+        UserNotFoundError,
+      );
     });
   });
 
