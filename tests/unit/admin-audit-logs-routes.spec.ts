@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '@/app';
 import { buildOpenApiDocument } from '@/config/swagger';
 import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
+import { listAuditLogsQuerySchema } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { signAccessToken } from '@/lib/jwt';
 
 const auditLogsPaths = [
@@ -58,5 +59,17 @@ describe('documentação de logs de auditoria', () => {
       '/admin/audit-logs',
       '/admin/audit-logs/{id}',
     ]);
+  });
+
+  it('aceita filtrar pela alteração de papel e mostra a ação no Swagger', () => {
+    const document = buildOpenApiDocument([auditLogsModule]);
+    const actionParam = document.paths?.['/admin/audit-logs']?.get?.parameters?.find(
+      (param) => 'name' in param && param.name === 'action',
+    );
+
+    expect(listAuditLogsQuerySchema.parse({ action: 'USER_ROLE_UPDATED' }).action).toBe(
+      'USER_ROLE_UPDATED',
+    );
+    expect(JSON.stringify(actionParam)).toContain('USER_ROLE_UPDATED');
   });
 });
