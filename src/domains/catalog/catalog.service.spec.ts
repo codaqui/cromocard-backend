@@ -16,6 +16,7 @@ import {
   AlbumNotFoundError,
   CardInUseError,
   CardNotFoundError,
+  CardNumberOfDeletedCardError,
   CardNumberTakenError,
   CategoryInUseError,
   CategoryNotFoundError,
@@ -389,15 +390,31 @@ describe('CatalogService', () => {
       expect(restored).toMatchObject({ id: removed.id, name: 'Nova' });
     });
 
-    it('R7: na edição recusa o número de outra carta, mesmo excluída', async () => {
+    it('R7: na edição recusa o número de outra carta ativa', async () => {
+      const album = await newAlbum();
+      const card = await newCard({ albumId: album.id, number: '1' });
+      await newCard({ albumId: album.id, number: '2' });
+
+      await expect(service.updateCard(ADMIN_ID, card.id, { number: '2' })).rejects.toThrow(
+        CardNumberTakenError,
+      );
+    });
+
+    it('R7: na edição recusa o número de uma carta excluída e diz que ela foi excluída', async () => {
       const album = await newAlbum();
       const card = await newCard({ albumId: album.id, number: '1' });
       const removed = await newCard({ albumId: album.id, number: '2' });
       await service.deleteCard(ADMIN_ID, removed.id);
 
-      await expect(service.updateCard(ADMIN_ID, card.id, { number: '2' })).rejects.toThrow(
-        CardNumberTakenError,
-      );
+      const error = await service
+        .updateCard(ADMIN_ID, card.id, { number: '2' })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CardNumberOfDeletedCardError);
+      expect(error).toMatchObject({
+        code: 'CARD_NUMBER_TAKEN',
+        message: 'O número pertence a uma carta excluída deste álbum',
+      });
     });
 
     it('R7: na edição aceita manter o próprio número', async () => {

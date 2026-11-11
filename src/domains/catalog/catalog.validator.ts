@@ -39,7 +39,11 @@ export const listCardsQuerySchema = searchQuerySchema.extend({
   rarityId: z.uuid().optional(),
 });
 
-export const listCategoriesQuerySchema = searchQuerySchema;
+export const categoryTypeSchema = z.enum(CategoryType);
+
+export const listCategoriesQuerySchema = searchQuerySchema.extend({
+  type: categoryTypeSchema.optional(),
+});
 
 export const createAlbumSchema = z.object({
   title: requiredText(ALBUM_TITLE_MAX_LENGTH),
@@ -65,8 +69,6 @@ export const createCardSchema = z.object({
 });
 
 export const updateCardSchema = createCardSchema.partial();
-
-export const categoryTypeSchema = z.enum(CategoryType);
 
 export const createCategorySchema = z.object({
   name: requiredText(CATEGORY_NAME_MAX_LENGTH),

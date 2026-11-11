@@ -12,6 +12,7 @@ import {
   AlbumNotFoundError,
   CardInUseError,
   CardNotFoundError,
+  CardNumberOfDeletedCardError,
   CardNumberTakenError,
   CategoryInUseError,
   CategoryNotFoundError,
@@ -221,7 +222,8 @@ export class CatalogService {
 
   private async ensureNumberAvailable(cardId: string, slot: CardNumberSlot) {
     const owner = await this.findNumberOwner(slot);
-    if (owner && owner.id !== cardId) throw new CardNumberTakenError();
+    if (!owner || owner.id === cardId) return;
+    throw owner.deletedAt ? new CardNumberOfDeletedCardError() : new CardNumberTakenError();
   }
 
   private findNumberOwner({ albumId, number }: CardNumberSlot) {

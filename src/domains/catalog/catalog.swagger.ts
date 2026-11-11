@@ -217,7 +217,10 @@ const resources: CatalogResource[] = [
         description:
           'CARD_NOT_FOUND, ALBUM_NOT_FOUND, CATEGORY_NOT_FOUND, RARITY_NOT_FOUND ou LANGUAGE_NOT_FOUND',
       },
-      409: { description: 'CARD_NUMBER_TAKEN: número já usado no álbum' },
+      409: {
+        description:
+          'CARD_NUMBER_TAKEN: número já usado no álbum, por uma carta ativa ou excluída (a mensagem diz qual)',
+      },
       422: { description: `${CATEGORY_TYPE_MISMATCH}: a carta só aceita categoria de carta` },
     },
     deleteError: 'CARD_IN_USE: a carta está em coleções',

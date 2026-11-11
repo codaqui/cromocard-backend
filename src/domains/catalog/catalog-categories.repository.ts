@@ -34,8 +34,12 @@ export interface CategoriesRepository {
   isInUse(id: string): Promise<boolean>;
 }
 
-function buildCategoriesFilter({ q }: ListCategoriesQuery): Prisma.CategoryWhereInput {
-  return { ...notDeleted, ...(q && { name: { contains: q, mode: 'insensitive' } }) };
+function buildCategoriesFilter({ q, type }: ListCategoriesQuery): Prisma.CategoryWhereInput {
+  return {
+    ...notDeleted,
+    ...(q && { name: { contains: q, mode: 'insensitive' } }),
+    ...(type && { type }),
+  };
 }
 
 export class PrismaCategoriesRepository implements CategoriesRepository {

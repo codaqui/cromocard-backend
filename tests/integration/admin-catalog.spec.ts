@@ -225,6 +225,18 @@ describe('álbuns e categorias', () => {
     expect((res.body as ErrorBody).error).toBe('CATEGORY_IN_USE');
   });
 
+  it('L6: lista só as categorias do tipo pedido', async () => {
+    const name = `${MARKER} tipo ${crypto.randomUUID()}`;
+    await asAdmin().post('/categories', { name: `${name} carta`, type: 'CARD' });
+    await asAdmin().post('/categories', { name: `${name} álbum`, type: 'ALBUM' });
+
+    const cards = await asAdmin().get(`/categories?q=${encodeURIComponent(name)}&type=CARD`);
+    const invalid = await asAdmin().get('/categories?type=FIGURINHA');
+
+    expect(namesOf(cards.body)).toEqual([`${name} carta`]);
+    expect(invalid.status).toBe(400);
+  });
+
   it('R15: categoria não pode ser pai dela mesma', async () => {
     const category = (
       await asAdmin().post('/categories', { name: `${MARKER} ciclo`, type: 'CARD' })

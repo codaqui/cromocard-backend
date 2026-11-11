@@ -38,6 +38,12 @@ export class CardNumberTakenError extends ConflictError {
   }
 }
 
+export class CardNumberOfDeletedCardError extends ConflictError {
+  constructor() {
+    super('O número pertence a uma carta excluída deste álbum', 'CARD_NUMBER_TAKEN');
+  }
+}
+
 export class AlbumHasCardsError extends BusinessRuleError {
   constructor() {
     super('O álbum tem cartas cadastradas e não pode ser excluído', 'ALBUM_HAS_CARDS');
