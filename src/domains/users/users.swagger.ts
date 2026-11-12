@@ -57,7 +57,8 @@ const usersPaths: RouteConfig[] = [
     path: '/users',
     tags,
     security,
-    summary: 'Cadastra um usuário e envia o convite por e-mail (administrador)',
+    summary:
+      'Cadastra um usuário, com @, CPF e telefone opcionais (administrador); envia o convite por e-mail quando sendActivation não for false',
     request: { body: { content: { 'application/json': { schema: createUserSchema } } } },
     responses: {
       201: { description: 'Usuário cadastrado' },
@@ -83,7 +84,8 @@ const usersPaths: RouteConfig[] = [
     path: '/users/{id}',
     tags,
     security,
-    summary: 'Edita nome, e-mail ou papel de um usuário (administrador)',
+    summary:
+      'Edita nome, e-mail, papel, @, CPF ou telefone de um usuário (administrador); enviar null em @/CPF/telefone apaga o dado',
     request: { body: { content: { 'application/json': { schema: adminUpdateUserSchema } } } },
     responses: {
       200: { description: 'Usuário atualizado' },

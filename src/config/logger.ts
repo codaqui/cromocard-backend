@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { IncomingHttpHeaders } from 'node:http';
 
 import { pino } from 'pino';
+import type { stdSerializers } from 'pino';
 import { pinoHttp } from 'pino-http';
 
 import { env } from '@/config/env';
@@ -17,6 +19,7 @@ const SENSITIVE_KEYS = [
   'idToken',
   'email',
   'cpf',
+  'phone',
   'cookie',
   'authorization',
 ];
@@ -29,17 +32,35 @@ export const LOG_REDACT_PATHS = [
   ...SENSITIVE_KEYS.map((key) => `*.${key}`),
 ];
 
+export function transportFor(nodeEnv: string) {
+  return nodeEnv === 'development' ? prettyTransport : undefined;
+}
+
 export const logger = pino({
   level: env.LOG_LEVEL,
   redact: LOG_REDACT_PATHS,
-  transport: env.NODE_ENV === 'development' ? prettyTransport : undefined,
+  transport: transportFor(env.NODE_ENV),
 });
+
+export function stripQueryString(req: ReturnType<typeof stdSerializers.req>) {
+  const [path] = (req.url ?? '').split('?');
+  return { ...req, url: path, query: undefined };
+}
+
+interface RequestIdHeaders {
+  headers: IncomingHttpHeaders;
+}
+
+export function requestIdFrom(req: RequestIdHeaders): string {
+  return req.headers['x-request-id']?.toString() ?? randomUUID();
+}
 
 export const httpLogger = pinoHttp({
   logger,
   genReqId: (req, res) => {
-    const requestId = req.headers['x-request-id']?.toString() ?? randomUUID();
+    const requestId = requestIdFrom(req);
     res.setHeader('X-Request-Id', requestId);
     return requestId;
   },
+  serializers: { req: stripQueryString },
 });

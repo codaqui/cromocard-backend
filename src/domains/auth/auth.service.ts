@@ -330,6 +330,7 @@ export class AuthService {
 
     const account = await this.findOrLinkGoogleAccount(profile);
     assertCanSignIn(account);
+    await this.deps.users.recordLogin(account.id, context.ipAddress);
     return this.startSession(account, this.refreshExpiry(rememberMe), context);
   }
 

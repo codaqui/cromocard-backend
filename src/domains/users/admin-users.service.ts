@@ -1,6 +1,6 @@
 import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
-import { isUniqueConstraintError, uniqueConstraintTarget } from '@/shared/errors/unique-constraint';
+import { uniqueConstraintFields } from '@/shared/errors/unique-constraint';
 
 import {
   AlreadyActivatedError,
@@ -15,7 +15,7 @@ import {
   UsernameTakenError,
   UserNotFoundError,
 } from './users.errors';
-import type { UserSummary, UsersRepository } from './users.repository';
+import type { UserProfile, UserSummary, UsersRepository } from './users.repository';
 import type { AdminUpdateUserInput, CreateUserInput, ReasonInput } from './users.validator';
 
 export interface AdminAuthService {
@@ -32,6 +32,7 @@ export interface AdminAuditLog {
       entityType: string;
       entityId?: string;
       reason?: string;
+      details?: Record<string, unknown>;
     },
     tx?: Transaction,
   ): Promise<unknown>;
@@ -44,11 +45,16 @@ export interface AdminUsersServiceDeps {
   runInTransaction: TransactionRunner;
 }
 
+const DUPLICATE_FIELD_ERRORS: Record<string, new () => Error> = {
+  username: UsernameTakenError,
+  cpf: CpfTakenError,
+  email: EmailAlreadyRegisteredError,
+};
+
 function rejectDuplicateField(error: unknown): never {
-  const target = uniqueConstraintTarget(error);
-  if (target.includes('username')) throw new UsernameTakenError();
-  if (target.includes('cpf')) throw new CpfTakenError();
-  if (isUniqueConstraintError(error)) throw new EmailAlreadyRegisteredError();
+  const fields = uniqueConstraintFields(error);
+  const matchedField = fields.find((field) => field in DUPLICATE_FIELD_ERRORS);
+  if (matchedField) throw new DUPLICATE_FIELD_ERRORS[matchedField]!();
   throw error;
 }
 
@@ -57,8 +63,9 @@ export class AdminUsersService {
 
   async create(input: CreateUserInput, adminId: string): Promise<UserSummary> {
     const { usersRepository, authService, auditLogService } = this.deps;
-    const user = await usersRepository.create(input).catch(rejectDuplicateField);
-    if (input.sendActivation) authService.inviteUser(user.email);
+    const { sendActivation, ...data } = input;
+    const user = await usersRepository.create(data).catch(rejectDuplicateField);
+    if (sendActivation) authService.inviteUser(user.email);
     await auditLogService.record({
       adminId,
       action: 'USER_CREATED',
@@ -72,7 +79,7 @@ export class AdminUsersService {
     const { usersRepository, authService, auditLogService } = this.deps;
     const target = await usersRepository.findCredentialsByIdIncludingDeleted(id);
     if (!target || target.deletedAt) throw new UserNotFoundError();
-    if (target.passwordHash) throw new AlreadyActivatedError();
+    if (target.passwordHash || target.oauthProvider) throw new AlreadyActivatedError();
 
     authService.inviteUser(target.email);
     await auditLogService.record({
@@ -90,6 +97,7 @@ export class AdminUsersService {
       await this.assertRoleChangeAllowed(target, adminId);
     }
     const emailChanged = Boolean(input.email) && input.email !== target.email;
+    const changedFields = Object.keys(input);
 
     const updated = await usersRepository
       .update(id, input, emailChanged)
@@ -100,6 +108,7 @@ export class AdminUsersService {
       action: 'USER_UPDATED',
       entityType: 'user',
       entityId: id,
+      details: { changedFields },
     });
     return updated;
   }
@@ -155,26 +164,26 @@ export class AdminUsersService {
     await authService.revokeAllSessions(id);
   }
 
-  private async findByIdOrThrow(id: string): Promise<UserSummary> {
+  private async findByIdOrThrow(id: string): Promise<UserProfile> {
     const user = await this.deps.usersRepository.findById(id);
     if (!user) throw new UserNotFoundError();
     return user;
   }
 
   private assertNotSelf(
-    target: UserSummary,
+    target: UserProfile,
     adminId: string,
     ErrorClass: new () => CannotSuspendSelfError | CannotDeleteSelfError,
   ): void {
     if (target.id === adminId) throw new ErrorClass();
   }
 
-  private async assertRoleChangeAllowed(target: UserSummary, adminId: string): Promise<void> {
+  private async assertRoleChangeAllowed(target: UserProfile, adminId: string): Promise<void> {
     if (target.id === adminId) throw new CannotChangeOwnRoleError();
     if (target.role === 'ADMIN') await this.assertNotLastActiveAdmin(target);
   }
 
-  private async assertNotLastActiveAdmin(target: UserSummary): Promise<void> {
+  private async assertNotLastActiveAdmin(target: UserProfile): Promise<void> {
     if (target.role !== 'ADMIN' || target.status !== 'ACTIVE') return;
 
     const { total } = await this.deps.usersRepository.findPage({

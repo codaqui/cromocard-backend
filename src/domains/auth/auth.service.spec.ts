@@ -118,6 +118,7 @@ type StoredAccount = AccountCredentials & { email: string; googleId?: string };
 
 class InMemoryUsers implements AuthUsers {
   accounts: StoredAccount[] = [];
+  recordedLogins: { id: string; ipAddress: string | undefined }[] = [];
 
   findCredentialsByEmail(email: string): Promise<AccountCredentials | null> {
     return Promise.resolve(this.accounts.find((account) => account.email === email) ?? null);
@@ -127,7 +128,8 @@ class InMemoryUsers implements AuthUsers {
     return this.findCredentialsByEmail(login);
   }
 
-  recordLogin(): Promise<void> {
+  recordLogin(id: string, ipAddress: string | undefined): Promise<void> {
+    this.recordedLogins.push({ id, ipAddress });
     return Promise.resolve();
   }
 
@@ -230,7 +232,7 @@ describe('AuthService', () => {
         frontendUrl: 'http://localhost:5173',
         verificationTtlInSeconds: DAY_IN_SECONDS,
         passwordResetTtlInSeconds: 60 * 60,
-        inviteTtlInSeconds: 3 * DAY_IN_SECONDS,
+        inviteTtlInSeconds: DAY_IN_SECONDS,
       },
       refreshTokenTtl: {
         defaultInSeconds: DAY_IN_SECONDS,
@@ -279,6 +281,15 @@ describe('AuthService', () => {
       const session = await login();
 
       expect(session.user.role).toBe('ADMIN');
+    });
+
+    it('R8 (CCD098): grava o último acesso com o id e o IP de quem entrou', async () => {
+      const account = buildAccount();
+      users.accounts = [account];
+
+      await login();
+
+      expect(users.recordedLogins).toEqual([{ id: account.id, ipAddress: context.ipAddress }]);
     });
 
     it('CA4: recusa e-mail inexistente com a mensagem genérica', async () => {
@@ -408,6 +419,14 @@ describe('AuthService', () => {
 
       await expect(loginWithGoogle()).rejects.toBeInstanceOf(AccountDeletedError);
       expect(users.accounts[0]?.googleId).toBeUndefined();
+    });
+
+    it('R8 (CCD098): grava o último acesso também no login com Google', async () => {
+      const session = await loginWithGoogle();
+
+      expect(users.recordedLogins).toEqual([
+        { id: session.user.id, ipAddress: context.ipAddress },
+      ]);
     });
   });
 
@@ -700,6 +719,30 @@ describe('AuthService', () => {
 
       expect(mailer.sent).toHaveLength(0);
       expect(authRepository.resetTokens).toHaveLength(0);
+    });
+  });
+
+  describe('inviteUser', () => {
+    it('R5 (CCD098): grava o token com hash, válido por 24 horas, e envia o convite pelo MailProvider', async () => {
+      const account = buildAccount();
+      users.accounts = [account];
+
+      service.inviteUser(account.email);
+
+      await vi.waitFor(() => expect(mailer.sent).toHaveLength(1));
+      const token =
+        new URL(/href="([^"]+)"/.exec(mailer.sent[0]?.html ?? '')?.[1] ?? '').searchParams.get(
+          'token',
+        ) ?? '';
+      expect(mailer.sent[0]?.html).toContain('http://localhost:5173/redefinir-senha?token=');
+      expect(authRepository.resetTokens).toHaveLength(1);
+      const [stored] = authRepository.resetTokens;
+      expect(stored).toMatchObject({
+        userId: account.id,
+        tokenHash: hashOpaqueToken(token),
+        used: false,
+      });
+      expect(Math.round(((stored?.expiresAt.getTime() ?? 0) - Date.now()) / 60_000)).toBe(24 * 60);
     });
   });
 

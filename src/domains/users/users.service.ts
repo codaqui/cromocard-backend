@@ -14,6 +14,8 @@ import type {
   SellerSummary,
   SignupsQuery,
   UserCredentials,
+  UserDetail,
+  UserProfile,
   UserSummary,
   UsersRepository,
 } from './users.repository';
@@ -49,8 +51,18 @@ export class UsersService {
     return { items, meta: buildPaginationMeta(query, total) };
   }
 
-  async findById(id: string): Promise<UserSummary> {
+  async findById(id: string): Promise<UserProfile> {
     const user = await this.usersRepository.findById(id);
+
+    if (!user) {
+      throw new UserNotFoundError();
+    }
+
+    return user;
+  }
+
+  async findDetailById(id: string): Promise<UserDetail> {
+    const user = await this.usersRepository.findDetailById(id);
 
     if (!user) {
       throw new UserNotFoundError();

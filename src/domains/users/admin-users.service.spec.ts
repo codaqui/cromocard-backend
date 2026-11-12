@@ -29,13 +29,15 @@ import type {
   RegisteredUser,
   SellersPage,
   UserCredentials,
+  UserDetail,
+  UserProfile,
   UserSummary,
   UsersPage,
   UsersRepository,
 } from './users.repository';
 import type { AdminUpdateUserInput, CreateUserInput } from './users.validator';
 
-interface StoredUser extends UserSummary {
+interface StoredUser extends UserDetail {
   deletedAt: Date | null;
 }
 
@@ -72,11 +74,15 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve({ items, total: items.length });
   }
 
-  findById(id: string): Promise<UserSummary | null> {
+  findById(id: string): Promise<UserProfile | null> {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
   }
 
-  create({ sendActivation: _sendActivation, ...input }: CreateUserInput): Promise<UserSummary> {
+  findDetailById(id: string): Promise<UserDetail | null> {
+    return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
+  }
+
+  create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {
     const user = buildUser({ ...input, emailVerified: true });
     this.users = [...this.users, user];
     return Promise.resolve(user);
@@ -241,7 +247,7 @@ describe('AdminUsersService', () => {
     });
 
     it('CA2: e-mail já cadastrado responde 409 sem convite nem auditoria', async () => {
-      vi.spyOn(repository, 'create').mockRejectedValueOnce(uniqueConstraintError());
+      vi.spyOn(repository, 'create').mockRejectedValueOnce(uniqueConstraintError(['email']));
       const input: CreateUserInput = {
         name: 'Bia',
         email: 'bia@cromocard.dev',
@@ -294,12 +300,25 @@ describe('AdminUsersService', () => {
 
       await expect(service.create(input, adminId)).rejects.toBeInstanceOf(CpfTakenError);
     });
+
+    it('um P2002 fora de username/cpf/email (ex.: OAuth) não vira EMAIL_ALREADY_REGISTERED', async () => {
+      const oauthConflict = uniqueConstraintError(['oauthProvider', 'oauthId']);
+      vi.spyOn(repository, 'create').mockRejectedValueOnce(oauthConflict);
+      const input: CreateUserInput = {
+        name: 'Bia',
+        email: 'bia@cromocard.dev',
+        role: 'SELLER',
+        sendActivation: true,
+      };
+
+      await expect(service.create(input, adminId)).rejects.toBe(oauthConflict);
+    });
   });
 
   describe('resendActivation', () => {
     it('R15: reenvia o convite e grava USER_ACTIVATION_RESENT', async () => {
       const user = buildUser({ email: 'bia@cromocard.dev' });
-      repository.credentials = { ...user, passwordHash: null };
+      repository.credentials = { ...user, passwordHash: null, oauthProvider: null };
 
       await service.resendActivation(user.id, adminId);
 
@@ -311,7 +330,17 @@ describe('AdminUsersService', () => {
 
     it('R15: usuário que já definiu senha responde 409 ALREADY_ACTIVATED', async () => {
       const user = buildUser();
-      repository.credentials = { ...user, passwordHash: 'hash' };
+      repository.credentials = { ...user, passwordHash: 'hash', oauthProvider: null };
+
+      await expect(service.resendActivation(user.id, adminId)).rejects.toBeInstanceOf(
+        AlreadyActivatedError,
+      );
+      expect(authService.invites).toHaveLength(0);
+    });
+
+    it('R15: conta criada pelo Google responde 409 ALREADY_ACTIVATED mesmo sem senha', async () => {
+      const user = buildUser();
+      repository.credentials = { ...user, passwordHash: null, oauthProvider: 'google' };
 
       await expect(service.resendActivation(user.id, adminId)).rejects.toBeInstanceOf(
         AlreadyActivatedError,
@@ -335,7 +364,35 @@ describe('AdminUsersService', () => {
 
       expect(updated).toMatchObject({ name: 'Ana Silva', role: 'SELLER' });
       expect(auditLog.entries).toEqual([
-        { adminId, action: 'USER_UPDATED', entityType: 'user', entityId: user.id },
+        {
+          adminId,
+          action: 'USER_UPDATED',
+          entityType: 'user',
+          entityId: user.id,
+          details: { changedFields: ['name', 'role'] },
+        },
+      ]);
+    });
+
+    it('R4 (CCD098): apaga @, CPF e telefone enviando null, e grava quais campos mudaram', async () => {
+      const user = buildUser({ username: 'ana', cpf: '52998224725', phone: '11912345678' });
+      repository.users = [user];
+
+      const updated = await service.update(
+        user.id,
+        { username: null, cpf: null, phone: null },
+        adminId,
+      );
+
+      expect(updated).toMatchObject({ username: null, cpf: null, phone: null });
+      expect(auditLog.entries).toEqual([
+        {
+          adminId,
+          action: 'USER_UPDATED',
+          entityType: 'user',
+          entityId: user.id,
+          details: { changedFields: ['username', 'cpf', 'phone'] },
+        },
       ]);
     });
 
@@ -362,7 +419,7 @@ describe('AdminUsersService', () => {
     it('e-mail já cadastrado ao editar responde 409', async () => {
       const user = buildUser();
       repository.users = [user];
-      vi.spyOn(repository, 'update').mockRejectedValueOnce(uniqueConstraintError());
+      vi.spyOn(repository, 'update').mockRejectedValueOnce(uniqueConstraintError(['email']));
 
       await expect(
         service.update(user.id, { email: 'outro@cromocard.dev' }, adminId),

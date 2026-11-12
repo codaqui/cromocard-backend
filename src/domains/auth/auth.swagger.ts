@@ -29,7 +29,7 @@ const authPaths: RouteConfig[] = [
     responses: {
       200: { description: sessionDescription },
       400: { description: 'VALIDATION_ERROR: login ou senha vazios' },
-      401: { description: 'INVALID_CREDENTIALS: login ou senha incorretos' },
+      401: { description: 'INVALID_CREDENTIALS: e-mail, nome de usuário ou senha incorretos' },
       403: { description: 'EMAIL_NOT_VERIFIED, ACCOUNT_SUSPENDED ou ACCOUNT_DELETED' },
       429: tooManyRequests,
     },

@@ -14,13 +14,15 @@ export class EmailAlreadyRegisteredError extends ConflictError {
 
 export class UsernameTakenError extends ConflictError {
   constructor() {
-    super('Este nome de usuário já está em uso', 'USERNAME_TAKEN');
+    const message = 'Este nome de usuário já está em uso';
+    super(message, 'USERNAME_TAKEN', [{ field: 'username', message }]);
   }
 }
 
 export class CpfTakenError extends ConflictError {
   constructor() {
-    super('Já existe um usuário cadastrado com este CPF', 'CPF_TAKEN');
+    const message = 'Já existe um usuário cadastrado com este CPF';
+    super(message, 'CPF_TAKEN', [{ field: 'cpf', message }]);
   }
 }
 

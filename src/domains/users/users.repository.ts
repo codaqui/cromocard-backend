@@ -4,10 +4,11 @@ import type { Transaction } from '@/lib/transaction';
 import { type PaginationQuery, toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
 import type { DateRange } from '@/shared/utils/time-zone';
+import { normalizeUsername } from '@/shared/validators/username';
 
 import type { AdminUpdateUserInput, CreateUserInput, ListUsersQuery } from './users.validator';
 
-const userSummarySelect = {
+const userProfileSelect = {
   id: true,
   name: true,
   email: true,
@@ -17,12 +18,24 @@ const userSummarySelect = {
   createdAt: true,
   username: true,
   phone: true,
-  cpf: true,
   lastLoginAt: true,
+} satisfies Prisma.UserSelect;
+
+export type UserProfile = Prisma.UserGetPayload<{ select: typeof userProfileSelect }>;
+
+const userSummarySelect = {
+  ...userProfileSelect,
   lastLoginIp: true,
 } satisfies Prisma.UserSelect;
 
 export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
+
+const userDetailSelect = {
+  ...userSummarySelect,
+  cpf: true,
+} satisfies Prisma.UserSelect;
+
+export type UserDetail = Prisma.UserGetPayload<{ select: typeof userDetailSelect }>;
 
 const userCredentialsSelect = {
   id: true,
@@ -32,6 +45,7 @@ const userCredentialsSelect = {
   status: true,
   emailVerified: true,
   passwordHash: true,
+  oauthProvider: true,
   deletedAt: true,
 } satisfies Prisma.UserSelect;
 
@@ -100,8 +114,9 @@ export interface SignupsQuery {
 
 export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
-  findById(id: string): Promise<UserSummary | null>;
-  create(input: CreateUserInput): Promise<UserSummary>;
+  findById(id: string): Promise<UserProfile | null>;
+  findDetailById(id: string): Promise<UserDetail | null>;
+  create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary>;
   update(
     id: string,
     input: AdminUpdateUserInput,
@@ -126,32 +141,58 @@ export interface UsersRepository {
 
 const activeMembers = { ...notDeleted, role: { not: 'ADMIN' } } satisfies Prisma.UserWhereInput;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHORT_ID_PATTERN = /^#?(?:usr-)?([0-9a-f]{6})$/i;
+const DOCUMENT_PATTERN = /^[\d.\-/]+$/;
+const MIN_DOCUMENT_DIGITS = 3;
 
-function buildSearchFilter(q?: string): Prisma.UserWhereInput {
-  if (!q) return {};
+function documentFilters(q: string): Prisma.UserWhereInput[] {
+  if (!DOCUMENT_PATTERN.test(q)) return [];
   const digits = q.replace(/\D/g, '');
-  const username = q.replace(/^@/, '');
+  if (digits.length < MIN_DOCUMENT_DIGITS) return [];
+
+  return [
+    { cpf: { contains: digits } },
+    { sellerVerification: { ...notDeleted, cnpj: { contains: digits } } },
+  ];
+}
+
+function buildSearchFilter(q: string | undefined, shortIdMatches: string[]): Prisma.UserWhereInput {
+  if (!q) return {};
+  const username = normalizeUsername(q);
 
   const or: Prisma.UserWhereInput[] = [
     { name: { contains: q, mode: 'insensitive' } },
     { email: { contains: q, mode: 'insensitive' } },
     { username: { contains: username, mode: 'insensitive' } },
+    ...documentFilters(q),
   ];
-  if (digits.length >= 3) {
-    or.push({ cpf: { contains: digits } }, { sellerVerification: { cnpj: { contains: digits } } });
-  }
+
   if (UUID_PATTERN.test(q)) or.push({ id: q });
+  if (shortIdMatches.length > 0) or.push({ id: { in: shortIdMatches } });
 
   return { OR: or };
 }
 
-function buildWhere({ q, role, status }: Pick<ListUsersQuery, 'q' | 'role' | 'status'>) {
+function buildWhere(
+  { q, role, status }: Pick<ListUsersQuery, 'q' | 'role' | 'status'>,
+  shortIdMatches: string[],
+) {
   return {
     ...notDeleted,
-    ...buildSearchFilter(q),
+    ...buildSearchFilter(q, shortIdMatches),
     ...(role ? { role } : {}),
     ...(status ? { status } : {}),
   } satisfies Prisma.UserWhereInput;
+}
+
+async function findShortIdMatches(prisma: PrismaClient, q: string | undefined): Promise<string[]> {
+  const match = q ? SHORT_ID_PATTERN.exec(q.trim()) : null;
+  if (!match?.[1]) return [];
+
+  const suffix = match[1].toLowerCase();
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM users WHERE deleted_at IS NULL AND right(id::text, 6) = ${suffix}`;
+  return rows.map((row) => row.id);
 }
 
 function buildOrderBy(sort: ListUsersQuery['sort']): Prisma.UserOrderByWithRelationInput {
@@ -167,7 +208,8 @@ export class PrismaUsersRepository implements UsersRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async findPage({ sort, ...query }: ListUsersQuery): Promise<UsersPage> {
-    const where = buildWhere(query);
+    const shortIdMatches = await findShortIdMatches(this.prisma, query.q);
+    const where = buildWhere(query, shortIdMatches);
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
@@ -182,11 +224,15 @@ export class PrismaUsersRepository implements UsersRepository {
     return { items, total };
   }
 
-  findById(id: string): Promise<UserSummary | null> {
-    return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userSummarySelect });
+  findById(id: string): Promise<UserProfile | null> {
+    return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userProfileSelect });
   }
 
-  create({ sendActivation: _sendActivation, ...data }: CreateUserInput): Promise<UserSummary> {
+  findDetailById(id: string): Promise<UserDetail | null> {
+    return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userDetailSelect });
+  }
+
+  create(data: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {
     return this.prisma.user.create({
       data: { ...data, emailVerified: true },
       select: userSummarySelect,
@@ -265,10 +311,7 @@ export class PrismaUsersRepository implements UsersRepository {
   findCredentialsByLoginIncludingDeleted(login: string): Promise<UserCredentials | null> {
     return this.prisma.user.findFirst({
       where: {
-        OR: [
-          { email: { equals: login, mode: 'insensitive' } },
-          { username: login.replace(/^@/, '').toLowerCase() },
-        ],
+        OR: [{ email: { equals: login, mode: 'insensitive' } }, { username: login }],
       },
       select: userCredentialsSelect,
     });
@@ -320,7 +363,7 @@ export class PrismaUsersRepository implements UsersRepository {
   async recordLogin(id: string, ipAddress: string | undefined): Promise<void> {
     await this.prisma.user.update({
       where: { id },
-      data: { lastLoginAt: new Date(), lastLoginIp: ipAddress },
+      data: { lastLoginAt: new Date(), lastLoginIp: ipAddress ?? null },
     });
   }
 

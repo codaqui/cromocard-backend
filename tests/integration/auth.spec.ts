@@ -132,7 +132,7 @@ describe('POST /api/v1/auth/login', () => {
     expect(wrongPassword.body).toEqual(unknownEmail.body);
     expect(wrongPassword.body).toMatchObject({
       error: 'INVALID_CREDENTIALS',
-      message: 'E-mail ou senha incorretos',
+      message: 'E-mail, nome de usuário ou senha incorretos',
     });
   });
 
@@ -156,6 +156,19 @@ describe('POST /api/v1/auth/login', () => {
 
     expect(res.status).toBe(200);
     expect((res.body as SessionBody).data.user.id).toBe(user.id);
+  });
+
+  it('CA6 (CCD098): entra com @usuario e grava last_login_at e last_login_ip', async () => {
+    const before = new Date();
+    const user = await createUser({ username: `acesso-${crypto.randomUUID().slice(0, 8)}` });
+
+    const res = await login(`@${user.username}`);
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(stored.lastLoginAt).not.toBeNull();
+    expect(stored.lastLoginAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(stored.lastLoginIp).toEqual(expect.any(String));
   });
 
   it('CA6: conta suspensa responde 403 sem emitir token', async () => {

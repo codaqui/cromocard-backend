@@ -43,7 +43,7 @@ export class UsersController {
 
   getById = async (req: Request, res: Response): Promise<void> => {
     const { id } = userIdParamSchema.parse(req.params);
-    ok(res, await this.usersService.findById(id));
+    ok(res, await this.usersService.findDetailById(id));
   };
 
   create = async (req: Request, res: Response): Promise<void> => {
