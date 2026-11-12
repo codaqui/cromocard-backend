@@ -33,9 +33,25 @@ export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySele
 const userDetailSelect = {
   ...userSummarySelect,
   cpf: true,
+  oauthProvider: true,
 } satisfies Prisma.UserSelect;
 
 export type UserDetail = Prisma.UserGetPayload<{ select: typeof userDetailSelect }>;
+
+const addressSelect = {
+  id: true,
+  label: true,
+  zipCode: true,
+  street: true,
+  number: true,
+  complement: true,
+  neighborhood: true,
+  city: true,
+  state: true,
+  isPrimary: true,
+} satisfies Prisma.AddressSelect;
+
+export type Address = Prisma.AddressGetPayload<{ select: typeof addressSelect }>;
 
 const userCredentialsSelect = {
   id: true,
@@ -116,6 +132,7 @@ export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserProfile | null>;
   findDetailById(id: string): Promise<UserDetail | null>;
+  findAddressesByUserId(userId: string): Promise<Address[]>;
   create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary>;
   update(
     id: string,
@@ -230,6 +247,14 @@ export class PrismaUsersRepository implements UsersRepository {
 
   findDetailById(id: string): Promise<UserDetail | null> {
     return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userDetailSelect });
+  }
+
+  findAddressesByUserId(userId: string): Promise<Address[]> {
+    return this.prisma.address.findMany({
+      where: { userId, ...notDeleted },
+      select: addressSelect,
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
   }
 
   create(data: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {

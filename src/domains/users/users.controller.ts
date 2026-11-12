@@ -43,7 +43,7 @@ export class UsersController {
 
   getById = async (req: Request, res: Response): Promise<void> => {
     const { id } = userIdParamSchema.parse(req.params);
-    ok(res, await this.usersService.findDetailById(id));
+    ok(res, await this.adminUsersService.getDetail(id));
   };
 
   create = async (req: Request, res: Response): Promise<void> => {
@@ -69,8 +69,7 @@ export class UsersController {
   reactivate = async (req: Request, res: Response): Promise<void> => {
     const { id } = userIdParamSchema.parse(req.params);
     const { id: adminId } = getAuthenticatedUser(req);
-    const input = reasonSchema.parse(req.body);
-    ok(res, await this.adminUsersService.reactivate(id, input, adminId));
+    ok(res, await this.adminUsersService.reactivate(id, adminId));
   };
 
   remove = async (req: Request, res: Response): Promise<void> => {

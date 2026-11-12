@@ -21,6 +21,7 @@ import {
   UserNotFoundError,
 } from './users.errors';
 import type {
+  Address,
   MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
@@ -56,6 +57,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     cpf: null,
     lastLoginAt: null,
     lastLoginIp: null,
+    oauthProvider: null,
     ...overrides,
   };
 }
@@ -63,6 +65,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
 class InMemoryUsersRepository implements UsersRepository {
   users: StoredUser[] = [];
   credentials: UserCredentials | null = null;
+  addressesByUserId: Record<string, Address[]> = {};
 
   findPage(query: { role?: string; status?: string } = {}): Promise<UsersPage> {
     const items = this.users.filter(
@@ -80,6 +83,10 @@ class InMemoryUsersRepository implements UsersRepository {
 
   findDetailById(id: string): Promise<UserDetail | null> {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
+  }
+
+  findAddressesByUserId(userId: string): Promise<Address[]> {
+    return Promise.resolve(this.addressesByUserId[userId] ?? []);
   }
 
   create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {
@@ -190,10 +197,17 @@ class FakeAuthService implements AdminAuthService {
 
 class FakeAuditLog implements AdminAuditLog {
   entries: Parameters<AdminAuditLog['record']>[0][] = [];
+  listCalls: Parameters<AdminAuditLog['list']>[0][] = [];
+  listItems: Awaited<ReturnType<AdminAuditLog['list']>>['items'] = [];
 
   record(entry: Parameters<AdminAuditLog['record']>[0]) {
     this.entries.push(entry);
     return Promise.resolve(entry);
+  }
+
+  list(filters: Parameters<AdminAuditLog['list']>[0]): ReturnType<AdminAuditLog['list']> {
+    this.listCalls.push(filters);
+    return Promise.resolve({ items: this.listItems });
   }
 }
 
@@ -221,6 +235,53 @@ describe('AdminUsersService', () => {
       authService,
       auditLogService: auditLog,
       runInTransaction: (work) => work({} as never),
+    });
+  });
+
+  describe('getDetail', () => {
+    it('CA10: devolve os dados, os endereços e as ações administrativas do usuário', async () => {
+      const user = buildUser({ name: 'Lucas Andrade Ferreira' });
+      repository.users = [user];
+      repository.addressesByUserId[user.id] = [
+        {
+          id: crypto.randomUUID(),
+          label: 'Casa',
+          zipCode: '01310-100',
+          street: 'Av. Paulista',
+          number: '1000',
+          complement: null,
+          neighborhood: 'Bela Vista',
+          city: 'São Paulo',
+          state: 'SP',
+          isPrimary: true,
+        },
+      ];
+      auditLog.listItems = [
+        {
+          id: crypto.randomUUID(),
+          action: 'USER_UPDATED',
+          entityType: 'user',
+          entityId: user.id,
+          reason: null,
+          admin: { id: adminId, name: 'Arthur Valadares' },
+          createdAt: new Date(),
+        },
+      ];
+
+      const detail = await service.getDetail(user.id);
+
+      expect(detail).toMatchObject({ name: 'Lucas Andrade Ferreira' });
+      expect(detail.addresses).toHaveLength(1);
+      expect(detail.adminActions).toHaveLength(1);
+      expect(auditLog.listCalls).toEqual([
+        { entityType: 'user', entityId: user.id, page: 1, pageSize: 10 },
+      ]);
+    });
+
+    it('usuário inexistente responde 404', async () => {
+      await expect(service.getDetail(crypto.randomUUID())).rejects.toBeInstanceOf(
+        UserNotFoundError,
+      );
     });
   });
 
@@ -510,15 +571,11 @@ describe('AdminUsersService', () => {
   });
 
   describe('reactivate', () => {
-    it('CA5: reativa o usuário suspenso e grava USER_REACTIVATED', async () => {
+    it('CA5: reativa o usuário suspenso sem motivo e grava USER_REACTIVATED', async () => {
       const user = buildUser({ status: 'SUSPENDED' });
       repository.users = [user];
 
-      const updated = await service.reactivate(
-        user.id,
-        { reason: 'Prazo da suspensão terminou' },
-        adminId,
-      );
+      const updated = await service.reactivate(user.id, adminId);
 
       expect(updated.status).toBe('ACTIVE');
       expect(auditLog.entries).toEqual([
@@ -527,7 +584,6 @@ describe('AdminUsersService', () => {
           action: 'USER_REACTIVATED',
           entityType: 'user',
           entityId: user.id,
-          reason: 'Prazo da suspensão terminou',
         },
       ]);
     });
@@ -536,9 +592,7 @@ describe('AdminUsersService', () => {
       const user = buildUser({ status: 'ACTIVE' });
       repository.users = [user];
 
-      await expect(
-        service.reactivate(user.id, { reason: 'Prazo da suspensão terminou' }, adminId),
-      ).rejects.toBeInstanceOf(NotSuspendedError);
+      await expect(service.reactivate(user.id, adminId)).rejects.toBeInstanceOf(NotSuspendedError);
     });
   });
 

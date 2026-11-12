@@ -72,9 +72,10 @@ const usersPaths: RouteConfig[] = [
     path: '/users/{id}',
     tags,
     security,
-    summary: 'Retorna os dados de um usuário (administrador)',
+    summary:
+      'Retorna os dados de um usuário, com endereços e ações administrativas (administrador)',
     responses: {
-      200: { description: 'Dados do usuário' },
+      200: { description: 'Dados do usuário, endereços e as últimas ações administrativas' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
     },
@@ -116,8 +117,7 @@ const usersPaths: RouteConfig[] = [
     path: '/users/{id}/reactivate',
     tags,
     security,
-    summary: 'Reativa um usuário suspenso (administrador)',
-    request: { body: { content: { 'application/json': { schema: reasonSchema } } } },
+    summary: 'Reativa um usuário suspenso, sem motivo (administrador)',
     responses: {
       200: { description: 'Usuário reativado' },
       403: { description: 'Apenas administradores' },

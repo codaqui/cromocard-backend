@@ -4,6 +4,7 @@ import type { DateRange } from '@/shared/utils/time-zone';
 
 import { UserNotFoundError } from './users.errors';
 import type {
+  Address,
   MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
@@ -64,6 +65,10 @@ class InMemoryUsersRepository implements UsersRepository {
 
   findDetailById(id: string): Promise<UserDetail | null> {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
+  }
+
+  findAddressesByUserId(): Promise<Address[]> {
+    return Promise.resolve([]);
   }
 
   create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {

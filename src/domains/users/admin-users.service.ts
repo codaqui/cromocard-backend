@@ -1,3 +1,4 @@
+import type { AuditLogListItem } from '@/domains/admin/audit-logs/audit-logs.service';
 import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import { uniqueConstraintFields } from '@/shared/errors/unique-constraint';
@@ -15,8 +16,16 @@ import {
   UsernameTakenError,
   UserNotFoundError,
 } from './users.errors';
-import type { UserProfile, UserSummary, UsersRepository } from './users.repository';
+import type {
+  Address,
+  UserDetail,
+  UserProfile,
+  UserSummary,
+  UsersRepository,
+} from './users.repository';
 import type { AdminUpdateUserInput, CreateUserInput, ReasonInput } from './users.validator';
+
+const ADMIN_ACTIONS_PAGE_SIZE = 10;
 
 export interface AdminAuthService {
   inviteUser(email: string): void;
@@ -36,6 +45,17 @@ export interface AdminAuditLog {
     },
     tx?: Transaction,
   ): Promise<unknown>;
+  list(filters: {
+    entityType: string;
+    entityId: string;
+    page: number;
+    pageSize: number;
+  }): Promise<{ items: AuditLogListItem[] }>;
+}
+
+export interface UserDetailView extends UserDetail {
+  addresses: Address[];
+  adminActions: AuditLogListItem[];
 }
 
 export interface AdminUsersServiceDeps {
@@ -60,6 +80,23 @@ function rejectDuplicateField(error: unknown): never {
 
 export class AdminUsersService {
   constructor(private readonly deps: AdminUsersServiceDeps) {}
+
+  async getDetail(id: string): Promise<UserDetailView> {
+    const { usersRepository, auditLogService } = this.deps;
+    const user = await usersRepository.findDetailById(id);
+    if (!user) throw new UserNotFoundError();
+
+    const [addresses, { items: adminActions }] = await Promise.all([
+      usersRepository.findAddressesByUserId(id),
+      auditLogService.list({
+        entityType: 'user',
+        entityId: id,
+        page: 1,
+        pageSize: ADMIN_ACTIONS_PAGE_SIZE,
+      }),
+    ]);
+    return { ...user, addresses, adminActions };
+  }
 
   async create(input: CreateUserInput, adminId: string): Promise<UserSummary> {
     const { usersRepository, authService, auditLogService } = this.deps;
@@ -132,7 +169,7 @@ export class AdminUsersService {
     return updated;
   }
 
-  async reactivate(id: string, { reason }: ReasonInput, adminId: string): Promise<UserSummary> {
+  async reactivate(id: string, adminId: string): Promise<UserSummary> {
     const { usersRepository, auditLogService } = this.deps;
     const target = await this.findByIdOrThrow(id);
     if (target.status === 'ACTIVE') throw new NotSuspendedError();
@@ -143,7 +180,6 @@ export class AdminUsersService {
       action: 'USER_REACTIVATED',
       entityType: 'user',
       entityId: id,
-      reason,
     });
     return updated;
   }

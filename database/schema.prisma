@@ -59,9 +59,31 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   sellerVerification      SellerVerification?  @relation("SellerVerificationSeller")
   reviewedVerifications   SellerVerification[] @relation("SellerVerificationReviewer")
+  addresses               Address[]
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
+}
+
+model Address {
+  id           String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  label        String    @db.VarChar(60)
+  zipCode      String    @map("zip_code") @db.VarChar(9)
+  street       String    @db.VarChar(160)
+  number       String    @db.VarChar(15)
+  complement   String?   @db.VarChar(60)
+  neighborhood String    @db.VarChar(90)
+  city         String    @db.VarChar(90)
+  state        String    @db.Char(2)
+  isPrimary    Boolean   @default(false) @map("is_primary")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_addresses_user_id")
+
+  @@map("addresses")
 }
 
 model PasswordResetToken {

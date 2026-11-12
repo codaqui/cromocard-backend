@@ -14,7 +14,6 @@ import type {
   SellerSummary,
   SignupsQuery,
   UserCredentials,
-  UserDetail,
   UserProfile,
   UserSummary,
   UsersRepository,
@@ -53,16 +52,6 @@ export class UsersService {
 
   async findById(id: string): Promise<UserProfile> {
     const user = await this.usersRepository.findById(id);
-
-    if (!user) {
-      throw new UserNotFoundError();
-    }
-
-    return user;
-  }
-
-  async findDetailById(id: string): Promise<UserDetail> {
-    const user = await this.usersRepository.findDetailById(id);
 
     if (!user) {
       throw new UserNotFoundError();

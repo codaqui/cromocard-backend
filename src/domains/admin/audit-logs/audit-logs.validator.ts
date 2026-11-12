@@ -37,7 +37,6 @@ export const AUDIT_ACTIONS = [
 
 export const ACTIONS_REQUIRING_REASON: readonly AuditAction[] = [
   'USER_SUSPENDED',
-  'USER_REACTIVATED',
   'USER_DELETED',
   'GROUP_SUSPENDED',
   'GROUP_REACTIVATED',

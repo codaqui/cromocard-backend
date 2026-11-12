@@ -111,6 +111,7 @@ afterAll(async () => {
   await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.passwordResetToken.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.sellerVerification.deleteMany({ where: { userId: { in: createdUserIds } } });
+  await prisma.address.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
 });
 
@@ -283,6 +284,56 @@ describe('GET /api/v1/users', () => {
       .set('Authorization', bearer({ id: crypto.randomUUID(), role: 'CUSTOMER' }));
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/v1/users/:id', () => {
+  it('CA10: devolve os dados, os endereços e as ações administrativas', async () => {
+    const admin = await createAdmin();
+    const target = await createUser();
+    await prisma.address.create({
+      data: {
+        userId: target.id,
+        label: 'Casa',
+        zipCode: '01310-100',
+        street: 'Av. Paulista',
+        number: '1000',
+        neighborhood: 'Bela Vista',
+        city: 'São Paulo',
+        state: 'SP',
+        isPrimary: true,
+      },
+    });
+    await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({ name: 'Nome Editado' });
+
+    const res = await request(app)
+      .get(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      data: UserSummaryBody & {
+        addresses: { label: string }[];
+        adminActions: { action: string }[];
+      };
+    };
+    expect(body.data.addresses).toEqual([expect.objectContaining({ label: 'Casa' })]);
+    expect(body.data.adminActions).toEqual([
+      expect.objectContaining({ action: 'USER_UPDATED', entityId: target.id }),
+    ]);
+  });
+
+  it('usuário inexistente responde 404', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .get(`/api/v1/users/${crypto.randomUUID()}`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(404);
   });
 });
 
@@ -574,14 +625,14 @@ describe('POST /api/v1/users/:id/suspend', () => {
 });
 
 describe('POST /api/v1/users/:id/reactivate', () => {
-  it('CA5: reativa o usuário suspenso', async () => {
+  it('CA5: reativa o usuário suspenso sem exigir motivo', async () => {
     const admin = await createAdmin();
     const target = await createUser({ status: 'SUSPENDED' });
 
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/reactivate`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Prazo da suspensão terminou' });
+      .send();
 
     expect(res.status).toBe(200);
     expect((res.body as UserResponse).data.status).toBe('ACTIVE');
@@ -594,7 +645,7 @@ describe('POST /api/v1/users/:id/reactivate', () => {
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/reactivate`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Prazo da suspensão terminou' });
+      .send();
 
     expect(res.status).toBe(409);
     expect((res.body as ErrorResponse).error).toBe('NOT_SUSPENDED');
