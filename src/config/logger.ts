@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 
 import { pino } from 'pino';
-import type { stdSerializers } from 'pino';
+import type { Logger, stdSerializers } from 'pino';
 import { pinoHttp } from 'pino-http';
 
 import { env } from '@/config/env';
@@ -18,6 +18,7 @@ const SENSITIVE_KEYS = [
   'refreshToken',
   'idToken',
   'email',
+  'login',
   'cpf',
   'phone',
   'cookie',
@@ -55,12 +56,17 @@ export function requestIdFrom(req: RequestIdHeaders): string {
   return req.headers['x-request-id']?.toString() ?? randomUUID();
 }
 
-export const httpLogger = pinoHttp({
-  logger,
-  genReqId: (req, res) => {
-    const requestId = requestIdFrom(req);
-    res.setHeader('X-Request-Id', requestId);
-    return requestId;
-  },
-  serializers: { req: stripQueryString },
-});
+/** Logger de requisições: a query string sai do log porque a busca de usuários leva CPF no `q` (ADR-019, R14). */
+export function createHttpLogger(baseLogger: Logger) {
+  return pinoHttp({
+    logger: baseLogger,
+    genReqId: (req, res) => {
+      const requestId = requestIdFrom(req);
+      res.setHeader('X-Request-Id', requestId);
+      return requestId;
+    },
+    serializers: { req: stripQueryString },
+  });
+}
+
+export const httpLogger = createHttpLogger(logger);

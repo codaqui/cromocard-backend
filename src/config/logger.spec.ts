@@ -7,6 +7,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import {
+  createHttpLogger,
   httpLogger,
   LOG_REDACT_PATHS,
   requestIdFrom,
@@ -110,6 +111,26 @@ describe('logger', () => {
 });
 
 describe('httpLogger', () => {
+  it('R14 (CCD098): o log da requisição não leva o CPF da busca', async () => {
+    const { logger, output } = captureLogs();
+    const app = express();
+    app.use(createHttpLogger(logger));
+    app.get('/users', (_req, res) => res.status(200).end());
+
+    await request(app).get('/users?q=52998224725').expect(200);
+
+    expect(output()).toContain('"url":"/users"');
+    expect(output()).not.toContain('52998224725');
+  });
+
+  it('não mostra o login (e-mail ou @) se o corpo for registrado', () => {
+    const { logger, output } = captureLogs();
+
+    logger.warn({ body: { login: 'ana@cromocard.dev' } }, 'Login recusado');
+
+    expect(output()).not.toContain('ana@cromocard.dev');
+  });
+
   function appWithLogger() {
     const app = express();
     app.use(httpLogger);
