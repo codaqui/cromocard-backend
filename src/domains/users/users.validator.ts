@@ -25,11 +25,15 @@ export const createUserSchema = z.object({
   role: userRoleSchema,
 });
 
-export const adminUpdateUserSchema = z.object({
-  name: z.string().trim().min(2).max(120).optional(),
-  email: emailSchema.optional(),
-  role: userRoleSchema.optional(),
-});
+export const adminUpdateUserSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120).optional(),
+    email: emailSchema.optional(),
+    role: userRoleSchema.optional(),
+  })
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    message: 'Informe ao menos um campo para alterar',
+  });
 
 export const reasonSchema = reasonBodySchema;
 

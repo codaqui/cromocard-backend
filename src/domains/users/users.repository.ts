@@ -19,6 +19,9 @@ const userSummarySelect = {
 
 export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
 
+/** O que a edição grava: os campos do admin e, quando o e-mail muda, a volta para não confirmado. */
+export type UserChanges = AdminUpdateUserInput & { emailVerified?: boolean };
+
 const userCredentialsSelect = {
   id: true,
   name: true,
@@ -96,12 +99,8 @@ export interface SignupsQuery {
 export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserSummary | null>;
-  create(input: CreateUserInput): Promise<UserSummary>;
-  update(
-    id: string,
-    input: AdminUpdateUserInput,
-    resetEmailVerification?: boolean,
-  ): Promise<UserSummary>;
+  create(input: CreateUserInput, tx?: Transaction): Promise<UserSummary>;
+  update(id: string, changes: UserChanges, tx?: Transaction): Promise<UserSummary>;
   updateStatus(id: string, status: UserStatus, tx?: Transaction): Promise<UserSummary>;
   softDelete(id: string, tx?: Transaction): Promise<void>;
   countMembers(): Promise<number>;
@@ -171,23 +170,15 @@ export class PrismaUsersRepository implements UsersRepository {
     return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userSummarySelect });
   }
 
-  create(input: CreateUserInput): Promise<UserSummary> {
-    return this.prisma.user.create({
+  create(input: CreateUserInput, tx: Transaction = this.prisma): Promise<UserSummary> {
+    return tx.user.create({
       data: { ...input, emailVerified: true },
       select: userSummarySelect,
     });
   }
 
-  update(
-    id: string,
-    input: AdminUpdateUserInput,
-    resetEmailVerification?: boolean,
-  ): Promise<UserSummary> {
-    return this.prisma.user.update({
-      where: { id },
-      data: { ...input, ...(resetEmailVerification && { emailVerified: false }) },
-      select: userSummarySelect,
-    });
+  update(id: string, changes: UserChanges, tx: Transaction = this.prisma): Promise<UserSummary> {
+    return tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
   }
 
   updateStatus(
