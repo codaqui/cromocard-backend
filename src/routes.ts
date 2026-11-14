@@ -7,6 +7,7 @@ import { authModule } from '@/domains/auth/auth.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { settingsModule } from '@/domains/admin/settings/settings.module';
+import { communityAdminModule } from '@/domains/community/community.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { usersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
@@ -21,6 +22,7 @@ const sharedModules: DomainModule[] = [
   reportsModule,
   settingsModule,
   auditLogsModule,
+  communityAdminModule,
 ];
 
 export interface RoutesOptions {
