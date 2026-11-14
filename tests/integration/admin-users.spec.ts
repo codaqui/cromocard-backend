@@ -14,6 +14,7 @@ interface UserSummaryBody {
   email: string;
   role: UserRole;
   status: UserStatus;
+  verificationStatus: string | null;
 }
 
 interface UserResponse {
@@ -266,6 +267,25 @@ describe('GET /api/v1/users', () => {
       .query({ q: otherVerification.cnpj })
       .set('Authorization', bearer(admin));
     expect((resOther.body as UsersPageResponse).data).toHaveLength(0);
+  });
+
+  it('CA11 (CCD094): vendedor com credenciamento em análise mostra o selo, sem mudar o status da conta', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ role: 'SELLER', status: 'ACTIVE' });
+    await createSellerVerification(target.id);
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: target.email })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({
+      id: target.id,
+      status: 'ACTIVE',
+      verificationStatus: 'UNDER_REVIEW',
+    });
   });
 
   it('não busca por CPF/CNPJ quando o texto tem letras, mesmo com 3+ dígitos', async () => {

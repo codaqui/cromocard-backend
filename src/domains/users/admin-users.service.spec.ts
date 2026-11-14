@@ -60,6 +60,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     lastLoginIp: null,
     oauthProvider: null,
     passwordHash: null,
+    verificationStatus: null,
     ...overrides,
   };
 }

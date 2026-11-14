@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import type { UserStatus } from '@/generated/prisma/enums';
+import type { SellerVerificationStatus, UserStatus } from '@/generated/prisma/enums';
 import type { Transaction } from '@/lib/transaction';
 import { type PaginationQuery, toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
@@ -26,9 +26,20 @@ export type UserProfile = Prisma.UserGetPayload<{ select: typeof userProfileSele
 const userSummarySelect = {
   ...userProfileSelect,
   lastLoginIp: true,
+  sellerVerification: { where: notDeleted, select: { status: true } },
 } satisfies Prisma.UserSelect;
 
-export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
+type RawUserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
+export type UserSummary = Omit<RawUserSummary, 'sellerVerification'> & {
+  verificationStatus: SellerVerificationStatus | null;
+};
+
+function withVerificationStatus<T extends { sellerVerification: { status: SellerVerificationStatus } | null }>(
+  user: T,
+): Omit<T, 'sellerVerification'> & { verificationStatus: SellerVerificationStatus | null } {
+  const { sellerVerification, ...rest } = user;
+  return { ...rest, verificationStatus: sellerVerification?.status ?? null };
+}
 
 const userDetailSelect = {
   ...userSummarySelect,
@@ -37,7 +48,10 @@ const userDetailSelect = {
   passwordHash: true,
 } satisfies Prisma.UserSelect;
 
-export type UserDetail = Prisma.UserGetPayload<{ select: typeof userDetailSelect }>;
+type RawUserDetail = Prisma.UserGetPayload<{ select: typeof userDetailSelect }>;
+export type UserDetail = Omit<RawUserDetail, 'sellerVerification'> & {
+  verificationStatus: SellerVerificationStatus | null;
+};
 
 const addressSelect = {
   id: true,
@@ -238,15 +252,19 @@ export class PrismaUsersRepository implements UsersRepository {
       this.prisma.user.count({ where }),
     ]);
 
-    return { items, total };
+    return { items: items.map(withVerificationStatus), total };
   }
 
   findById(id: string): Promise<UserProfile | null> {
     return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userProfileSelect });
   }
 
-  findDetailById(id: string): Promise<UserDetail | null> {
-    return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userDetailSelect });
+  async findDetailById(id: string): Promise<UserDetail | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { id, ...notDeleted },
+      select: userDetailSelect,
+    });
+    return user && withVerificationStatus(user);
   }
 
   findAddressesByUserId(userId: string): Promise<Address[]> {
@@ -257,26 +275,29 @@ export class PrismaUsersRepository implements UsersRepository {
     });
   }
 
-  create(
+  async create(
     data: Omit<CreateUserInput, 'sendActivation'>,
     tx: Transaction = this.prisma,
   ): Promise<UserSummary> {
-    return tx.user.create({
+    const user = await tx.user.create({
       data: { ...data, emailVerified: true },
       select: userSummarySelect,
     });
+    return withVerificationStatus(user);
   }
 
-  update(id: string, changes: UserChanges, tx: Transaction = this.prisma): Promise<UserSummary> {
-    return tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
+  async update(id: string, changes: UserChanges, tx: Transaction = this.prisma): Promise<UserSummary> {
+    const user = await tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
+    return withVerificationStatus(user);
   }
 
-  updateStatus(
+  async updateStatus(
     id: string,
     status: UserStatus,
     tx: Transaction = this.prisma,
   ): Promise<UserSummary> {
-    return tx.user.update({ where: { id }, data: { status }, select: userSummarySelect });
+    const user = await tx.user.update({ where: { id }, data: { status }, select: userSummarySelect });
+    return withVerificationStatus(user);
   }
 
   async softDelete(id: string, tx: Transaction = this.prisma): Promise<void> {

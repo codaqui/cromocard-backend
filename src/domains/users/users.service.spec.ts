@@ -47,6 +47,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     cpf: null,
     lastLoginAt: null,
     lastLoginIp: null,
+    verificationStatus: null,
     ...overrides,
   };
 }
