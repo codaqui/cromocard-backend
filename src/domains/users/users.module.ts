@@ -11,35 +11,28 @@ import { createUsersRoutes } from './users.routes';
 import { UsersService } from './users.service';
 import { registerUsersDocs } from './users.swagger';
 
-let adminAuthService: AdminAuthService | undefined;
-
-export function setAdminAuthService(service: AdminAuthService): void {
-  adminAuthService = service;
-}
-
-function getAdminAuthService(): AdminAuthService {
-  if (!adminAuthService) throw new Error('setAdminAuthService ainda não foi chamado');
-  return adminAuthService;
-}
-
 const usersRepository = new PrismaUsersRepository(prisma);
 const usersService = new UsersService(usersRepository);
-const adminUsersService = new AdminUsersService({
-  usersRepository,
-  authService: {
-    inviteUser: (email) => getAdminAuthService().inviteUser(email),
-    revokeAllSessions: (userId) => getAdminAuthService().revokeAllSessions(userId),
-    resendVerification: (email) => getAdminAuthService().resendVerification(email),
-  },
-  auditLogService,
-  runInTransaction,
-});
-const usersController = new UsersController(usersService, adminUsersService);
 
-export const usersModule: DomainModule = {
-  basePath: '/users',
-  router: createUsersRoutes(usersController),
-  registerDocs: registerUsersDocs,
-};
+/**
+ * O domínio `auth` depende de `usersService`; a gestão pelo admin depende de `auth` (convite e revogação de
+ * sessões). Para a dependência entre os módulos ficar numa direção só, quem monta as rotas (`routes.ts`)
+ * entrega o `authService` aqui.
+ */
+export function createUsersModule(adminAuthService: AdminAuthService): DomainModule {
+  const adminUsersService = new AdminUsersService({
+    usersRepository,
+    authService: adminAuthService,
+    auditLogService,
+    runInTransaction,
+  });
+  const usersController = new UsersController(usersService, adminUsersService);
 
-export { adminUsersService, usersService };
+  return {
+    basePath: '/users',
+    router: createUsersRoutes(usersController),
+    registerDocs: registerUsersDocs,
+  };
+}
+
+export { usersService };
