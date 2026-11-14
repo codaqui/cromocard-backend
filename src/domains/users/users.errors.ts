@@ -67,3 +67,11 @@ export class LastAdminError extends BusinessRuleError {
     super('A plataforma precisa de ao menos um administrador ativo', 'LAST_ADMIN');
   }
 }
+
+/** Índices únicos de `users`, para traduzir o P2002 do driver adapter no campo do formulário. */
+export const USERS_UNIQUE_INDEXES = {
+  users_email_key: ['email'],
+  users_username_key: ['username'],
+  users_cpf_key: ['cpf'],
+  users_oauth_provider_oauth_id_key: ['oauthProvider', 'oauthId'],
+} satisfies Record<string, string[]>;
