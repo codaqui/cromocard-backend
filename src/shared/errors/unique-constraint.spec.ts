@@ -61,16 +61,17 @@ describe('uniqueConstraintFields', () => {
   it('lê o formato driverAdapterError pela originalMessage quando não há índice', () => {
     expect(
       uniqueConstraintFields(
-        driverAdapterErrorWithMessage('duplicate key value violates unique constraint "users_cpf_key"'),
+        driverAdapterErrorWithMessage(
+          'duplicate key value violates unique constraint "users_cpf_key"',
+        ),
       ),
     ).toEqual(['cpf']);
   });
 
   it('não confunde o índice de OAuth com e-mail, CPF ou @', () => {
-    expect(uniqueConstraintFields(driverAdapterError('users_oauth_provider_oauth_id_key'))).toEqual([
-      'oauthProvider',
-      'oauthId',
-    ]);
+    expect(uniqueConstraintFields(driverAdapterError('users_oauth_provider_oauth_id_key'))).toEqual(
+      ['oauthProvider', 'oauthId'],
+    );
   });
 
   it('devolve lista vazia para um índice desconhecido ou erro que não é P2002', () => {

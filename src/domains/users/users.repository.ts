@@ -53,6 +53,9 @@ const addressSelect = {
 
 export type Address = Prisma.AddressGetPayload<{ select: typeof addressSelect }>;
 
+/** O que a edição grava: os campos do admin e, quando o e-mail muda, a volta para não confirmado. */
+export type UserChanges = AdminUpdateUserInput & { emailVerified?: boolean };
+
 const userCredentialsSelect = {
   id: true,
   name: true,
@@ -133,12 +136,8 @@ export interface UsersRepository {
   findById(id: string): Promise<UserProfile | null>;
   findDetailById(id: string): Promise<UserDetail | null>;
   findAddressesByUserId(userId: string): Promise<Address[]>;
-  create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary>;
-  update(
-    id: string,
-    input: AdminUpdateUserInput,
-    resetEmailVerification?: boolean,
-  ): Promise<UserSummary>;
+  create(input: Omit<CreateUserInput, 'sendActivation'>, tx?: Transaction): Promise<UserSummary>;
+  update(id: string, changes: UserChanges, tx?: Transaction): Promise<UserSummary>;
   updateStatus(id: string, status: UserStatus, tx?: Transaction): Promise<UserSummary>;
   softDelete(id: string, tx?: Transaction): Promise<void>;
   countMembers(): Promise<number>;
@@ -257,23 +256,18 @@ export class PrismaUsersRepository implements UsersRepository {
     });
   }
 
-  create(data: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {
-    return this.prisma.user.create({
+  create(
+    data: Omit<CreateUserInput, 'sendActivation'>,
+    tx: Transaction = this.prisma,
+  ): Promise<UserSummary> {
+    return tx.user.create({
       data: { ...data, emailVerified: true },
       select: userSummarySelect,
     });
   }
 
-  update(
-    id: string,
-    input: AdminUpdateUserInput,
-    resetEmailVerification?: boolean,
-  ): Promise<UserSummary> {
-    return this.prisma.user.update({
-      where: { id },
-      data: { ...input, ...(resetEmailVerification && { emailVerified: false }) },
-      select: userSummarySelect,
-    });
+  update(id: string, changes: UserChanges, tx: Transaction = this.prisma): Promise<UserSummary> {
+    return tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
   }
 
   updateStatus(

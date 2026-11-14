@@ -18,6 +18,7 @@ import {
 } from './users.errors';
 import type {
   Address,
+  UserChanges,
   UserDetail,
   UserProfile,
   UserSummary,
@@ -65,6 +66,18 @@ export interface AdminUsersServiceDeps {
   runInTransaction: TransactionRunner;
 }
 
+/** `entity_type` das ações sobre usuários no `audit_logs` (plano da CCD059, Ações administrativas). */
+const USER_ENTITY = 'user';
+
+const EDITABLE_FIELDS = ['name', 'email', 'role', 'username', 'cpf', 'phone'] as const;
+
+/** Só o que de fato muda entra em `changedFields`: o formulário manda todos os campos em toda edição. */
+function changedFieldsOf(input: AdminUpdateUserInput, current: UserDetail): string[] {
+  return EDITABLE_FIELDS.filter(
+    (field) => input[field] !== undefined && input[field] !== (current[field] ?? null),
+  );
+}
+
 const DUPLICATE_FIELD_ERRORS: Record<string, new () => Error> = {
   username: UsernameTakenError,
   cpf: CpfTakenError,
@@ -89,7 +102,7 @@ export class AdminUsersService {
     const [addresses, { items: adminActions }] = await Promise.all([
       usersRepository.findAddressesByUserId(id),
       auditLogService.list({
-        entityType: 'user',
+        entityType: USER_ENTITY,
         entityId: id,
         page: 1,
         pageSize: ADMIN_ACTIONS_PAGE_SIZE,
@@ -99,16 +112,17 @@ export class AdminUsersService {
   }
 
   async create(input: CreateUserInput, adminId: string): Promise<UserSummary> {
-    const { usersRepository, authService, auditLogService } = this.deps;
+    const { usersRepository, authService, auditLogService, runInTransaction } = this.deps;
     const { sendActivation, ...data } = input;
-    const user = await usersRepository.create(data).catch(rejectDuplicateField);
-    if (sendActivation) authService.inviteUser(user.email);
-    await auditLogService.record({
-      adminId,
-      action: 'USER_CREATED',
-      entityType: 'user',
-      entityId: user.id,
+    const user = await runInTransaction(async (tx) => {
+      const created = await usersRepository.create(data, tx).catch(rejectDuplicateField);
+      await auditLogService.record(
+        { adminId, action: 'USER_CREATED', entityType: USER_ENTITY, entityId: created.id },
+        tx,
+      );
+      return created;
     });
+    if (sendActivation) authService.inviteUser(user.email);
     return user;
   }
 
@@ -118,35 +132,39 @@ export class AdminUsersService {
     if (!target || target.deletedAt) throw new UserNotFoundError();
     if (target.passwordHash || target.oauthProvider) throw new AlreadyActivatedError();
 
-    authService.inviteUser(target.email);
     await auditLogService.record({
       adminId,
       action: 'USER_ACTIVATION_RESENT',
-      entityType: 'user',
+      entityType: USER_ENTITY,
       entityId: id,
     });
+    authService.inviteUser(target.email);
   }
 
   async update(id: string, input: AdminUpdateUserInput, adminId: string): Promise<UserSummary> {
-    const { usersRepository, authService, auditLogService } = this.deps;
-    const target = await this.findByIdOrThrow(id);
+    const { usersRepository, authService, auditLogService, runInTransaction } = this.deps;
+    const target = await usersRepository.findDetailById(id);
+    if (!target) throw new UserNotFoundError();
     if (input.role && input.role !== target.role) {
       await this.assertRoleChangeAllowed(target, adminId);
     }
     const emailChanged = Boolean(input.email) && input.email !== target.email;
-    const changedFields = Object.keys(input);
+    const changes: UserChanges = emailChanged ? { ...input, emailVerified: false } : input;
+    const changedFields = changedFieldsOf(input, target);
 
-    const updated = await usersRepository
-      .update(id, input, emailChanged)
-      .catch(rejectDuplicateField);
-    if (emailChanged) await authService.resendVerification(updated.email);
-    await auditLogService.record({
+    const auditEntry = {
       adminId,
-      action: 'USER_UPDATED',
-      entityType: 'user',
+      action: 'USER_UPDATED' as const,
+      entityType: USER_ENTITY,
       entityId: id,
       details: { changedFields },
+    };
+    const updated = await runInTransaction(async (tx) => {
+      const user = await usersRepository.update(id, changes, tx).catch(rejectDuplicateField);
+      await auditLogService.record(auditEntry, tx);
+      return user;
     });
+    if (emailChanged) await authService.resendVerification(updated.email);
     return updated;
   }
 
@@ -160,7 +178,7 @@ export class AdminUsersService {
     const updated = await runInTransaction(async (tx) => {
       const user = await usersRepository.updateStatus(id, 'SUSPENDED', tx);
       await auditLogService.record(
-        { adminId, action: 'USER_SUSPENDED', entityType: 'user', entityId: id, reason },
+        { adminId, action: 'USER_SUSPENDED', entityType: USER_ENTITY, entityId: id, reason },
         tx,
       );
       return user;
@@ -170,18 +188,18 @@ export class AdminUsersService {
   }
 
   async reactivate(id: string, adminId: string): Promise<UserSummary> {
-    const { usersRepository, auditLogService } = this.deps;
+    const { usersRepository, auditLogService, runInTransaction } = this.deps;
     const target = await this.findByIdOrThrow(id);
     if (target.status === 'ACTIVE') throw new NotSuspendedError();
 
-    const updated = await usersRepository.updateStatus(id, 'ACTIVE');
-    await auditLogService.record({
-      adminId,
-      action: 'USER_REACTIVATED',
-      entityType: 'user',
-      entityId: id,
+    return runInTransaction(async (tx) => {
+      const user = await usersRepository.updateStatus(id, 'ACTIVE', tx);
+      await auditLogService.record(
+        { adminId, action: 'USER_REACTIVATED', entityType: USER_ENTITY, entityId: id },
+        tx,
+      );
+      return user;
     });
-    return updated;
   }
 
   async remove(id: string, { reason }: ReasonInput, adminId: string): Promise<void> {
@@ -193,7 +211,7 @@ export class AdminUsersService {
     await runInTransaction(async (tx) => {
       await usersRepository.softDelete(id, tx);
       await auditLogService.record(
-        { adminId, action: 'USER_DELETED', entityType: 'user', entityId: id, reason },
+        { adminId, action: 'USER_DELETED', entityType: USER_ENTITY, entityId: id, reason },
         tx,
       );
     });

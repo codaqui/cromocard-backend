@@ -29,6 +29,7 @@ import type {
   OauthLink,
   RegisteredUser,
   SellersPage,
+  UserChanges,
   UserCredentials,
   UserDetail,
   UserProfile,
@@ -36,7 +37,7 @@ import type {
   UsersPage,
   UsersRepository,
 } from './users.repository';
-import type { AdminUpdateUserInput, CreateUserInput } from './users.validator';
+import type { CreateUserInput } from './users.validator';
 
 interface StoredUser extends UserDetail {
   deletedAt: Date | null;
@@ -95,16 +96,8 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(user);
   }
 
-  update(
-    id: string,
-    input: AdminUpdateUserInput,
-    resetEmailVerification?: boolean,
-  ): Promise<UserSummary> {
-    this.users = this.users.map((user) =>
-      user.id === id
-        ? { ...user, ...input, ...(resetEmailVerification && { emailVerified: false }) }
-        : user,
-    );
+  update(id: string, changes: UserChanges): Promise<UserSummary> {
+    this.users = this.users.map((user) => (user.id === id ? { ...user, ...changes } : user));
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 

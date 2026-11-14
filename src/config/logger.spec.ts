@@ -6,7 +6,13 @@ import type { stdSerializers } from 'pino';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { httpLogger, LOG_REDACT_PATHS, requestIdFrom, stripQueryString, transportFor } from './logger';
+import {
+  httpLogger,
+  LOG_REDACT_PATHS,
+  requestIdFrom,
+  stripQueryString,
+  transportFor,
+} from './logger';
 
 function captureLogs() {
   const lines: string[] = [];

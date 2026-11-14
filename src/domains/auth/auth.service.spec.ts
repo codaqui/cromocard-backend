@@ -424,9 +424,7 @@ describe('AuthService', () => {
     it('R8 (CCD098): grava o último acesso também no login com Google', async () => {
       const session = await loginWithGoogle();
 
-      expect(users.recordedLogins).toEqual([
-        { id: session.user.id, ipAddress: context.ipAddress },
-      ]);
+      expect(users.recordedLogins).toEqual([{ id: session.user.id, ipAddress: context.ipAddress }]);
     });
   });
 

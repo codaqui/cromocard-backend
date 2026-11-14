@@ -50,14 +50,18 @@ export const createUserSchema = z.object({
   sendActivation: z.boolean().default(true),
 });
 
-export const adminUpdateUserSchema = z.object({
-  name: z.string().trim().min(2).max(120).optional(),
-  email: emailSchema.optional(),
-  role: userRoleSchema.optional(),
-  username: usernameSchema.nullable().optional(),
-  cpf: cpfSchema.nullable().optional(),
-  phone: phoneSchema.nullable().optional(),
-});
+export const adminUpdateUserSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120).optional(),
+    email: emailSchema.optional(),
+    role: userRoleSchema.optional(),
+    username: usernameSchema.nullable().optional(),
+    cpf: cpfSchema.nullable().optional(),
+    phone: phoneSchema.nullable().optional(),
+  })
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    message: 'Informe ao menos um campo para alterar',
+  });
 
 export const reasonSchema = reasonBodySchema;
 

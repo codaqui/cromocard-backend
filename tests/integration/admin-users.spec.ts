@@ -278,6 +278,26 @@ describe('GET /api/v1/users', () => {
     expect((res.body as UsersPageResponse).data).toHaveLength(0);
   });
 
+  it('CA1: ordena por nome, e-mail e data de cadastro, nos dois sentidos', async () => {
+    const admin = await createAdmin();
+    const tag = crypto.randomUUID();
+    await createUser({ name: `Ordem ${tag} B`, email: `b-${tag}@cromocard.dev` });
+    await createUser({ name: `Ordem ${tag} A`, email: `c-${tag}@cromocard.dev` });
+
+    const namesBy = async (sort: string) => {
+      const res = await request(app)
+        .get('/api/v1/users')
+        .query({ q: tag, sort })
+        .set('Authorization', bearer(admin));
+      return (res.body as UsersPageResponse).data.map((user) => user.name.slice(-1));
+    };
+
+    expect(await namesBy('name')).toEqual(['A', 'B']);
+    expect(await namesBy('-name')).toEqual(['B', 'A']);
+    expect(await namesBy('email')).toEqual(['B', 'A']);
+    expect(await namesBy('-createdAt')).toEqual(['A', 'B']);
+  });
+
   it('CA9: token de CUSTOMER responde 403', async () => {
     const res = await request(app)
       .get('/api/v1/users')
@@ -353,7 +373,11 @@ describe('POST /api/v1/users', () => {
     createdUserIds.push(body.data.id);
 
     await waitForMail(1);
-    expect(sentMails[0]?.to).toBe(email);
+    expect(sentMails[0]).toMatchObject({
+      to: email,
+      subject: 'Você foi convidado para o CromoCard',
+    });
+    expect(sentMails[0]?.text).toContain('/redefinir-senha?token=');
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: body.data.id } });
     expect(stored.emailVerified).toBe(true);
@@ -508,6 +532,19 @@ describe('PATCH /api/v1/users/:id', () => {
       where: { entityId: target.id, action: 'USER_UPDATED' },
     });
     expect(log.details).toMatchObject({ changedFields: ['username', 'cpf', 'phone'] });
+  });
+
+  it('R11: corpo vazio responde 400 e não grava auditoria', async () => {
+    const admin = await createAdmin();
+    const target = await createUser();
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(await prisma.auditLog.count({ where: { entityId: target.id } })).toBe(0);
   });
 
   it('CA7: admin não altera o próprio papel', async () => {
