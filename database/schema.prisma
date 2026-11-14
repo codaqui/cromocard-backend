@@ -81,7 +81,8 @@ model Address {
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
-  user User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_addresses_user_id")
+  user                User                 @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_addresses_user_id")
+  sellerVerifications SellerVerification[]
 
   @@map("addresses")
 }
@@ -514,8 +515,9 @@ model SellerVerification {
   updatedAt              DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt              DateTime?                @map("deleted_at") @db.Timestamptz(6)
 
-  seller   User  @relation("SellerVerificationSeller", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_user_id")
-  reviewer User? @relation("SellerVerificationReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_reviewed_by_id")
+  seller   User     @relation("SellerVerificationSeller", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_user_id")
+  reviewer User?    @relation("SellerVerificationReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_reviewed_by_id")
+  address  Address? @relation(fields: [addressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_address_id")
 
   @@map("seller_verifications")
 }
