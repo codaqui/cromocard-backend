@@ -130,6 +130,19 @@ describe('AuditLogService', () => {
     expect(entry.details).toEqual({ format: 'CSV' });
   });
 
+  it('grava a alteração de papel com o papel anterior e o novo, sem exigir motivo', async () => {
+    const entry = await service.record(
+      buildInput({
+        action: 'USER_ROLE_UPDATED',
+        reason: undefined,
+        details: { previousRole: 'CUSTOMER', newRole: 'ADMIN' },
+      }),
+    );
+
+    expect(entry.action).toBe('USER_ROLE_UPDATED');
+    expect(entry.details).toEqual({ previousRole: 'CUSTOMER', newRole: 'ADMIN' });
+  });
+
   it('remove os espaços do motivo', async () => {
     const entry = await service.record(buildInput({ reason: '  Conteúdo ofensivo  ' }));
 

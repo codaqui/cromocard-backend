@@ -8,6 +8,7 @@ const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 export const AUDIT_ACTIONS = [
   'USER_CREATED',
   'USER_UPDATED',
+  'USER_ROLE_UPDATED',
   'USER_SUSPENDED',
   'USER_REACTIVATED',
   'USER_DELETED',
