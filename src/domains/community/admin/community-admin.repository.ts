@@ -249,7 +249,7 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
 
   findGroupMessageReportState(id: string): Promise<ReportState | null> {
     return this.prisma.report.findFirst({
-      where: { id, ...groupMessageReports },
+      where: { id, ...groupMessageReports, ...reportedMessageStillVisible },
       select: reportStateSelect,
     });
   }

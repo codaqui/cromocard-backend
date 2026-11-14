@@ -262,7 +262,7 @@ describe('acesso à administração da comunidade (PostgreSQL real)', () => {
 });
 
 describe('exclusão de grupo (PostgreSQL real)', () => {
-  it('tira da fila e dos pendentes as denúncias das mensagens do grupo excluído', async () => {
+  it('tira da fila e dos pendentes as denúncias das mensagens do grupo excluído, e dispensar responde 404', async () => {
     const message = await prisma.groupMessage.create({
       data: { groupId, authorId: reporterId, content: 'Mais uma mensagem denunciada' },
     });
@@ -278,7 +278,8 @@ describe('exclusão de grupo (PostgreSQL real)', () => {
 
     expect(queuedAfter).not.toContain(reportId);
     expect(after.pendingReports).toBe(before.pendingReports - 1);
-    expect(blocked.status).toBe(409);
+    expect(blocked.status).toBe(404);
+    expect(errorOf(blocked)).toBe('REPORT_NOT_FOUND');
   });
 
   it('CA4: exclui o grupo com motivo, ele some da lista e o log registra', async () => {
