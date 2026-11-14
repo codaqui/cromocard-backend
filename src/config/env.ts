@@ -32,6 +32,7 @@ const envSchema = z.object({
   FRONTEND_URL: z.url().optional(),
   EMAIL_VERIFICATION_TTL: z.coerce.number().int().positive().default(86400),
   PASSWORD_RESET_TTL: z.coerce.number().int().positive().default(3600),
+  INVITE_TTL: z.coerce.number().int().positive().default(259200),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
   SEED_USER_PASSWORD: optionalText,

@@ -222,6 +222,7 @@ describe('AuthService', () => {
         frontendUrl: 'http://localhost:5173',
         verificationTtlInSeconds: DAY_IN_SECONDS,
         passwordResetTtlInSeconds: 60 * 60,
+        inviteTtlInSeconds: 3 * DAY_IN_SECONDS,
       },
       refreshTokenTtl: {
         defaultInSeconds: DAY_IN_SECONDS,
@@ -504,6 +505,23 @@ describe('AuthService', () => {
     it('termina sem erro sem cookie ou com refresh desconhecido', async () => {
       await expect(service.logout(undefined)).resolves.toBeUndefined();
       await expect(service.logout('nao-existe')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('revokeAllSessions', () => {
+    it('revoga todas as sessões do usuário', async () => {
+      users.accounts = [buildAccount()];
+      const first = await login();
+      const second = await login();
+
+      await service.revokeAllSessions(users.accounts[0]!.id);
+
+      await expect(service.refresh(first.refreshToken, context)).rejects.toBeInstanceOf(
+        RefreshTokenReusedError,
+      );
+      await expect(service.refresh(second.refreshToken, context)).rejects.toBeInstanceOf(
+        RefreshTokenReusedError,
+      );
     });
   });
 

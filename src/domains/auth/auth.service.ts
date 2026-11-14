@@ -4,7 +4,8 @@ import type { GoogleLink } from '@/domains/users/users.service';
 import { signAccessToken, signPurposeToken, verifyPurposeToken } from '@/lib/jwt';
 import { generateOpaqueToken, hashOpaqueToken } from '@/lib/opaque-token';
 import { hashPassword, verifyPasswordInConstantTime } from '@/lib/password';
-import type { MailProvider } from '@/providers/mail/mail.provider';
+import type { MailMessage, MailProvider } from '@/providers/mail/mail.provider';
+import { inviteUserMail } from '@/providers/mail/templates/invite-user.mail';
 import { passwordChangedMail } from '@/providers/mail/templates/password-changed.mail';
 import { resetPasswordMail } from '@/providers/mail/templates/reset-password.mail';
 import { type TransactionRunner, type Transaction } from '@/lib/transaction';
@@ -78,11 +79,24 @@ export interface EmailLinkSettings {
   frontendUrl: string;
   verificationTtlInSeconds: number;
   passwordResetTtlInSeconds: number;
+  inviteTtlInSeconds: number;
 }
 
 export interface RefreshTokenTtl {
   defaultInSeconds: number;
   rememberMeInSeconds: number;
+}
+
+interface SetPasswordLinkMailData {
+  to: string;
+  name: string;
+  link: string;
+  validFor: string;
+}
+
+interface SetPasswordLink {
+  ttlInSeconds: number;
+  buildMail: (data: SetPasswordLinkMailData) => MailMessage;
 }
 
 export interface AuthServiceDeps {
@@ -230,6 +244,10 @@ export class AuthService {
     );
   }
 
+  inviteUser(email: string): void {
+    this.runInBackground(() => this.issueInvite(email), null, 'Falha ao enviar o convite');
+  }
+
   async resetPassword({ token, password }: ResetPasswordInput): Promise<void> {
     const { record, account } = await this.findResetTarget(token);
     const passwordHash = await hashPassword(password);
@@ -245,22 +263,36 @@ export class AuthService {
     );
   }
 
-  private async issuePasswordReset(email: string): Promise<void> {
+  private issuePasswordReset(email: string): Promise<void> {
+    return this.issueSetPasswordLink(email, {
+      ttlInSeconds: this.deps.emailLinks.passwordResetTtlInSeconds,
+      buildMail: resetPasswordMail,
+    });
+  }
+
+  private issueInvite(email: string): Promise<void> {
+    return this.issueSetPasswordLink(email, {
+      ttlInSeconds: this.deps.emailLinks.inviteTtlInSeconds,
+      buildMail: inviteUserMail,
+    });
+  }
+
+  /** Redefinir senha e convite usam o mesmo token e a mesma página; mudam só a validade e o e-mail. */
+  private async issueSetPasswordLink(email: string, { ttlInSeconds, buildMail }: SetPasswordLink) {
     const account = await this.deps.users.findCredentialsByEmail(email);
     if (!isActive(account)) return;
 
     const token = generateOpaqueToken();
-    const { passwordResetTtlInSeconds } = this.deps.emailLinks;
-    const expiresAt = new Date(Date.now() + passwordResetTtlInSeconds * MS_PER_SECOND);
+    const expiresAt = new Date(Date.now() + ttlInSeconds * MS_PER_SECOND);
     await this.deps.authRepository.replacePasswordResetToken({
       userId: account.id,
       tokenHash: hashOpaqueToken(token),
       expiresAt,
     });
     const link = this.linkTo(RESET_PASSWORD_PATH, token);
-    const validFor = describeDuration(passwordResetTtlInSeconds);
+    const validFor = describeDuration(ttlInSeconds);
     await this.deps.mailer.send(
-      resetPasswordMail({ to: account.email, name: account.name, link, validFor }),
+      buildMail({ to: account.email, name: account.name, link, validFor }),
     );
   }
 
@@ -331,6 +363,10 @@ export class AuthService {
     if (stored) {
       await this.deps.authRepository.revokeRefreshToken(stored.id);
     }
+  }
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.deps.authRepository.revokeAllRefreshTokens(userId);
   }
 
   async deleteExpiredTokens(): Promise<number> {

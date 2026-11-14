@@ -1,10 +1,11 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { UserStatus } from '@/generated/prisma/enums';
 import type { Transaction } from '@/lib/transaction';
 import { type PaginationQuery, toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
 import type { DateRange } from '@/shared/utils/time-zone';
 
-import type { ListUsersQuery, UpdateUserInput } from './users.validator';
+import type { AdminUpdateUserInput, CreateUserInput, ListUsersQuery } from './users.validator';
 
 const userSummarySelect = {
   id: true,
@@ -17,6 +18,9 @@ const userSummarySelect = {
 } satisfies Prisma.UserSelect;
 
 export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
+
+/** O que a edição grava: os campos do admin e, quando o e-mail muda, a volta para não confirmado. */
+export type UserChanges = AdminUpdateUserInput & { emailVerified?: boolean };
 
 const userCredentialsSelect = {
   id: true,
@@ -95,8 +99,10 @@ export interface SignupsQuery {
 export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserSummary | null>;
-  update(id: string, input: UpdateUserInput): Promise<UserSummary>;
-  softDelete(id: string): Promise<void>;
+  create(input: CreateUserInput, tx?: Transaction): Promise<UserSummary>;
+  update(id: string, changes: UserChanges, tx?: Transaction): Promise<UserSummary>;
+  updateStatus(id: string, status: UserStatus, tx?: Transaction): Promise<UserSummary>;
+  softDelete(id: string, tx?: Transaction): Promise<void>;
   countMembers(): Promise<number>;
   countSignupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   findSellersCreatedWithin(range: DateRange, pagination: PaginationQuery): Promise<SellersPage>;
@@ -112,29 +118,47 @@ export interface UsersRepository {
 
 const activeMembers = { ...notDeleted, role: { not: 'ADMIN' } } satisfies Prisma.UserWhereInput;
 
-function buildSearchFilter(search?: string): Prisma.UserWhereInput {
-  if (!search) return {};
+function buildSearchFilter(q?: string): Prisma.UserWhereInput {
+  if (!q) return {};
 
   return {
     OR: [
-      { name: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
+      { name: { contains: q, mode: 'insensitive' } },
+      { email: { contains: q, mode: 'insensitive' } },
     ],
   };
+}
+
+function buildWhere({ q, role, status }: Pick<ListUsersQuery, 'q' | 'role' | 'status'>) {
+  return {
+    ...notDeleted,
+    ...buildSearchFilter(q),
+    ...(role ? { role } : {}),
+    ...(status ? { status } : {}),
+  } satisfies Prisma.UserWhereInput;
+}
+
+function buildOrderBy(sort: ListUsersQuery['sort']): Prisma.UserOrderByWithRelationInput {
+  if (!sort) return { name: 'asc' };
+
+  const direction = sort.startsWith('-') ? 'desc' : 'asc';
+  const field = sort.replace(/^-/, '') as 'name' | 'email' | 'createdAt';
+
+  return { [field]: direction };
 }
 
 export class PrismaUsersRepository implements UsersRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async findPage({ search, ...pagination }: ListUsersQuery): Promise<UsersPage> {
-    const where: Prisma.UserWhereInput = { ...notDeleted, ...buildSearchFilter(search) };
+  async findPage({ sort, ...query }: ListUsersQuery): Promise<UsersPage> {
+    const where = buildWhere(query);
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         where,
         select: userSummarySelect,
-        orderBy: { name: 'asc' },
-        ...toSkipTake(pagination),
+        orderBy: buildOrderBy(sort),
+        ...toSkipTake(query),
       }),
       this.prisma.user.count({ where }),
     ]);
@@ -146,12 +170,27 @@ export class PrismaUsersRepository implements UsersRepository {
     return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userSummarySelect });
   }
 
-  update(id: string, input: UpdateUserInput): Promise<UserSummary> {
-    return this.prisma.user.update({ where: { id }, data: input, select: userSummarySelect });
+  create(input: CreateUserInput, tx: Transaction = this.prisma): Promise<UserSummary> {
+    return tx.user.create({
+      data: { ...input, emailVerified: true },
+      select: userSummarySelect,
+    });
   }
 
-  async softDelete(id: string): Promise<void> {
-    await this.prisma.user.update({ where: { id }, data: softDeleteData() });
+  update(id: string, changes: UserChanges, tx: Transaction = this.prisma): Promise<UserSummary> {
+    return tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
+  }
+
+  updateStatus(
+    id: string,
+    status: UserStatus,
+    tx: Transaction = this.prisma,
+  ): Promise<UserSummary> {
+    return tx.user.update({ where: { id }, data: { status }, select: userSummarySelect });
+  }
+
+  async softDelete(id: string, tx: Transaction = this.prisma): Promise<void> {
+    await tx.user.update({ where: { id }, data: softDeleteData() });
   }
 
   countMembers(): Promise<number> {

@@ -26,6 +26,7 @@ const authService = new AuthService({
     frontendUrl: env.FRONTEND_URL,
     verificationTtlInSeconds: env.EMAIL_VERIFICATION_TTL,
     passwordResetTtlInSeconds: env.PASSWORD_RESET_TTL,
+    inviteTtlInSeconds: env.INVITE_TTL,
   },
   runInTransaction,
   logger,

@@ -1,3 +1,4 @@
+import type { Transaction } from '@/lib/transaction';
 import { buildPaginationMeta, type PaginationMeta } from '@/shared/utils/pagination';
 import { DAY_IN_MS } from '@/shared/utils/time-zone';
 
@@ -66,7 +67,7 @@ function toListItem(entry: AuditLogEntry): AuditLogListItem {
 export class AuditLogService {
   constructor(private readonly auditLogRepository: AuditLogRepository) {}
 
-  async record(input: RecordAuditLogInput): Promise<AuditLogEntry> {
+  async record(input: RecordAuditLogInput, tx?: Transaction): Promise<AuditLogEntry> {
     const parsed = recordAuditLogSchema.safeParse(input);
     if (!parsed.success) {
       throw new InvalidAuditLogError(parsed.error.issues);
@@ -74,13 +75,16 @@ export class AuditLogService {
 
     const { adminId, action, entityType, entityId, reason, details } = parsed.data;
 
-    return this.auditLogRepository.create({
-      adminId,
-      action,
-      entityType,
-      entityId,
-      details: buildDetails(details, reason),
-    });
+    return this.auditLogRepository.create(
+      {
+        adminId,
+        action,
+        entityType,
+        entityId,
+        details: buildDetails(details, reason),
+      },
+      tx,
+    );
   }
 
   async list(filters: ListAuditLogsQuery): Promise<AuditLogListResponse> {

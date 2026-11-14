@@ -3,12 +3,12 @@ import swaggerUi from 'swagger-ui-express';
 
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
-import { authModule } from '@/domains/auth/auth.module';
+import { authModule, authService } from '@/domains/auth/auth.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { settingsModule } from '@/domains/admin/settings/settings.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
-import { usersModule } from '@/domains/users/users.module';
+import { createUsersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
 import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
 
@@ -16,7 +16,7 @@ const API_PREFIX = '/api/v1';
 
 const sharedModules: DomainModule[] = [
   authModule,
-  usersModule,
+  createUsersModule(authService),
   dashboardModule,
   reportsModule,
   settingsModule,
