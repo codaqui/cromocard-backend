@@ -15,6 +15,7 @@ import {
   NotSuspendedError,
   UsernameTakenError,
   UserNotFoundError,
+  USERS_UNIQUE_INDEXES,
 } from './users.errors';
 import type {
   Address,
@@ -54,7 +55,9 @@ export interface AdminAuditLog {
   }): Promise<{ items: AuditLogListItem[] }>;
 }
 
-export interface UserDetailView extends UserDetail {
+export interface UserDetailView extends Omit<UserDetail, 'passwordHash'> {
+  /** Conta criada pelo admin que ainda não definiu senha nem entrou com o Google: aceita o reenvio do link (R15). */
+  activationPending: boolean;
   addresses: Address[];
   adminActions: AuditLogListItem[];
 }
@@ -85,7 +88,7 @@ const DUPLICATE_FIELD_ERRORS: Record<string, new () => Error> = {
 };
 
 function rejectDuplicateField(error: unknown): never {
-  const fields = uniqueConstraintFields(error);
+  const fields = uniqueConstraintFields(error, USERS_UNIQUE_INDEXES);
   const matchedField = fields.find((field) => field in DUPLICATE_FIELD_ERRORS);
   if (matchedField) throw new DUPLICATE_FIELD_ERRORS[matchedField]!();
   throw error;
@@ -108,7 +111,9 @@ export class AdminUsersService {
         pageSize: ADMIN_ACTIONS_PAGE_SIZE,
       }),
     ]);
-    return { ...user, addresses, adminActions };
+    const { passwordHash, ...profile } = user;
+    const activationPending = !passwordHash && !user.oauthProvider;
+    return { ...profile, activationPending, addresses, adminActions };
   }
 
   async create(input: CreateUserInput, adminId: string): Promise<UserSummary> {

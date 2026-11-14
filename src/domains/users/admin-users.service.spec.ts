@@ -59,6 +59,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     lastLoginAt: null,
     lastLoginIp: null,
     oauthProvider: null,
+    passwordHash: null,
     ...overrides,
   };
 }
@@ -263,12 +264,26 @@ describe('AdminUsersService', () => {
 
       const detail = await service.getDetail(user.id);
 
-      expect(detail).toMatchObject({ name: 'Lucas Andrade Ferreira' });
+      expect(detail).toMatchObject({ name: 'Lucas Andrade Ferreira', activationPending: true });
+      expect(detail).not.toHaveProperty('passwordHash');
       expect(detail.addresses).toHaveLength(1);
       expect(detail.adminActions).toHaveLength(1);
       expect(auditLog.listCalls).toEqual([
         { entityType: 'user', entityId: user.id, page: 1, pageSize: 10 },
       ]);
+    });
+
+    it('R15: conta com senha ou com Google não está com a ativação pendente', async () => {
+      const withPassword = buildUser({ passwordHash: 'hash' });
+      const withGoogle = buildUser({ oauthProvider: 'GOOGLE' });
+      repository.users = [withPassword, withGoogle];
+
+      await expect(service.getDetail(withPassword.id)).resolves.toMatchObject({
+        activationPending: false,
+      });
+      await expect(service.getDetail(withGoogle.id)).resolves.toMatchObject({
+        activationPending: false,
+      });
     });
 
     it('usuário inexistente responde 404', async () => {

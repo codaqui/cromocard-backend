@@ -34,6 +34,7 @@ const userDetailSelect = {
   ...userSummarySelect,
   cpf: true,
   oauthProvider: true,
+  passwordHash: true,
 } satisfies Prisma.UserSelect;
 
 export type UserDetail = Prisma.UserGetPayload<{ select: typeof userDetailSelect }>;

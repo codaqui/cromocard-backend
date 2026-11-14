@@ -54,6 +54,8 @@ const VALID_CPF_CREATE = '11144477735';
 const VALID_CPF_TAKEN = '39053344705';
 const VALID_CPF_CLEAR = '93541134780';
 const VALID_CPF_NO_LETTERS = '70102128804';
+const VALID_CPF_INVITE = '28174539050';
+const VALID_CPF_EDIT = '40638125707';
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}@cromocard.dev`;
@@ -438,6 +440,40 @@ describe('POST /api/v1/users', () => {
     expect(sentMails).toHaveLength(0);
   });
 
+  it('CA3 (CCD098): cria com @, CPF e telefone, envia o link de 24 horas e grava USER_CREATED', async () => {
+    const admin = await createAdmin();
+    const email = uniqueEmail('convite');
+    const username = uniqueUsername('convite');
+
+    const res = await request(app).post('/api/v1/users').set('Authorization', bearer(admin)).send({
+      name: 'Caio Convidado',
+      email,
+      role: 'CUSTOMER',
+      username,
+      cpf: VALID_CPF_INVITE,
+      phone: '(21) 99876-1234',
+      sendActivation: true,
+    });
+
+    const body = res.body as UserResponse;
+    expect(res.status).toBe(201);
+    createdUserIds.push(body.data.id);
+
+    await waitForMail(1);
+    expect(sentMails[0]).toMatchObject({
+      to: email,
+      subject: 'Você foi convidado para o CromoCard',
+    });
+    expect(sentMails[0]?.text).toContain('24 horas');
+    await expect(
+      prisma.user.findUniqueOrThrow({ where: { id: body.data.id } }),
+    ).resolves.toMatchObject({ username, cpf: VALID_CPF_INVITE, phone: '21998761234' });
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: body.data.id, action: 'USER_CREATED' },
+    });
+    expect(log.adminId).toBe(admin.id);
+  });
+
   it('CA4 (CCD098): @ já cadastrado responde 409 com o campo username', async () => {
     const admin = await createAdmin();
     const username = uniqueUsername('tomado');
@@ -532,6 +568,33 @@ describe('PATCH /api/v1/users/:id', () => {
       where: { entityId: target.id, action: 'USER_UPDATED' },
     });
     expect(log.details).toMatchObject({ changedFields: ['username', 'cpf', 'phone'] });
+  });
+
+  it('R9 (CCD098): a auditoria registra só os campos que mudaram, mesmo recebendo todos', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({
+      name: 'Nome Antigo',
+      cpf: VALID_CPF_EDIT,
+      phone: '11912345678',
+    });
+
+    await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Nome Novo',
+        email: target.email,
+        role: target.role,
+        username: null,
+        cpf: VALID_CPF_EDIT,
+        phone: '(11) 91234-5678',
+      })
+      .expect(200);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_UPDATED' },
+    });
+    expect(log.details).toMatchObject({ changedFields: ['name'] });
   });
 
   it('R11: corpo vazio responde 400 e não grava auditoria', async () => {
@@ -730,9 +793,25 @@ describe('DELETE /api/v1/users/:id', () => {
 });
 
 describe('POST /api/v1/users/:id/resend-activation', () => {
-  it('R15: reenvia o link e grava USER_ACTIVATION_RESENT', async () => {
+  it('CA8 (CCD098): conta criada sem o link recebe o reenvio, e o log registra', async () => {
     const admin = await createAdmin();
-    const target = await createUser({ passwordHash: null });
+    const created = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Sem Link',
+        email: uniqueEmail('sem-link'),
+        role: 'CUSTOMER',
+        sendActivation: false,
+      });
+    const target = (created.body as UserResponse).data;
+    createdUserIds.push(target.id);
+    expect(sentMails).toHaveLength(0);
+
+    const detail = await request(app)
+      .get(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin));
+    expect(detail.body).toMatchObject({ data: { activationPending: true } });
 
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/resend-activation`)
