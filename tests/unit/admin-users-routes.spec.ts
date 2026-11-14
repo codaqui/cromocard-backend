@@ -15,6 +15,7 @@ const adminUserRoutes = [
   { method: 'post' as const, path: `/api/v1/users/${targetId}/suspend` },
   { method: 'post' as const, path: `/api/v1/users/${targetId}/reactivate` },
   { method: 'delete' as const, path: `/api/v1/users/${targetId}` },
+  { method: 'post' as const, path: `/api/v1/users/${targetId}/resend-activation` },
 ];
 
 describe.each(adminUserRoutes)('CA9: rota de gestão $method $path', ({ method, path }) => {

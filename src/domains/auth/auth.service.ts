@@ -66,6 +66,7 @@ export interface RegisteredAccount {
 
 export interface AuthUsers {
   findCredentialsByEmail(email: string): Promise<AccountCredentials | null>;
+  findCredentialsByLogin(login: string): Promise<AccountCredentials | null>;
   findCredentialsById(id: string): Promise<AccountCredentials | null>;
   findCredentialsByGoogleId(sub: string): Promise<AccountCredentials | null>;
   createGoogleAccount(profile: GoogleProfile): Promise<AccountCredentials>;
@@ -73,6 +74,7 @@ export interface AuthUsers {
   createWithPassword(account: NewAccount): Promise<RegisteredAccount>;
   markEmailVerified(id: string): Promise<void>;
   changePassword(id: string, passwordHash: string, tx?: Transaction): Promise<void>;
+  recordLogin(id: string, ipAddress: string | undefined): Promise<void>;
 }
 
 export interface EmailLinkSettings {
@@ -167,10 +169,10 @@ export class AuthService {
   constructor(private readonly deps: AuthServiceDeps) {}
 
   async login(
-    { email, password, rememberMe }: LoginInput,
+    { login, password, rememberMe }: LoginInput,
     context: SessionContext,
   ): Promise<AuthSession> {
-    const account = await this.deps.users.findCredentialsByEmail(email);
+    const account = await this.deps.users.findCredentialsByLogin(login);
     const matches = await passwordMatches(account, password);
 
     if (!account || !matches) {
@@ -178,6 +180,7 @@ export class AuthService {
     }
 
     assertCanSignIn(account);
+    await this.deps.users.recordLogin(account.id, context.ipAddress);
     return this.startSession(account, this.refreshExpiry(rememberMe), context);
   }
 
@@ -334,6 +337,7 @@ export class AuthService {
 
     const account = await this.findOrLinkGoogleAccount(profile);
     assertCanSignIn(account);
+    await this.deps.users.recordLogin(account.id, context.ipAddress);
     return this.startSession(account, this.refreshExpiry(rememberMe), context);
   }
 

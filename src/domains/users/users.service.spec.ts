@@ -4,6 +4,7 @@ import type { DateRange } from '@/shared/utils/time-zone';
 
 import { UserNotFoundError } from './users.errors';
 import type {
+  Address,
   MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
@@ -12,6 +13,8 @@ import type {
   RegisteredUser,
   SellersPage,
   UserCredentials,
+  UserDetail,
+  UserProfile,
   UserSummary,
   UsersPage,
   UsersRepository,
@@ -19,7 +22,7 @@ import type {
 import { UsersService } from './users.service';
 import type { AdminUpdateUserInput, CreateUserInput } from './users.validator';
 
-interface StoredUser extends UserSummary {
+interface StoredUser extends UserDetail {
   passwordHash: string | null;
   oauthProvider: string | null;
   oauthId: string | null;
@@ -39,6 +42,11 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     oauthProvider: null,
     oauthId: null,
     deletedAt: null,
+    username: null,
+    phone: null,
+    cpf: null,
+    lastLoginAt: null,
+    lastLoginIp: null,
     ...overrides,
   };
 }
@@ -51,11 +59,19 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve({ items: active, total: active.length });
   }
 
-  findById(id: string): Promise<UserSummary | null> {
+  findById(id: string): Promise<UserProfile | null> {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
   }
 
-  create(input: CreateUserInput): Promise<UserSummary> {
+  findDetailById(id: string): Promise<UserDetail | null> {
+    return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
+  }
+
+  findAddressesByUserId(): Promise<Address[]> {
+    return Promise.resolve([]);
+  }
+
+  create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {
     const user = buildUser({ ...input, emailVerified: true });
     this.users = [...this.users, user];
     return Promise.resolve(user);
@@ -99,6 +115,16 @@ class InMemoryUsersRepository implements UsersRepository {
 
   findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null> {
     return Promise.resolve(this.users.find((user) => user.email === email) ?? null);
+  }
+
+  findCredentialsByLoginIncludingDeleted(login: string): Promise<UserCredentials | null> {
+    return Promise.resolve(
+      this.users.find((user) => user.email === login || user.username === login) ?? null,
+    );
+  }
+
+  recordLogin(): Promise<void> {
+    return Promise.resolve();
   }
 
   findCredentialsByIdIncludingDeleted(id: string): Promise<UserCredentials | null> {

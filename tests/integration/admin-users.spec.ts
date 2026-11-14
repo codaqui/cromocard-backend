@@ -39,7 +39,23 @@ interface UserOverrides {
   role?: UserRole;
   status?: UserStatus;
   deletedAt?: Date;
+  username?: string;
+  cpf?: string;
+  phone?: string;
+  passwordHash?: string | null;
 }
+
+function uniqueUsername(prefix: string): string {
+  return `${prefix}${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+}
+
+const VALID_CPF_SEARCH = '52998224725';
+const VALID_CPF_CREATE = '11144477735';
+const VALID_CPF_TAKEN = '39053344705';
+const VALID_CPF_CLEAR = '93541134780';
+const VALID_CPF_NO_LETTERS = '70102128804';
+const VALID_CPF_INVITE = '28174539050';
+const VALID_CPF_EDIT = '40638125707';
 
 function uniqueEmail(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}@cromocard.dev`;
@@ -75,10 +91,29 @@ beforeEach(() => {
   sentMails.length = 0;
 });
 
+function uniqueCnpj(): string {
+  return `${crypto.randomUUID().replace(/\D/g, '').slice(0, 14).padEnd(14, '1')}`;
+}
+
+async function createSellerVerification(userId: string, overrides: { deletedAt?: Date } = {}) {
+  await prisma.sellerVerification.create({
+    data: {
+      userId,
+      legalName: 'Loja de Testes LTDA',
+      cnpj: uniqueCnpj(),
+      responsibleName: 'Responsável Teste',
+      responsibleCpf: VALID_CPF_CREATE,
+      ...overrides,
+    },
+  });
+}
+
 afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { adminId: { in: createdUserIds } } });
   await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.passwordResetToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+  await prisma.sellerVerification.deleteMany({ where: { userId: { in: createdUserIds } } });
+  await prisma.address.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
 });
 
@@ -100,6 +135,68 @@ describe('GET /api/v1/users', () => {
     expect(body.meta).toMatchObject({ page: 1, pageSize: 20, total: 1 });
   });
 
+  it('CA1: ordena por nome decrescente com sort=-name', async () => {
+    const admin = await createAdmin();
+    const prefix = `Ordem ${crypto.randomUUID()}`;
+    const first = await createUser({ name: `${prefix} A` });
+    const second = await createUser({ name: `${prefix} B` });
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: prefix, sort: '-name' })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data.map((user) => user.id)).toEqual([second.id, first.id]);
+  });
+
+  it('CA1: ordena por nome crescente com sort=name', async () => {
+    const admin = await createAdmin();
+    const prefix = `Crescente ${crypto.randomUUID()}`;
+    const first = await createUser({ name: `${prefix} A` });
+    const second = await createUser({ name: `${prefix} B` });
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: prefix, sort: 'name' })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data.map((user) => user.id)).toEqual([first.id, second.id]);
+  });
+
+  it('CA1: lista sem o parâmetro q', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app).get('/api/v1/users').set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('busca por um id completo (UUID) encontra o usuário', async () => {
+    const admin = await createAdmin();
+    const target = await createUser();
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: target.id })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data.map((user) => user.id)).toContain(target.id);
+  });
+
+  it('não aciona a busca por documento com menos de 3 dígitos', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: '12' })
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(200);
+  });
+
   it('CA1: usuário excluído não aparece na lista', async () => {
     const admin = await createAdmin();
     const name = `Removido ${crypto.randomUUID()}`;
@@ -108,6 +205,76 @@ describe('GET /api/v1/users', () => {
     const res = await request(app)
       .get('/api/v1/users')
       .query({ q: name })
+      .set('Authorization', bearer(admin));
+
+    expect((res.body as UsersPageResponse).data).toHaveLength(0);
+  });
+
+  it('CA2 (CCD098): busca por CPF mostra só o usuário dono do CPF', async () => {
+    const admin = await createAdmin();
+    const cpf = VALID_CPF_SEARCH;
+    const target = await createUser({ cpf });
+    await createUser();
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: cpf })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.id).toBe(target.id);
+  });
+
+  it('R3 (CCD098): busca pelo ID curto #USR-xxxxxx mostrado na tela', async () => {
+    const admin = await createAdmin();
+    const target = await createUser();
+    const shortId = target.id.slice(-6).toUpperCase();
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: `#USR-${shortId}` })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.id).toBe(target.id);
+  });
+
+  it('R3 (CCD098): busca pelo CNPJ do vendedor, ignorando credenciamento excluído', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ role: 'SELLER' });
+    const other = await createUser({ role: 'SELLER' });
+    await createSellerVerification(target.id);
+    await createSellerVerification(other.id, { deletedAt: new Date() });
+
+    const targetVerification = await prisma.sellerVerification.findUniqueOrThrow({
+      where: { userId: target.id },
+    });
+    const otherVerification = await prisma.sellerVerification.findUniqueOrThrow({
+      where: { userId: other.id },
+    });
+
+    const resTarget = await request(app)
+      .get('/api/v1/users')
+      .query({ q: targetVerification.cnpj })
+      .set('Authorization', bearer(admin));
+    expect((resTarget.body as UsersPageResponse).data.map((u) => u.id)).toEqual([target.id]);
+
+    const resOther = await request(app)
+      .get('/api/v1/users')
+      .query({ q: otherVerification.cnpj })
+      .set('Authorization', bearer(admin));
+    expect((resOther.body as UsersPageResponse).data).toHaveLength(0);
+  });
+
+  it('não busca por CPF/CNPJ quando o texto tem letras, mesmo com 3+ dígitos', async () => {
+    const admin = await createAdmin();
+    await createUser({ cpf: VALID_CPF_NO_LETTERS });
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: `naoexiste${VALID_CPF_NO_LETTERS.slice(0, 4)}` })
       .set('Authorization', bearer(admin));
 
     expect((res.body as UsersPageResponse).data).toHaveLength(0);
@@ -139,6 +306,56 @@ describe('GET /api/v1/users', () => {
       .set('Authorization', bearer({ id: crypto.randomUUID(), role: 'CUSTOMER' }));
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/v1/users/:id', () => {
+  it('CA10: devolve os dados, os endereços e as ações administrativas', async () => {
+    const admin = await createAdmin();
+    const target = await createUser();
+    await prisma.address.create({
+      data: {
+        userId: target.id,
+        label: 'Casa',
+        zipCode: '01310-100',
+        street: 'Av. Paulista',
+        number: '1000',
+        neighborhood: 'Bela Vista',
+        city: 'São Paulo',
+        state: 'SP',
+        isPrimary: true,
+      },
+    });
+    await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({ name: 'Nome Editado' });
+
+    const res = await request(app)
+      .get(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      data: UserSummaryBody & {
+        addresses: { label: string }[];
+        adminActions: { action: string }[];
+      };
+    };
+    expect(body.data.addresses).toEqual([expect.objectContaining({ label: 'Casa' })]);
+    expect(body.data.adminActions).toEqual([
+      expect.objectContaining({ action: 'USER_UPDATED', entityId: target.id }),
+    ]);
+  });
+
+  it('usuário inexistente responde 404', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .get(`/api/v1/users/${crypto.randomUUID()}`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(404);
   });
 });
 
@@ -197,6 +414,123 @@ describe('POST /api/v1/users', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('R4/R5: cria com @, CPF e telefone e, sem marcar o envio, não manda convite', async () => {
+    const admin = await createAdmin();
+    const email = uniqueEmail('bia');
+    const username = uniqueUsername('bia');
+    const cpf = VALID_CPF_CREATE;
+
+    const res = await request(app).post('/api/v1/users').set('Authorization', bearer(admin)).send({
+      name: 'Bia Vendedora',
+      email,
+      role: 'SELLER',
+      username,
+      cpf,
+      phone: '(11) 91234-5678',
+      sendActivation: false,
+    });
+
+    const body = res.body as UserResponse;
+    expect(res.status).toBe(201);
+    createdUserIds.push(body.data.id);
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: body.data.id } });
+    expect(stored).toMatchObject({ username, cpf, phone: '11912345678' });
+    expect(sentMails).toHaveLength(0);
+  });
+
+  it('CA3 (CCD098): cria com @, CPF e telefone, envia o link de 24 horas e grava USER_CREATED', async () => {
+    const admin = await createAdmin();
+    const email = uniqueEmail('convite');
+    const username = uniqueUsername('convite');
+
+    const res = await request(app).post('/api/v1/users').set('Authorization', bearer(admin)).send({
+      name: 'Caio Convidado',
+      email,
+      role: 'CUSTOMER',
+      username,
+      cpf: VALID_CPF_INVITE,
+      phone: '(21) 99876-1234',
+      sendActivation: true,
+    });
+
+    const body = res.body as UserResponse;
+    expect(res.status).toBe(201);
+    createdUserIds.push(body.data.id);
+
+    await waitForMail(1);
+    expect(sentMails[0]).toMatchObject({
+      to: email,
+      subject: 'Você foi convidado para o CromoCard',
+    });
+    expect(sentMails[0]?.text).toContain('24 horas');
+    await expect(
+      prisma.user.findUniqueOrThrow({ where: { id: body.data.id } }),
+    ).resolves.toMatchObject({ username, cpf: VALID_CPF_INVITE, phone: '21998761234' });
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: body.data.id, action: 'USER_CREATED' },
+    });
+    expect(log.adminId).toBe(admin.id);
+  });
+
+  it('CA4 (CCD098): @ já cadastrado responde 409 com o campo username', async () => {
+    const admin = await createAdmin();
+    const username = uniqueUsername('tomado');
+    await createUser({ username });
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({ name: 'Outro', email: uniqueEmail('outro'), role: 'CUSTOMER', username });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('USERNAME_TAKEN');
+    expect((res.body as ErrorResponse & { details?: { field: string }[] }).details).toEqual([
+      { field: 'username', message: expect.any(String) as string },
+    ]);
+  });
+
+  it('R6 (CCD098): CPF já cadastrado responde 409 com o campo cpf', async () => {
+    const admin = await createAdmin();
+    const cpf = VALID_CPF_TAKEN;
+    await createUser({ cpf });
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Outro',
+        email: uniqueEmail('outro'),
+        role: 'CUSTOMER',
+        cpf,
+      });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('CPF_TAKEN');
+    expect((res.body as ErrorResponse & { details?: { field: string }[] }).details).toEqual([
+      { field: 'cpf', message: expect.any(String) as string },
+    ]);
+  });
+
+  it('CA5 (CCD098): CPF com dígito errado responde 400 com o campo cpf', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Outro',
+        email: uniqueEmail('outro'),
+        role: 'CUSTOMER',
+        cpf: '111.111.111-11',
+      });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorResponse & { details?: { field: string }[] }).details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'cpf' })]),
+    );
+  });
 });
 
 describe('PATCH /api/v1/users/:id', () => {
@@ -211,6 +545,56 @@ describe('PATCH /api/v1/users/:id', () => {
 
     expect(res.status).toBe(200);
     expect((res.body as UserResponse).data).toMatchObject({ name: 'Nome Novo', role: 'SELLER' });
+  });
+
+  it('R4 (CCD098): apaga @, CPF e telefone enviando null', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({
+      username: uniqueUsername('apagar'),
+      cpf: VALID_CPF_CLEAR,
+      phone: '11912345678',
+    });
+
+    const res = await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({ username: null, cpf: null, phone: null });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored).toMatchObject({ username: null, cpf: null, phone: null });
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_UPDATED' },
+    });
+    expect(log.details).toMatchObject({ changedFields: ['username', 'cpf', 'phone'] });
+  });
+
+  it('R9 (CCD098): a auditoria registra só os campos que mudaram, mesmo recebendo todos', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({
+      name: 'Nome Antigo',
+      cpf: VALID_CPF_EDIT,
+      phone: '11912345678',
+    });
+
+    await request(app)
+      .patch(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Nome Novo',
+        email: target.email,
+        role: target.role,
+        username: null,
+        cpf: VALID_CPF_EDIT,
+        phone: '(11) 91234-5678',
+      })
+      .expect(200);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_UPDATED' },
+    });
+    expect(log.details).toMatchObject({ changedFields: ['name'] });
   });
 
   it('R11: corpo vazio responde 400 e não grava auditoria', async () => {
@@ -341,14 +725,14 @@ describe('POST /api/v1/users/:id/suspend', () => {
 });
 
 describe('POST /api/v1/users/:id/reactivate', () => {
-  it('CA5: reativa o usuário suspenso', async () => {
+  it('CA5: reativa o usuário suspenso sem exigir motivo', async () => {
     const admin = await createAdmin();
     const target = await createUser({ status: 'SUSPENDED' });
 
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/reactivate`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Prazo da suspensão terminou' });
+      .send();
 
     expect(res.status).toBe(200);
     expect((res.body as UserResponse).data.status).toBe('ACTIVE');
@@ -361,7 +745,7 @@ describe('POST /api/v1/users/:id/reactivate', () => {
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/reactivate`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Prazo da suspensão terminou' });
+      .send();
 
     expect(res.status).toBe(409);
     expect((res.body as ErrorResponse).error).toBe('NOT_SUSPENDED');
@@ -405,5 +789,61 @@ describe('DELETE /api/v1/users/:id', () => {
 
     expect(res.status).toBe(422);
     expect((res.body as ErrorResponse).error).toBe('CANNOT_DELETE_SELF');
+  });
+});
+
+describe('POST /api/v1/users/:id/resend-activation', () => {
+  it('CA8 (CCD098): conta criada sem o link recebe o reenvio, e o log registra', async () => {
+    const admin = await createAdmin();
+    const created = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', bearer(admin))
+      .send({
+        name: 'Sem Link',
+        email: uniqueEmail('sem-link'),
+        role: 'CUSTOMER',
+        sendActivation: false,
+      });
+    const target = (created.body as UserResponse).data;
+    createdUserIds.push(target.id);
+    expect(sentMails).toHaveLength(0);
+
+    const detail = await request(app)
+      .get(`/api/v1/users/${target.id}`)
+      .set('Authorization', bearer(admin));
+    expect(detail.body).toMatchObject({ data: { activationPending: true } });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/resend-activation`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(202);
+    await waitForMail(1);
+    expect(sentMails[0]?.to).toBe(target.email);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_ACTIVATION_RESENT' },
+    });
+    expect(log.adminId).toBe(admin.id);
+  });
+
+  it('usuário que já definiu senha responde 409 ALREADY_ACTIVATED', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ passwordHash: 'hash-qualquer' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/resend-activation`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('ALREADY_ACTIVATED');
+  });
+
+  it('CA9: token de CUSTOMER responde 403', async () => {
+    const res = await request(app)
+      .post(`/api/v1/users/${crypto.randomUUID()}/resend-activation`)
+      .set('Authorization', bearer({ id: crypto.randomUUID(), role: 'CUSTOMER' }));
+
+    expect(res.status).toBe(403);
   });
 });

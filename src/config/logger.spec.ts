@@ -1,9 +1,19 @@
 import { Writable } from 'node:stream';
 
+import express from 'express';
 import { pino } from 'pino';
+import type { stdSerializers } from 'pino';
+import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { LOG_REDACT_PATHS } from './logger';
+import {
+  createHttpLogger,
+  httpLogger,
+  LOG_REDACT_PATHS,
+  requestIdFrom,
+  stripQueryString,
+  transportFor,
+} from './logger';
 
 function captureLogs() {
   const lines: string[] = [];
@@ -46,5 +56,97 @@ describe('logger', () => {
     expect(output()).not.toContain(secrets.email);
     expect(output()).not.toContain(secrets.password);
     expect(output()).toContain('Login recusado');
+  });
+
+  it('R14 (CCD098): tira o CPF da query da busca de usuários', () => {
+    const req = {
+      id: '1',
+      method: 'GET',
+      url: '/api/v1/users?q=52998224725',
+      query: { q: '52998224725' },
+      params: {},
+      headers: {},
+      remoteAddress: '127.0.0.1',
+      remotePort: 1234,
+      raw: {},
+    } as unknown as ReturnType<typeof stdSerializers.req>;
+
+    const serialized = stripQueryString(req);
+
+    expect(serialized.url).toBe('/api/v1/users');
+    expect(serialized.query).toBeUndefined();
+    expect(JSON.stringify(serialized)).not.toContain('52998224725');
+  });
+
+  it('requestIdFrom reaproveita o X-Request-Id recebido', () => {
+    expect(requestIdFrom({ headers: { 'x-request-id': 'abc-123' } })).toBe('abc-123');
+  });
+
+  it('requestIdFrom gera um novo id quando o cabeçalho não vem', () => {
+    const id = requestIdFrom({ headers: {} });
+
+    expect(id).toEqual(expect.any(String));
+    expect(id.length).toBeGreaterThan(0);
+  });
+
+  it('stripQueryString não quebra quando o req não tem url', () => {
+    const req = {
+      id: '1',
+      method: 'GET',
+      params: {},
+      headers: {},
+      remoteAddress: '127.0.0.1',
+      remotePort: 1234,
+      raw: {},
+    } as unknown as ReturnType<typeof stdSerializers.req>;
+
+    expect(stripQueryString(req).url).toBe('');
+  });
+
+  it('transportFor usa o pino-pretty só em desenvolvimento', () => {
+    expect(transportFor('development')).toMatchObject({ target: 'pino-pretty' });
+    expect(transportFor('test')).toBeUndefined();
+    expect(transportFor('production')).toBeUndefined();
+  });
+});
+
+describe('httpLogger', () => {
+  it('R14 (CCD098): o log da requisição não leva o CPF da busca', async () => {
+    const { logger, output } = captureLogs();
+    const app = express();
+    app.use(createHttpLogger(logger));
+    app.get('/users', (_req, res) => res.status(200).end());
+
+    await request(app).get('/users?q=52998224725').expect(200);
+
+    expect(output()).toContain('"url":"/users"');
+    expect(output()).not.toContain('52998224725');
+  });
+
+  it('não mostra o login (e-mail ou @) se o corpo for registrado', () => {
+    const { logger, output } = captureLogs();
+
+    logger.warn({ body: { login: 'ana@cromocard.dev' } }, 'Login recusado');
+
+    expect(output()).not.toContain('ana@cromocard.dev');
+  });
+
+  function appWithLogger() {
+    const app = express();
+    app.use(httpLogger);
+    app.get('/ping', (_req, res) => res.status(200).end());
+    return app;
+  }
+
+  it('reaproveita o X-Request-Id recebido na resposta', async () => {
+    const res = await request(appWithLogger()).get('/ping').set('X-Request-Id', 'meu-id-123');
+
+    expect(res.headers['x-request-id']).toBe('meu-id-123');
+  });
+
+  it('gera um X-Request-Id quando a requisição não manda um', async () => {
+    const res = await request(appWithLogger()).get('/ping');
+
+    expect(res.headers['x-request-id']).toEqual(expect.any(String));
   });
 });

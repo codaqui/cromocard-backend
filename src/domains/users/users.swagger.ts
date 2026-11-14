@@ -57,13 +57,14 @@ const usersPaths: RouteConfig[] = [
     path: '/users',
     tags,
     security,
-    summary: 'Cadastra um usuário e envia o convite por e-mail (administrador)',
+    summary:
+      'Cadastra um usuário, com @, CPF e telefone opcionais (administrador); envia o convite por e-mail quando sendActivation não for false',
     request: { body: { content: { 'application/json': { schema: createUserSchema } } } },
     responses: {
       201: { description: 'Usuário cadastrado' },
       400: { description: 'Dados inválidos' },
       403: { description: 'Apenas administradores' },
-      409: { description: 'E-mail já cadastrado' },
+      409: { description: 'E-mail, nome de usuário ou CPF já cadastrado' },
     },
   },
   {
@@ -71,9 +72,10 @@ const usersPaths: RouteConfig[] = [
     path: '/users/{id}',
     tags,
     security,
-    summary: 'Retorna os dados de um usuário (administrador)',
+    summary:
+      'Retorna os dados de um usuário, com endereços e ações administrativas (administrador)',
     responses: {
-      200: { description: 'Dados do usuário' },
+      200: { description: 'Dados do usuário, endereços e as últimas ações administrativas' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
     },
@@ -83,14 +85,15 @@ const usersPaths: RouteConfig[] = [
     path: '/users/{id}',
     tags,
     security,
-    summary: 'Edita nome, e-mail ou papel de um usuário (administrador)',
+    summary:
+      'Edita nome, e-mail, papel, @, CPF ou telefone de um usuário (administrador); enviar null em @/CPF/telefone apaga o dado',
     request: { body: { content: { 'application/json': { schema: adminUpdateUserSchema } } } },
     responses: {
       200: { description: 'Usuário atualizado' },
       400: { description: 'Dados inválidos' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
-      409: { description: 'E-mail já cadastrado' },
+      409: { description: 'E-mail, nome de usuário ou CPF já cadastrado' },
       422: { description: 'Não pode alterar o próprio papel ou rebaixar o último administrador' },
     },
   },
@@ -114,13 +117,25 @@ const usersPaths: RouteConfig[] = [
     path: '/users/{id}/reactivate',
     tags,
     security,
-    summary: 'Reativa um usuário suspenso (administrador)',
-    request: { body: { content: { 'application/json': { schema: reasonSchema } } } },
+    summary: 'Reativa um usuário suspenso, sem motivo (administrador)',
     responses: {
       200: { description: 'Usuário reativado' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
       409: { description: 'Usuário não está suspenso' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/users/{id}/resend-activation',
+    tags,
+    security,
+    summary: 'Reenvia o link de ativação por e-mail (administrador)',
+    responses: {
+      202: { description: 'Link reenviado' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      409: { description: 'Usuário já definiu a senha' },
     },
   },
   {

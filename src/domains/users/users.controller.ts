@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 
 import { getAuthenticatedUser } from '@/shared/middlewares/authenticate';
-import { created, noContent, ok, paginated } from '@/shared/utils/http-response';
+import { accepted, created, noContent, ok, paginated } from '@/shared/utils/http-response';
 
 import type { AdminUsersService } from './admin-users.service';
 import type { UsersService } from './users.service';
@@ -43,7 +43,7 @@ export class UsersController {
 
   getById = async (req: Request, res: Response): Promise<void> => {
     const { id } = userIdParamSchema.parse(req.params);
-    ok(res, await this.usersService.findById(id));
+    ok(res, await this.adminUsersService.getDetail(id));
   };
 
   create = async (req: Request, res: Response): Promise<void> => {
@@ -69,8 +69,7 @@ export class UsersController {
   reactivate = async (req: Request, res: Response): Promise<void> => {
     const { id } = userIdParamSchema.parse(req.params);
     const { id: adminId } = getAuthenticatedUser(req);
-    const input = reasonSchema.parse(req.body);
-    ok(res, await this.adminUsersService.reactivate(id, input, adminId));
+    ok(res, await this.adminUsersService.reactivate(id, adminId));
   };
 
   remove = async (req: Request, res: Response): Promise<void> => {
@@ -79,5 +78,12 @@ export class UsersController {
     const input = reasonSchema.parse(req.body);
     await this.adminUsersService.remove(id, input, adminId);
     noContent(res);
+  };
+
+  resendActivation = async (req: Request, res: Response): Promise<void> => {
+    const { id } = userIdParamSchema.parse(req.params);
+    const { id: adminId } = getAuthenticatedUser(req);
+    await this.adminUsersService.resendActivation(id, adminId);
+    accepted(res);
   };
 }

@@ -12,9 +12,29 @@ export class EmailAlreadyRegisteredError extends ConflictError {
   }
 }
 
+export class UsernameTakenError extends ConflictError {
+  constructor() {
+    const message = 'Este nome de usuário já está em uso';
+    super(message, 'USERNAME_TAKEN', [{ field: 'username', message }]);
+  }
+}
+
+export class CpfTakenError extends ConflictError {
+  constructor() {
+    const message = 'Já existe um usuário cadastrado com este CPF';
+    super(message, 'CPF_TAKEN', [{ field: 'cpf', message }]);
+  }
+}
+
 export class AlreadySuspendedError extends ConflictError {
   constructor() {
     super('Usuário já está suspenso', 'ALREADY_SUSPENDED');
+  }
+}
+
+export class AlreadyActivatedError extends ConflictError {
+  constructor() {
+    super('Este usuário já definiu a senha', 'ALREADY_ACTIVATED');
   }
 }
 
@@ -47,3 +67,11 @@ export class LastAdminError extends BusinessRuleError {
     super('A plataforma precisa de ao menos um administrador ativo', 'LAST_ADMIN');
   }
 }
+
+/** Índices únicos de `users`, para traduzir o P2002 do driver adapter no campo do formulário. */
+export const USERS_UNIQUE_INDEXES = {
+  users_email_key: ['email'],
+  users_username_key: ['username'],
+  users_cpf_key: ['cpf'],
+  users_oauth_provider_oauth_id_key: ['oauthProvider', 'oauthId'],
+} satisfies Record<string, string[]>;

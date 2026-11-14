@@ -11,6 +11,8 @@ interface UserBody {
   id: string;
   name: string;
   email: string;
+  cpf?: string;
+  lastLoginIp?: string;
 }
 
 interface UserResponse {
@@ -26,6 +28,8 @@ function uniqueEmail(prefix: string): string {
 
 interface UserOverrides {
   role?: UserRole;
+  cpf?: string;
+  phone?: string;
   passwordHash?: string;
 }
 
@@ -52,15 +56,16 @@ afterAll(async () => {
 });
 
 describe('GET /api/v1/users/me', () => {
-  it('devolve o perfil autenticado', async () => {
-    const user = await createUser();
+  it('devolve o perfil autenticado sem CPF nem IP do último acesso', async () => {
+    const user = await createUser({ cpf: '54979009506' });
 
     const res = await request(app).get('/api/v1/users/me').set('Authorization', bearer(user));
 
     const body = res.body as UserResponse;
     expect(res.status).toBe(200);
     expect(body.data).toMatchObject({ id: user.id, name: user.name, email: user.email });
-    expect(body.data).not.toHaveProperty('passwordHash');
+    expect(body.data).not.toHaveProperty('cpf');
+    expect(body.data).not.toHaveProperty('lastLoginIp');
   });
 
   it('sem token responde 401', async () => {
@@ -112,9 +117,9 @@ describe('DELETE /api/v1/users/me', () => {
 });
 
 describe('GET /api/v1/users/:id (administrador)', () => {
-  it('devolve o detalhe para o administrador', async () => {
+  it('devolve o detalhe com CPF para o administrador', async () => {
     const admin = await createUser({ role: 'ADMIN' });
-    const target = await createUser();
+    const target = await createUser({ cpf: '35045525069' });
 
     const res = await request(app)
       .get(`/api/v1/users/${target.id}`)
@@ -122,7 +127,7 @@ describe('GET /api/v1/users/:id (administrador)', () => {
 
     const body = res.body as UserResponse;
     expect(res.status).toBe(200);
-    expect(body.data).toMatchObject({ id: target.id, email: target.email });
+    expect(body.data).toMatchObject({ id: target.id, cpf: target.cpf });
   });
 
   it('id inexistente responde 404', async () => {
@@ -172,5 +177,17 @@ describe('usersService: conta do Google', () => {
     });
 
     expect(linked.passwordHash).toBeNull();
+  });
+});
+
+describe('usersService: recordLogin', () => {
+  it('grava null quando não há IP (ex.: conexão sem IP identificável)', async () => {
+    const user = await createUser();
+
+    await usersService.recordLogin(user.id, undefined);
+
+    await expect(prisma.user.findUniqueOrThrow({ where: { id: user.id } })).resolves.toMatchObject({
+      lastLoginIp: null,
+    });
   });
 });
