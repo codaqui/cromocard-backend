@@ -1,6 +1,12 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
-import { listUsersQuerySchema, updateUserSchema } from './users.validator';
+import {
+  adminUpdateUserSchema,
+  createUserSchema,
+  listUsersQuerySchema,
+  reasonSchema,
+  updateUserSchema,
+} from './users.validator';
 
 const tags = ['Usuários'];
 const security = [{ bearerAuth: [] }];
@@ -45,6 +51,106 @@ const usersPaths: RouteConfig[] = [
     security,
     summary: 'Exclui a conta do usuário logado (soft delete)',
     responses: { 204: { description: 'Conta excluída' } },
+  },
+  {
+    method: 'post',
+    path: '/users',
+    tags,
+    security,
+    summary:
+      'Cadastra um usuário, com @, CPF e telefone opcionais (administrador); envia o convite por e-mail quando sendActivation não for false',
+    request: { body: { content: { 'application/json': { schema: createUserSchema } } } },
+    responses: {
+      201: { description: 'Usuário cadastrado' },
+      400: { description: 'Dados inválidos' },
+      403: { description: 'Apenas administradores' },
+      409: { description: 'E-mail, nome de usuário ou CPF já cadastrado' },
+    },
+  },
+  {
+    method: 'get',
+    path: '/users/{id}',
+    tags,
+    security,
+    summary:
+      'Retorna os dados de um usuário, com endereços e ações administrativas (administrador)',
+    responses: {
+      200: { description: 'Dados do usuário, endereços e as últimas ações administrativas' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+    },
+  },
+  {
+    method: 'patch',
+    path: '/users/{id}',
+    tags,
+    security,
+    summary:
+      'Edita nome, e-mail, papel, @, CPF ou telefone de um usuário (administrador); enviar null em @/CPF/telefone apaga o dado',
+    request: { body: { content: { 'application/json': { schema: adminUpdateUserSchema } } } },
+    responses: {
+      200: { description: 'Usuário atualizado' },
+      400: { description: 'Dados inválidos' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      409: { description: 'E-mail, nome de usuário ou CPF já cadastrado' },
+      422: { description: 'Não pode alterar o próprio papel ou rebaixar o último administrador' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/users/{id}/suspend',
+    tags,
+    security,
+    summary: 'Suspende um usuário (administrador)',
+    request: { body: { content: { 'application/json': { schema: reasonSchema } } } },
+    responses: {
+      200: { description: 'Usuário suspenso' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      409: { description: 'Usuário já está suspenso' },
+      422: { description: 'Não pode suspender a própria conta ou o último administrador' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/users/{id}/reactivate',
+    tags,
+    security,
+    summary: 'Reativa um usuário suspenso, sem motivo (administrador)',
+    responses: {
+      200: { description: 'Usuário reativado' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      409: { description: 'Usuário não está suspenso' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/users/{id}/resend-activation',
+    tags,
+    security,
+    summary: 'Reenvia o link de ativação por e-mail (administrador)',
+    responses: {
+      202: { description: 'Link reenviado' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      409: { description: 'Usuário já definiu a senha' },
+    },
+  },
+  {
+    method: 'delete',
+    path: '/users/{id}',
+    tags,
+    security,
+    summary: 'Exclui um usuário (administrador, soft delete)',
+    request: { body: { content: { 'application/json': { schema: reasonSchema } } } },
+    responses: {
+      204: { description: 'Usuário excluído' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      422: { description: 'Não pode excluir a própria conta ou o último administrador' },
+    },
   },
 ];
 

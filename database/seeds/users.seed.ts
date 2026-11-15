@@ -15,6 +15,9 @@ const usersSchema = z.array(
     status: z.enum(UserStatus).optional(),
     emailVerified: z.boolean().default(true),
     createdDaysAgo: z.number().int().min(0),
+    username: z.string().optional(),
+    cpf: z.string().optional(),
+    phone: z.string().optional(),
   }),
 );
 

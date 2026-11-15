@@ -1,4 +1,5 @@
 import { z } from '@/lib/zod';
+import { normalizeUsername } from '@/shared/validators/username';
 
 export const emailSchema = z
   .string()
@@ -24,7 +25,12 @@ export const passwordSchema = z
 const rememberMeSchema = z.boolean().default(false);
 
 export const loginSchema = z.object({
-  email: emailSchema,
+  login: z
+    .string()
+    .trim()
+    .min(1, { error: 'Informe o e-mail ou o nome de usuário' })
+    .max(160, { error: 'O e-mail ou o nome de usuário pode ter no máximo 160 caracteres' })
+    .transform(normalizeUsername),
   password: z.string().min(1, { error: 'Informe a senha' }),
   rememberMe: rememberMeSchema,
 });
