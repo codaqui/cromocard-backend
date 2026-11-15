@@ -2,12 +2,7 @@ import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 import { reasonSchema } from '@/shared/validators/reason';
 
-const sellerVerificationStatusSchema = z.enum([
-  'UNDER_REVIEW',
-  'PENDING',
-  'APPROVED',
-  'REJECTED',
-]);
+const sellerVerificationStatusSchema = z.enum(['UNDER_REVIEW', 'PENDING', 'APPROVED', 'REJECTED']);
 
 export const listSellerVerificationsQuerySchema = paginationQuerySchema.extend({
   status: sellerVerificationStatusSchema.optional(),

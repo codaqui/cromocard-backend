@@ -54,7 +54,12 @@ function uniqueCnpj(): string {
 
 async function createAdmin() {
   const admin = await prisma.user.create({
-    data: { name: 'Admin Integração', email: uniqueEmail('admin'), role: 'ADMIN', status: 'ACTIVE' },
+    data: {
+      name: 'Admin Integração',
+      email: uniqueEmail('admin'),
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    },
   });
   createdUserIds.push(admin.id);
   return admin;
@@ -148,7 +153,10 @@ describe('GET /api/v1/admin/seller-verifications/summary', () => {
     ]);
     const body = res.body as SummaryResponse;
     expect(body.data.approved).toBe(approvedTotal);
-    expect(body.data.conversionRate).toBeCloseTo(approvedTotal / (approvedTotal + rejectedTotal), 5);
+    expect(body.data.conversionRate).toBeCloseTo(
+      approvedTotal / (approvedTotal + rejectedTotal),
+      5,
+    );
   });
 });
 
@@ -204,7 +212,9 @@ describe('POST /api/v1/admin/seller-verifications/:id/documents/:documentId/vali
     });
 
     const res = await request(app)
-      .post(`/api/v1/admin/seller-verifications/${verification.id}/documents/${document.id}/validate`)
+      .post(
+        `/api/v1/admin/seller-verifications/${verification.id}/documents/${document.id}/validate`,
+      )
       .set('Authorization', bearer(admin));
 
     expect(res.status).toBe(200);
@@ -247,7 +257,9 @@ describe('POST /api/v1/admin/seller-verifications/:id/notes', () => {
 
     expect(res.status).toBe(201);
     const body = res.body as DetailResponse;
-    expect(body.data.notes[0]).toMatchObject({ content: 'Lojista já atua há 2 anos no mercado físico' });
+    expect(body.data.notes[0]).toMatchObject({
+      content: 'Lojista já atua há 2 anos no mercado físico',
+    });
   });
 
   it('conteúdo vazio responde 400', async () => {
@@ -345,7 +357,9 @@ describe('POST /api/v1/admin/seller-verifications/:id/reject', () => {
 
     expect(res.status).toBe(400);
 
-    const stored = await prisma.sellerVerification.findUniqueOrThrow({ where: { id: verification.id } });
+    const stored = await prisma.sellerVerification.findUniqueOrThrow({
+      where: { id: verification.id },
+    });
     expect(stored.status).toBe('UNDER_REVIEW');
   });
 

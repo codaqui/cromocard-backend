@@ -75,7 +75,12 @@ export class SellerVerificationsService {
   async getSummary(query: PeriodQuery): Promise<SellerVerificationSummary> {
     const period = resolvePeriod(query, this.deps.now());
     const counts = await this.deps.repository.countByStatusWithin(period);
-    return { period, approved: counts.approved, pending: counts.pending, conversionRate: conversionRateOf(counts) };
+    return {
+      period,
+      approved: counts.approved,
+      pending: counts.pending,
+      conversionRate: conversionRateOf(counts),
+    };
   }
 
   async getDetail(id: string): Promise<SellerVerificationDetail> {

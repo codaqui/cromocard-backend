@@ -34,7 +34,9 @@ export type UserSummary = Omit<RawUserSummary, 'sellerVerification'> & {
   verificationStatus: SellerVerificationStatus | null;
 };
 
-function withVerificationStatus<T extends { sellerVerification: { status: SellerVerificationStatus } | null }>(
+function withVerificationStatus<
+  T extends { sellerVerification: { status: SellerVerificationStatus } | null },
+>(
   user: T,
 ): Omit<T, 'sellerVerification'> & { verificationStatus: SellerVerificationStatus | null } {
   const { sellerVerification, ...rest } = user;
@@ -286,7 +288,11 @@ export class PrismaUsersRepository implements UsersRepository {
     return withVerificationStatus(user);
   }
 
-  async update(id: string, changes: UserChanges, tx: Transaction = this.prisma): Promise<UserSummary> {
+  async update(
+    id: string,
+    changes: UserChanges,
+    tx: Transaction = this.prisma,
+  ): Promise<UserSummary> {
     const user = await tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
     return withVerificationStatus(user);
   }
@@ -296,7 +302,11 @@ export class PrismaUsersRepository implements UsersRepository {
     status: UserStatus,
     tx: Transaction = this.prisma,
   ): Promise<UserSummary> {
-    const user = await tx.user.update({ where: { id }, data: { status }, select: userSummarySelect });
+    const user = await tx.user.update({
+      where: { id },
+      data: { status },
+      select: userSummarySelect,
+    });
     return withVerificationStatus(user);
   }
 

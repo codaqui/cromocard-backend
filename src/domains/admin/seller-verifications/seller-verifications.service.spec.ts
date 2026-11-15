@@ -46,7 +46,11 @@ function buildDetail(overrides: Partial<StoredVerification> = {}): StoredVerific
     reviewedAt: null,
     createdAt: new Date(),
     deletedAt: null,
-    seller: { id: crypto.randomUUID(), name: 'Cards Kanto Colecionáveis', email: 'kanto@cromocard.dev' },
+    seller: {
+      id: crypto.randomUUID(),
+      name: 'Cards Kanto Colecionáveis',
+      email: 'kanto@cromocard.dev',
+    },
     documents: [],
     notes: [],
     ...overrides,
@@ -83,7 +87,9 @@ class InMemorySellerVerificationsRepository implements SellerVerificationsReposi
   }
 
   findDetailById(id: string): Promise<SellerVerificationDetail | null> {
-    return Promise.resolve(this.verifications.find((item) => item.id === id && !item.deletedAt) ?? null);
+    return Promise.resolve(
+      this.verifications.find((item) => item.id === id && !item.deletedAt) ?? null,
+    );
   }
 
   countByStatusWithin(): Promise<StatusCounts> {
@@ -120,7 +126,12 @@ class InMemorySellerVerificationsRepository implements SellerVerificationsReposi
         ? {
             ...item,
             notes: [
-              { id: crypto.randomUUID(), content, createdAt: new Date(), author: { id: authorId, name: 'Admin' } },
+              {
+                id: crypto.randomUUID(),
+                content,
+                createdAt: new Date(),
+                author: { id: authorId, name: 'Admin' },
+              },
               ...item.notes,
             ],
           }
@@ -145,7 +156,13 @@ class InMemorySellerVerificationsRepository implements SellerVerificationsReposi
 }
 
 class FakeAuditLog implements AdminAuditLog {
-  entries: { adminId: string; action: AuditAction; entityType: string; entityId?: string; reason?: string }[] = [];
+  entries: {
+    adminId: string;
+    action: AuditAction;
+    entityType: string;
+    entityId?: string;
+    reason?: string;
+  }[] = [];
 
   record(entry: Parameters<AdminAuditLog['record']>[0]) {
     this.entries.push(entry);
@@ -245,7 +262,12 @@ describe('SellerVerificationsService', () => {
 
       expect(repository.documents[0]?.status).toBe('VALIDATED');
       expect(auditLog.entries).toEqual([
-        { adminId, action: 'SELLER_DOCUMENT_VALIDATED', entityType: 'seller_verification', entityId: verification.id },
+        {
+          adminId,
+          action: 'SELLER_DOCUMENT_VALIDATED',
+          entityType: 'seller_verification',
+          entityId: verification.id,
+        },
       ]);
     });
 
@@ -340,9 +362,9 @@ describe('SellerVerificationsService', () => {
       const verification = buildDetail({ status: 'REJECTED' });
       repository.verifications = [verification];
 
-      await expect(
-        service.reject(verification.id, adminId, 'Outro motivo'),
-      ).rejects.toBeInstanceOf(VerificationAlreadyDecidedError);
+      await expect(service.reject(verification.id, adminId, 'Outro motivo')).rejects.toBeInstanceOf(
+        VerificationAlreadyDecidedError,
+      );
     });
   });
 });

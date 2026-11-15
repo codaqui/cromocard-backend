@@ -172,7 +172,11 @@ export class PrismaSellerVerificationsRepository implements SellerVerificationsR
     });
   }
 
-  async validateDocument(documentId: string, validatedById: string, tx: Transaction): Promise<void> {
+  async validateDocument(
+    documentId: string,
+    validatedById: string,
+    tx: Transaction,
+  ): Promise<void> {
     await tx.sellerDocument.update({
       where: { id: documentId },
       data: { status: 'VALIDATED', validatedById, validatedAt: new Date() },

@@ -5,9 +5,7 @@ import { authorize } from '@/shared/middlewares/authorize';
 
 import type { SellerVerificationsController } from './seller-verifications.controller';
 
-export function createSellerVerificationsRoutes(
-  controller: SellerVerificationsController,
-): Router {
+export function createSellerVerificationsRoutes(controller: SellerVerificationsController): Router {
   const router = Router();
 
   router.use(authenticate, authorize('ADMIN'));

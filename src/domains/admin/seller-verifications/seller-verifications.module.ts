@@ -22,7 +22,9 @@ const sellerVerificationsService = new SellerVerificationsService({
 
 export const sellerVerificationsModule: DomainModule = {
   basePath: '/admin/seller-verifications',
-  router: createSellerVerificationsRoutes(new SellerVerificationsController(sellerVerificationsService)),
+  router: createSellerVerificationsRoutes(
+    new SellerVerificationsController(sellerVerificationsService),
+  ),
   registerDocs: registerSellerVerificationsDocs,
 };
 
