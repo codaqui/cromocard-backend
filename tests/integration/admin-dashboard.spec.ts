@@ -91,7 +91,13 @@ describe('GET /api/v1/admin/dashboard (PostgreSQL real)', () => {
     expect(kpis.newUsers - wholeBefore.kpis.newUsers).toBe(4);
     expect(kpis.newSellers - wholeBefore.kpis.newSellers).toBe(2);
     expect(kpis.totalUsers).toBeGreaterThanOrEqual(4);
-    expect(kpis.totalCards).toBeNull();
+  });
+
+  it('CA1: o total de cartas vem do catálogo', async () => {
+    const { kpis } = await summaryOf(WHOLE_WINDOW);
+
+    expect(kpis.totalCards).toEqual(expect.any(Number));
+    expect(kpis.totalCards).toBeGreaterThanOrEqual(0);
   });
 
   it('CA2: recalcula os KPIs para outro intervalo', async () => {
