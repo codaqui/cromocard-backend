@@ -24,6 +24,22 @@ interface ErrorResponse {
   error: string;
 }
 
+interface ListItemBody {
+  id: string;
+  status: SellerVerificationStatus;
+  legalName: string;
+  cnpj: string;
+}
+
+interface ListResponse {
+  data: ListItemBody[];
+  meta: { total: number };
+}
+
+interface SummaryResponse {
+  data: { approved: number; pending: number; conversionRate: number };
+}
+
 const app = createApp();
 const createdUserIds: string[] = [];
 const createdVerificationIds: string[] = [];
@@ -83,6 +99,57 @@ afterAll(async () => {
   await prisma.notification.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.sellerVerification.deleteMany({ where: { id: { in: createdVerificationIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+});
+
+describe('GET /api/v1/admin/seller-verifications', () => {
+  it('CA1: filtra por status e devolve o total', async () => {
+    const admin = await createAdmin();
+    const { verification: underReview } = await createVerification({ status: 'UNDER_REVIEW' });
+    await createVerification({ status: 'APPROVED' });
+
+    const res = await request(app)
+      .get('/api/v1/admin/seller-verifications')
+      .query({ status: 'UNDER_REVIEW' })
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(200);
+    const body = res.body as ListResponse;
+    expect(body.data.map((item) => item.id)).toContain(underReview.id);
+    expect(body.data.every((item) => item.status === 'UNDER_REVIEW')).toBe(true);
+    expect(body.meta.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it('CA10: token de CUSTOMER responde 403', async () => {
+    const res = await request(app)
+      .get('/api/v1/admin/seller-verifications')
+      .set('Authorization', bearer({ id: crypto.randomUUID(), role: 'CUSTOMER' }));
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/v1/admin/seller-verifications/summary', () => {
+  it('CA8: a conversão é aprovados dividido por analisados no período', async () => {
+    const admin = await createAdmin();
+    await createVerification({ status: 'APPROVED' });
+    await createVerification({ status: 'APPROVED' });
+    await createVerification({ status: 'APPROVED' });
+    await createVerification({ status: 'REJECTED' });
+    const last30Days = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+
+    const res = await request(app)
+      .get('/api/v1/admin/seller-verifications/summary')
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(200);
+    const [approvedTotal, rejectedTotal] = await Promise.all([
+      prisma.sellerVerification.count({ where: { status: 'APPROVED', createdAt: last30Days } }),
+      prisma.sellerVerification.count({ where: { status: 'REJECTED', createdAt: last30Days } }),
+    ]);
+    const body = res.body as SummaryResponse;
+    expect(body.data.approved).toBe(approvedTotal);
+    expect(body.data.conversionRate).toBeCloseTo(approvedTotal / (approvedTotal + rejectedTotal), 5);
+  });
 });
 
 describe('GET /api/v1/admin/seller-verifications/:id', () => {
@@ -213,6 +280,18 @@ describe('POST /api/v1/admin/seller-verifications/:id/approve', () => {
       where: { entityId: verification.id, action: 'SELLER_VERIFICATION_APPROVED' },
     });
     expect(log.adminId).toBe(admin.id);
+  });
+
+  it('CA4: aprova mesmo sem corpo nenhum na requisição', async () => {
+    const admin = await createAdmin();
+    const { verification } = await createVerification({ status: 'UNDER_REVIEW' });
+
+    const res = await request(app)
+      .post(`/api/v1/admin/seller-verifications/${verification.id}/approve`)
+      .set('Authorization', bearer(admin));
+
+    expect(res.status).toBe(200);
+    expect((res.body as DetailResponse).data.status).toBe('APPROVED');
   });
 
   it('CA7: credenciamento já decidido responde 409', async () => {

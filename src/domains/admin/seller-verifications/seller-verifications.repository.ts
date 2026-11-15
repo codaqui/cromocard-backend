@@ -106,9 +106,9 @@ export interface SellerVerificationsRepository {
     sellerVerificationId: string,
     documentId: string,
   ): Promise<{ id: string; status: SellerDocumentStatus } | null>;
-  validateDocument(documentId: string, validatedById: string, tx?: Transaction): Promise<void>;
+  validateDocument(documentId: string, validatedById: string, tx: Transaction): Promise<void>;
   addNote(sellerVerificationId: string, authorId: string, content: string): Promise<void>;
-  updateDecision(id: string, update: DecisionUpdate, tx?: Transaction): Promise<void>;
+  updateDecision(id: string, update: DecisionUpdate, tx: Transaction): Promise<void>;
 }
 
 function buildWhere(status?: SellerVerificationStatus): Prisma.SellerVerificationWhereInput {
@@ -172,8 +172,8 @@ export class PrismaSellerVerificationsRepository implements SellerVerificationsR
     });
   }
 
-  async validateDocument(documentId: string, validatedById: string, tx?: Transaction): Promise<void> {
-    await (tx ?? this.prisma).sellerDocument.update({
+  async validateDocument(documentId: string, validatedById: string, tx: Transaction): Promise<void> {
+    await tx.sellerDocument.update({
       where: { id: documentId },
       data: { status: 'VALIDATED', validatedById, validatedAt: new Date() },
     });
@@ -188,9 +188,9 @@ export class PrismaSellerVerificationsRepository implements SellerVerificationsR
   async updateDecision(
     id: string,
     { status, reviewedById, rejectionReason }: DecisionUpdate,
-    tx?: Transaction,
+    tx: Transaction,
   ): Promise<void> {
-    await (tx ?? this.prisma).sellerVerification.update({
+    await tx.sellerVerification.update({
       where: { id },
       data: { status, reviewedById, reviewedAt: new Date(), rejectionReason },
     });
