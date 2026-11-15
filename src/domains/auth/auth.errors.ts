@@ -2,7 +2,11 @@ import { AppError } from '@/shared/errors/app-error';
 
 export class InvalidCredentialsError extends AppError {
   constructor() {
-    super({ statusCode: 401, code: 'INVALID_CREDENTIALS', message: 'E-mail ou senha incorretos' });
+    super({
+      statusCode: 401,
+      code: 'INVALID_CREDENTIALS',
+      message: 'E-mail, nome de usuário ou senha incorretos',
+    });
   }
 }
 
