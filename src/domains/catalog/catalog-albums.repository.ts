@@ -12,6 +12,7 @@ const albumSelect = {
   description: true,
   coverUrl: true,
   totalCards: true,
+  status: true,
   categoryId: true,
   category: { select: { id: true, name: true } },
   createdAt: true,

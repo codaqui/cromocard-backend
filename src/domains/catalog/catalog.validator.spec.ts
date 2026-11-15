@@ -15,7 +15,20 @@ import {
 const validCard = {
   name: 'Pikachu',
   frontImageUrl: 'http://localhost:3000/uploads/cards/a.png',
+  categoryId: crypto.randomUUID(),
+  rarityId: crypto.randomUUID(),
+  languageId: crypto.randomUUID(),
 };
+
+function omit<T extends object>(source: T, ...keys: (keyof T)[]): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => !keys.includes(key as keyof T)),
+  ) as Partial<T>;
+}
+
+function failedFields(result: { error?: { issues: { path: PropertyKey[] }[] } }) {
+  return result.error?.issues.map(({ path }) => path.join('.')) ?? [];
+}
 
 describe('createAlbumSchema', () => {
   it('R5: aceita álbum só com o título', () => {
@@ -42,14 +55,41 @@ describe('createAlbumSchema', () => {
     expect(createAlbumSchema.safeParse({ title: 'Copa', categoryId: '123' }).success).toBe(false);
   });
 
+  it('R5: aceita o status Ativo ou Inativo e recusa outro valor', () => {
+    expect(createAlbumSchema.parse({ title: 'Copa', status: 'INACTIVE' }).status).toBe('INACTIVE');
+    expect(createAlbumSchema.safeParse({ title: 'Copa', status: 'ARCHIVED' }).success).toBe(false);
+  });
+
   it('R5: na edição aceita só os campos alterados e limpa um opcional com null', () => {
     expect(updateAlbumSchema.safeParse({ publisher: null }).success).toBe(true);
   });
 });
 
 describe('createCardSchema', () => {
-  it('R6: aceita carta com nome e imagem da frente', () => {
+  it('CA8: sem álbum e sem numeração, a carta com nome, franquia, raridade, idioma e frente é aceita', () => {
     expect(createCardSchema.safeParse(validCard).success).toBe(true);
+  });
+
+  it('CA8: recusa a carta sem raridade, apontando o campo rarityId', () => {
+    const withoutRarity = omit(validCard, 'rarityId');
+
+    expect(failedFields(createCardSchema.safeParse(withoutRarity))).toEqual(['rarityId']);
+  });
+
+  it('R6: recusa a carta sem franquia ou sem idioma', () => {
+    const withoutBoth = omit(validCard, 'categoryId', 'languageId');
+
+    expect(failedFields(createCardSchema.safeParse(withoutBoth))).toEqual([
+      'categoryId',
+      'languageId',
+    ]);
+  });
+
+  it('R6: na edição não deixa apagar a franquia, a raridade nem o idioma', () => {
+    expect(updateCardSchema.safeParse({ categoryId: null }).success).toBe(false);
+    expect(updateCardSchema.safeParse({ rarityId: null }).success).toBe(false);
+    expect(updateCardSchema.safeParse({ languageId: null }).success).toBe(false);
+    expect(updateCardSchema.safeParse({ albumId: null }).success).toBe(true);
   });
 
   it('R6: recusa carta sem nome ou com nome acima de 160 caracteres', () => {
@@ -58,7 +98,9 @@ describe('createCardSchema', () => {
   });
 
   it('R6: recusa carta sem a imagem da frente', () => {
-    expect(createCardSchema.safeParse({ name: 'Pikachu' }).success).toBe(false);
+    const withoutFront = omit(validCard, 'frontImageUrl');
+
+    expect(createCardSchema.safeParse(withoutFront).success).toBe(false);
   });
 
   it('R6: recusa número acima de 20 caracteres e referências que não são UUID', () => {
@@ -78,6 +120,17 @@ describe('createCardSchema', () => {
 describe('createCategorySchema', () => {
   it('R15: aceita categoria com nome e tipo', () => {
     expect(createCategorySchema.safeParse({ name: 'Futebol', type: 'ALBUM' }).success).toBe(true);
+  });
+
+  it('R15: aceita a descrição opcional e recusa acima de 255 caracteres', () => {
+    const category = { name: 'Futebol', type: 'ALBUM' };
+
+    expect(createCategorySchema.parse({ ...category, description: ' Copas ' }).description).toBe(
+      'Copas',
+    );
+    expect(
+      createCategorySchema.safeParse({ ...category, description: 'a'.repeat(256) }).success,
+    ).toBe(false);
   });
 
   it('R15: recusa tipo fora do enum e nome acima de 90 caracteres', () => {

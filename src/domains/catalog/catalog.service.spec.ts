@@ -60,6 +60,7 @@ function buildAlbum(input: CreateAlbumInput): Stored<Album> {
     description: input.description ?? null,
     coverUrl: input.coverUrl ?? null,
     totalCards: 0,
+    status: input.status ?? 'ACTIVE',
     categoryId: input.categoryId ?? null,
     category: null,
     ...timestamps(),
@@ -75,9 +76,9 @@ function buildCard(input: CreateCardInput): Stored<Card> {
     frontImageUrl: input.frontImageUrl,
     backImageUrl: input.backImageUrl ?? null,
     albumId: input.albumId ?? null,
-    categoryId: input.categoryId ?? null,
-    rarityId: input.rarityId ?? null,
-    languageId: input.languageId ?? null,
+    categoryId: input.categoryId,
+    rarityId: input.rarityId,
+    languageId: input.languageId,
     album: null,
     category: null,
     rarity: null,
@@ -91,6 +92,7 @@ function buildCategory(input: CreateCategoryInput): Stored<Category> {
     id: crypto.randomUUID(),
     name: input.name,
     type: input.type,
+    description: input.description ?? null,
     parentCategoryId: input.parentCategoryId ?? null,
     parentCategory: null,
     ...timestamps(),
@@ -268,6 +270,7 @@ describe('CatalogService', () => {
   let auditLog: InMemoryAuditLog;
   let cardUsage: InMemoryCardUsage;
   let service: CatalogService;
+  let franchise: Stored<Category>;
 
   beforeEach(() => {
     albums = new InMemoryAlbumsRepository();
@@ -277,13 +280,26 @@ describe('CatalogService', () => {
     auditLog = new InMemoryAuditLog();
     cardUsage = new InMemoryCardUsage();
     service = new CatalogService({ albums, cards, categories, references, auditLog, cardUsage });
+    franchise = buildCategory({ name: 'Pokémon', type: 'CARD' });
   });
 
   const newAlbum = () => service.createAlbum(ADMIN_ID, { title: 'Copa 2026' });
   const categoryOfType = (type: CreateCategoryInput['type']) =>
     service.createCategory(ADMIN_ID, { name: `Categoria ${type}`, type });
+  /** Grava a franquia só quando um teste de carta precisa dela, para não aparecer nas listas de categorias. */
+  const franchiseId = () => {
+    if (!categories.categories.includes(franchise)) categories.categories.push(franchise);
+    return franchise.id;
+  };
+  const publishableCard = (): CreateCardInput => ({
+    name: 'Pikachu',
+    frontImageUrl: FRONT_IMAGE_URL,
+    categoryId: franchiseId(),
+    rarityId: references.rarities[0]?.id ?? '',
+    languageId: references.languages[0]?.id ?? '',
+  });
   const newCard = (input: Partial<CreateCardInput> = {}) =>
-    service.createCard(ADMIN_ID, { name: 'Pikachu', frontImageUrl: FRONT_IMAGE_URL, ...input });
+    service.createCard(ADMIN_ID, { ...publishableCard(), ...input });
 
   describe('álbuns', () => {
     it('R3: lista os álbuns com a paginação', async () => {

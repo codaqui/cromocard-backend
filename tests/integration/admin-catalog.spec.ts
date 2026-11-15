@@ -13,6 +13,8 @@ const CSV_HEADER = 'album_title;number;name;rarity;language;category';
 
 let adminId: string;
 let adminToken: string;
+/** Franquia, raridade e idioma que toda carta precisa para ser publicada (R6, CA8). */
+let publishable: { categoryId: string; rarityId: string; languageId: string };
 
 interface Created {
   data: { id: string; totalCards?: number };
@@ -55,6 +57,7 @@ function createCard(albumId: string, number: string) {
     number,
     albumId,
     frontImageUrl: FRONT_IMAGE_URL,
+    ...publishable,
   });
 }
 
@@ -73,16 +76,20 @@ beforeAll(async () => {
   });
   adminId = admin.id;
   adminToken = signAccessToken({ id: admin.id, role: 'ADMIN' });
-  await prisma.rarity.upsert({
+  const rarity = await prisma.rarity.upsert({
     where: { name: 'Comum' },
     update: {},
     create: { name: 'Comum', sortOrder: 1 },
   });
-  await prisma.language.upsert({
+  const language = await prisma.language.upsert({
     where: { code: 'pt-BR' },
     update: {},
     create: { name: 'Português', code: 'pt-BR' },
   });
+  const franchise = await prisma.category.create({
+    data: { name: `${MARKER} franquia`, type: 'CARD' },
+  });
+  publishable = { categoryId: franchise.id, rarityId: rarity.id, languageId: language.id };
 });
 
 afterAll(async () => {
@@ -157,11 +164,37 @@ describe('cartas', () => {
     const res = await asAdmin().post('/cards', {
       name: `${MARKER} sem raridade`,
       frontImageUrl: FRONT_IMAGE_URL,
+      ...publishable,
       rarityId: crypto.randomUUID(),
     });
 
     expect(res.status).toBe(404);
     expect((res.body as ErrorBody).error).toBe('RARITY_NOT_FOUND');
+  });
+});
+
+describe('campos para publicar a carta (L6)', () => {
+  it('CA8: sem raridade responde 400 no campo rarityId', async () => {
+    const res = await asAdmin().post('/cards', {
+      name: `${MARKER} sem raridade informada`,
+      frontImageUrl: FRONT_IMAGE_URL,
+      categoryId: publishable.categoryId,
+      languageId: publishable.languageId,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'VALIDATION_ERROR', details: [{ field: 'rarityId' }] });
+  });
+
+  it('CA8: sem álbum e sem numeração, a carta é cadastrada', async () => {
+    const res = await asAdmin().post('/cards', {
+      name: `${MARKER} avulsa`,
+      frontImageUrl: FRONT_IMAGE_URL,
+      ...publishable,
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ data: { albumId: null, number: null, ...publishable } });
   });
 });
 

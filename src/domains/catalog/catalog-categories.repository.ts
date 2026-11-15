@@ -12,6 +12,7 @@ const categorySelect = {
   id: true,
   name: true,
   type: true,
+  description: true,
   parentCategoryId: true,
   parentCategory: { select: { id: true, name: true } },
   createdAt: true,

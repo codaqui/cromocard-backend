@@ -1,4 +1,4 @@
-import { CategoryType } from '@/generated/prisma/enums';
+import { AlbumStatus, CategoryType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 
@@ -10,6 +10,7 @@ export const ALBUM_PUBLISHER_MAX_LENGTH = 120;
 export const CARD_NAME_MAX_LENGTH = 160;
 export const CARD_NUMBER_MAX_LENGTH = 20;
 export const CATEGORY_NAME_MAX_LENGTH = 90;
+export const CATEGORY_DESCRIPTION_MAX_LENGTH = 255;
 export const RARITY_NAME_MAX_LENGTH = 60;
 export const LANGUAGE_CODE_MAX_LENGTH = 5;
 
@@ -18,6 +19,8 @@ const optionalText = (max: number) => requiredText(max).nullable().optional();
 const optionalLongText = z.string().trim().min(1).nullable().optional();
 const imageUrl = z.url().max(URL_MAX_LENGTH);
 const optionalReference = z.uuid().nullable().optional();
+/** Referência que a carta precisa para ser publicada (R6, CA8): não aceita nulo, nem na edição. */
+const requiredReference = z.uuid();
 const year = z.number().int().min(1).max(SMALLINT_MAX);
 
 export const catalogItemIdParamSchema = z.object({
@@ -52,6 +55,7 @@ export const createAlbumSchema = z.object({
   description: optionalLongText,
   coverUrl: imageUrl.nullable().optional(),
   categoryId: optionalReference,
+  status: z.enum(AlbumStatus).optional(),
 });
 
 export const updateAlbumSchema = createAlbumSchema.partial();
@@ -63,9 +67,9 @@ export const createCardSchema = z.object({
   frontImageUrl: imageUrl,
   backImageUrl: imageUrl.nullable().optional(),
   albumId: optionalReference,
-  categoryId: optionalReference,
-  rarityId: optionalReference,
-  languageId: optionalReference,
+  categoryId: requiredReference,
+  rarityId: requiredReference,
+  languageId: requiredReference,
 });
 
 export const updateCardSchema = createCardSchema.partial();
@@ -74,6 +78,7 @@ export const createCategorySchema = z.object({
   name: requiredText(CATEGORY_NAME_MAX_LENGTH),
   type: categoryTypeSchema,
   parentCategoryId: optionalReference,
+  description: optionalText(CATEGORY_DESCRIPTION_MAX_LENGTH),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
