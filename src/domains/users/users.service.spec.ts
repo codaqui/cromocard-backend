@@ -12,6 +12,7 @@ import type {
   OauthLink,
   RegisteredUser,
   SellersPage,
+  StatusUpdate,
   UserCredentials,
   UserDetail,
   UserProfile,
@@ -47,6 +48,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     cpf: null,
     lastLoginAt: null,
     lastLoginIp: null,
+    suspendedUntil: null,
     ...overrides,
   };
 }
@@ -82,8 +84,10 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
-  updateStatus(id: string, status: UserSummary['status']): Promise<UserSummary> {
-    this.users = this.users.map((user) => (user.id === id ? { ...user, status } : user));
+  updateStatus(id: string, { status, suspendedUntil }: StatusUpdate): Promise<UserSummary> {
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, status, suspendedUntil: suspendedUntil ?? null } : user,
+    );
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
@@ -92,6 +96,14 @@ class InMemoryUsersRepository implements UsersRepository {
       user.id === id ? { ...user, deletedAt: new Date() } : user,
     );
     return Promise.resolve();
+  }
+
+  createWarning(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  countWarningsByUserId(): Promise<number> {
+    return Promise.resolve(0);
   }
 
   monthlySignups: MonthlySignups[] = [];

@@ -2,10 +2,13 @@ import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openap
 
 import {
   adminUpdateUserSchema,
+  blockUserSchema,
   createUserSchema,
   listUsersQuerySchema,
   reasonSchema,
+  suspendUserSchema,
   updateUserSchema,
+  warnUserSchema,
 } from './users.validator';
 
 const tags = ['Usuários'];
@@ -99,13 +102,29 @@ const usersPaths: RouteConfig[] = [
   },
   {
     method: 'post',
+    path: '/users/{id}/warn',
+    tags,
+    security,
+    summary: 'Advertir um usuário, sem mudar o status (administrador)',
+    request: { body: { content: { 'application/json': { schema: warnUserSchema } } } },
+    responses: {
+      201: { description: 'Advertência registrada' },
+      400: { description: 'Justificativa obrigatória' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      422: { description: 'Não pode advertir a própria conta' },
+    },
+  },
+  {
+    method: 'post',
     path: '/users/{id}/suspend',
     tags,
     security,
-    summary: 'Suspende um usuário (administrador)',
-    request: { body: { content: { 'application/json': { schema: reasonSchema } } } },
+    summary: 'Suspende um usuário, com prazo opcional de 3, 7, 15 ou 30 dias (administrador)',
+    request: { body: { content: { 'application/json': { schema: suspendUserSchema } } } },
     responses: {
       200: { description: 'Usuário suspenso' },
+      400: { description: 'Justificativa obrigatória' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
       409: { description: 'Usuário já está suspenso' },
@@ -114,15 +133,31 @@ const usersPaths: RouteConfig[] = [
   },
   {
     method: 'post',
+    path: '/users/{id}/block',
+    tags,
+    security,
+    summary: 'Bane um usuário definitivamente (administrador)',
+    request: { body: { content: { 'application/json': { schema: blockUserSchema } } } },
+    responses: {
+      200: { description: 'Usuário bloqueado' },
+      400: { description: 'Justificativa obrigatória' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Usuário não encontrado' },
+      409: { description: 'Usuário já está bloqueado' },
+      422: { description: 'Não pode bloquear a própria conta ou o último administrador' },
+    },
+  },
+  {
+    method: 'post',
     path: '/users/{id}/reactivate',
     tags,
     security,
-    summary: 'Reativa um usuário suspenso, sem motivo (administrador)',
+    summary: 'Reativa um usuário suspenso ou bloqueado, sem motivo (administrador)',
     responses: {
       200: { description: 'Usuário reativado' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Usuário não encontrado' },
-      409: { description: 'Usuário não está suspenso' },
+      409: { description: 'Usuário não está suspenso nem bloqueado' },
     },
   },
   {
