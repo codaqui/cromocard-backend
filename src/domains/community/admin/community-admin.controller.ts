@@ -38,6 +38,10 @@ export class CommunityAdminController {
     ok(res, await this.service.getGroup(idOf(req)));
   };
 
+  warnGroup = async (req: Request, res: Response): Promise<void> => {
+    ok(res, await this.service.warnGroup(...moderationOf(req)));
+  };
+
   suspendGroup = async (req: Request, res: Response): Promise<void> => {
     ok(res, await this.service.suspendGroup(...moderationOf(req)));
   };
@@ -59,6 +63,10 @@ export class CommunityAdminController {
 
   removeReportedMessage = async (req: Request, res: Response): Promise<void> => {
     ok(res, await this.service.removeReportedMessage(...moderationOf(req)));
+  };
+
+  removeAndWarn = async (req: Request, res: Response): Promise<void> => {
+    ok(res, await this.service.removeAndWarn(...moderationOf(req)));
   };
 
   dismissReport = async (req: Request, res: Response): Promise<void> => {

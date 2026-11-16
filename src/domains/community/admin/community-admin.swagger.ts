@@ -60,6 +60,9 @@ const groupMessageReport = z.object({
       createdAt: z.iso.datetime(),
       authorName: z.string(),
       groupName: z.string(),
+      authorAccountAgeDays: count,
+      authorWarnings: count,
+      reportersCount: count,
     })
     .nullable(),
 });
@@ -156,8 +159,13 @@ const groupsPaths: RouteConfig[] = [
     },
   },
   groupAction(
+    '/admin/community/groups/{id}/warn',
+    'Advertir um grupo ativo, com motivo (CCD099)',
+    'GROUP_ALREADY_WARNED',
+  ),
+  groupAction(
     '/admin/community/groups/{id}/suspend',
-    'Suspende um grupo ativo, com motivo',
+    'Suspende um grupo ativo ou advertido, com motivo',
     'GROUP_ALREADY_SUSPENDED',
   ),
   groupAction(
@@ -198,6 +206,10 @@ const moderationPaths: RouteConfig[] = [
   reportAction(
     '/admin/community/reports/{id}/remove-message',
     'Remove a mensagem denunciada e resolve a denúncia',
+  ),
+  reportAction(
+    '/admin/community/reports/{id}/remove-and-warn',
+    'Remove a mensagem, adverte o autor e resolve a denúncia (CCD099)',
   ),
   reportAction(
     '/admin/community/reports/{id}/dismiss',

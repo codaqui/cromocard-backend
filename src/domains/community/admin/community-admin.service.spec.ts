@@ -5,6 +5,7 @@ import { GroupAccessType, GroupStatus, ReportStatus } from '@/generated/prisma/e
 
 import {
   GroupAlreadySuspendedError,
+  GroupAlreadyWarnedError,
   GroupNotFoundError,
   GroupNotSuspendedError,
   ReportAlreadyResolvedError,
@@ -20,13 +21,18 @@ import type {
   Page,
   ReportState,
 } from './community-admin.repository';
-import { type CommunityAuditLog, CommunityAdminService } from './community-admin.service';
+import {
+  type AuthorWarner,
+  type CommunityAuditLog,
+  CommunityAdminService,
+} from './community-admin.service';
 import type { ListGroupMessageReportsQuery, ListGroupsQuery } from './community-admin.validator';
 
 const ADMIN_ID = '0199a000-0000-7000-8000-000000000001';
 const GROUP_ID = '0199a000-0000-7000-8000-000000000010';
 const REPORT_ID = '0199a000-0000-7000-8000-000000000020';
 const MESSAGE_ID = '0199a000-0000-7000-8000-000000000030';
+const AUTHOR_ID = '0199a000-0000-7000-8000-000000000040';
 const UNKNOWN_ID = '0199a000-0000-7000-8000-000000000099';
 const NOW = new Date('2026-11-07T12:00:00Z');
 const REASON = { reason: 'Conteúdo fora das regras da comunidade' };
@@ -47,7 +53,12 @@ function buildGroup(overrides: Partial<AdminGroupDetail> = {}): AdminGroupDetail
 }
 
 function buildReport(status: ReportStatus = ReportStatus.PENDING): ReportState {
-  return { id: REPORT_ID, status, groupMessageId: MESSAGE_ID };
+  return {
+    id: REPORT_ID,
+    status,
+    groupMessageId: MESSAGE_ID,
+    groupMessage: { authorId: AUTHOR_ID },
+  };
 }
 
 class FakeCommunityAdminRepository implements CommunityAdminRepository {
@@ -77,7 +88,9 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
 
   changeGroupStatus({ id, from, to }: GroupStatusChange): Promise<boolean> {
     const group = this.groups.get(id);
-    if (this.simulateConcurrentChange || group?.status !== from) return Promise.resolve(false);
+    if (this.simulateConcurrentChange || !group || !from.includes(group.status)) {
+      return Promise.resolve(false);
+    }
     this.groups.set(id, { ...group, status: to });
     return Promise.resolve(true);
   }
@@ -88,6 +101,7 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
 
   findGroupMessageReportsPage(
     query: ListGroupMessageReportsQuery,
+    _now: Date,
   ): Promise<Page<GroupMessageReport>> {
     this.lastReportsQuery = query;
     return Promise.resolve({ items: this.queue, total: this.queue.length });
@@ -133,15 +147,30 @@ class FakeAuditLog implements CommunityAuditLog {
   }
 }
 
+class FakeWarner implements AuthorWarner {
+  calls: Parameters<AuthorWarner['warn']>[] = [];
+
+  warn(
+    userId: string,
+    input: { reason: string; reportId?: string },
+    adminId: string,
+  ): Promise<{ warningsCount: number }> {
+    this.calls.push([userId, input, adminId]);
+    return Promise.resolve({ warningsCount: this.calls.length });
+  }
+}
+
 describe('CommunityAdminService', () => {
   let repository: FakeCommunityAdminRepository;
   let auditLog: FakeAuditLog;
+  let warner: FakeWarner;
   let service: CommunityAdminService;
 
   beforeEach(() => {
     repository = new FakeCommunityAdminRepository();
     auditLog = new FakeAuditLog();
-    service = new CommunityAdminService({ repository, auditLog, now: () => NOW });
+    warner = new FakeWarner();
+    service = new CommunityAdminService({ repository, auditLog, warner, now: () => NOW });
   });
 
   describe('grupos', () => {
@@ -205,6 +234,40 @@ describe('CommunityAdminService', () => {
       expect(auditLog.entries).toEqual([]);
     });
 
+    it('CA8: adverte o grupo ativo e registra o log', async () => {
+      repository.groups.set(GROUP_ID, buildGroup());
+
+      const group = await service.warnGroup(GROUP_ID, REASON, ADMIN_ID);
+
+      expect(group.status).toBe(GroupStatus.WARNED);
+      expect(auditLog.entries).toEqual([
+        {
+          adminId: ADMIN_ID,
+          action: 'GROUP_WARNED',
+          entityType: 'group',
+          entityId: GROUP_ID,
+          details: { before: { status: 'ACTIVE' }, after: { status: 'WARNED' } },
+          ...REASON,
+        },
+      ]);
+    });
+
+    it('CA8: recusa advertir um grupo já advertido', async () => {
+      repository.groups.set(GROUP_ID, buildGroup({ status: GroupStatus.WARNED }));
+
+      await expect(service.warnGroup(GROUP_ID, REASON, ADMIN_ID)).rejects.toThrow(
+        GroupAlreadyWarnedError,
+      );
+    });
+
+    it('suspende um grupo advertido', async () => {
+      repository.groups.set(GROUP_ID, buildGroup({ status: GroupStatus.WARNED }));
+
+      const group = await service.suspendGroup(GROUP_ID, REASON, ADMIN_ID);
+
+      expect(group.status).toBe(GroupStatus.SUSPENDED);
+    });
+
     it('CA3: reativa o grupo suspenso e registra o log', async () => {
       repository.groups.set(GROUP_ID, buildGroup({ status: GroupStatus.SUSPENDED }));
 
@@ -212,6 +275,14 @@ describe('CommunityAdminService', () => {
 
       expect(group.status).toBe(GroupStatus.ACTIVE);
       expect(auditLog.entries).toMatchObject([{ action: 'GROUP_REACTIVATED', entityId: GROUP_ID }]);
+    });
+
+    it('CA3/L4: reativa um grupo advertido e tira o selo', async () => {
+      repository.groups.set(GROUP_ID, buildGroup({ status: GroupStatus.WARNED }));
+
+      const group = await service.reactivateGroup(GROUP_ID, REASON, ADMIN_ID);
+
+      expect(group.status).toBe(GroupStatus.ACTIVE);
     });
 
     it('CA3: recusa reativar um grupo que não está suspenso', async () => {
@@ -270,6 +341,9 @@ describe('CommunityAdminService', () => {
           createdAt: NOW,
           authorName: 'Carla',
           groupName: 'Colecionadores de Pokémon',
+          authorAccountAgeDays: 120,
+          authorWarnings: 0,
+          reportersCount: 1,
         },
       };
       repository.queue = [report];
@@ -332,6 +406,31 @@ describe('CommunityAdminService', () => {
       const resolution = await service.removeReportedMessage(REPORT_ID, REASON, ADMIN_ID);
 
       expect(resolution.status).toBe(ReportStatus.RESOLVED);
+    });
+
+    it('CA5: remove a mensagem, adverte o autor e resolve a denúncia', async () => {
+      repository.reports.set(REPORT_ID, buildReport());
+
+      const resolution = await service.removeAndWarn(REPORT_ID, REASON, ADMIN_ID);
+
+      expect(resolution).toEqual({ id: REPORT_ID, status: ReportStatus.RESOLVED });
+      expect(repository.deletedMessages.has(MESSAGE_ID)).toBe(true);
+      expect(warner.calls).toEqual([[AUTHOR_ID, { ...REASON, reportId: REPORT_ID }, ADMIN_ID]]);
+      expect(auditLog.entries).toEqual([
+        {
+          adminId: ADMIN_ID,
+          action: 'GROUP_MESSAGE_REMOVED',
+          entityType: 'group_message',
+          entityId: MESSAGE_ID,
+          details: {
+            reportId: REPORT_ID,
+            resolvedReportIds: [REPORT_ID],
+            before: { status: 'PENDING' },
+            after: { status: 'RESOLVED' },
+          },
+          ...REASON,
+        },
+      ]);
     });
 
     it('CA7: dispensa a denúncia sem apagar a mensagem e registra o log', async () => {

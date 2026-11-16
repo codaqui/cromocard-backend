@@ -9,6 +9,7 @@ import { daysBefore } from '@/shared/utils/time-zone';
 
 import {
   GroupAlreadySuspendedError,
+  GroupAlreadyWarnedError,
   GroupNotFoundError,
   GroupNotSuspendedError,
   ReportAlreadyResolvedError,
@@ -35,9 +36,18 @@ export interface CommunityAuditLog {
   record(input: RecordAuditLogInput): Promise<unknown>;
 }
 
+export interface AuthorWarner {
+  warn(
+    userId: string,
+    input: { reason: string; reportId?: string },
+    adminId: string,
+  ): Promise<{ warningsCount: number }>;
+}
+
 export interface CommunityAdminServiceDeps {
   repository: CommunityAdminRepository;
   auditLog: CommunityAuditLog;
+  warner: AuthorWarner;
   now: () => Date;
 }
 
@@ -63,23 +73,30 @@ function statusChange(before: string, after: string) {
 }
 
 interface GroupTransition {
-  from: GroupStatus;
+  from: GroupStatus[];
   to: GroupStatus;
   action: AuditAction;
   conflict: () => AppError;
 }
 
-type OpenReport = ReportState & { groupMessageId: string };
+type OpenReport = ReportState & { groupMessageId: string; authorId: string };
+
+const WARN: GroupTransition = {
+  from: [GroupStatus.ACTIVE],
+  to: GroupStatus.WARNED,
+  action: 'GROUP_WARNED',
+  conflict: () => new GroupAlreadyWarnedError(),
+};
 
 const SUSPEND: GroupTransition = {
-  from: GroupStatus.ACTIVE,
+  from: [GroupStatus.ACTIVE, GroupStatus.WARNED],
   to: GroupStatus.SUSPENDED,
   action: 'GROUP_SUSPENDED',
   conflict: () => new GroupAlreadySuspendedError(),
 };
 
 const REACTIVATE: GroupTransition = {
-  from: GroupStatus.SUSPENDED,
+  from: [GroupStatus.WARNED, GroupStatus.SUSPENDED],
   to: GroupStatus.ACTIVE,
   action: 'GROUP_REACTIVATED',
   conflict: () => new GroupNotSuspendedError(),
@@ -102,6 +119,14 @@ export class CommunityAdminService {
     const group = await this.deps.repository.findGroupById(id);
     if (!group) throw new GroupNotFoundError();
     return group;
+  }
+
+  warnGroup(
+    id: string,
+    { reason }: ModerationReasonInput,
+    adminId: string,
+  ): Promise<AdminGroupDetail> {
+    return this.transitionGroup(id, WARN, { reason, adminId });
   }
 
   suspendGroup(
@@ -131,7 +156,10 @@ export class CommunityAdminService {
   async listGroupMessageReports(
     query: ListGroupMessageReportsQuery,
   ): Promise<Paginated<GroupMessageReport>> {
-    const { items, total } = await this.deps.repository.findGroupMessageReportsPage(query);
+    const { items, total } = await this.deps.repository.findGroupMessageReportsPage(
+      query,
+      this.deps.now(),
+    );
     return { items, meta: buildPaginationMeta(query, total) };
   }
 
@@ -145,6 +173,30 @@ export class CommunityAdminService {
     const resolvedReportIds = await this.deps.repository.removeReportedMessage(removal);
     if (resolvedReportIds.length === 0) throw new ReportAlreadyResolvedError();
 
+    const details = { reportId, resolvedReportIds, ...statusChange(status, ReportStatus.RESOLVED) };
+    await this.audit(
+      { reason, adminId },
+      {
+        action: 'GROUP_MESSAGE_REMOVED',
+        entityType: 'group_message',
+        entityId: messageId,
+        details,
+      },
+    );
+    return { id: reportId, status: ReportStatus.RESOLVED };
+  }
+
+  async removeAndWarn(
+    reportId: string,
+    { reason }: ModerationReasonInput,
+    adminId: string,
+  ): Promise<ReportResolution> {
+    const { groupMessageId: messageId, authorId, status } = await this.findOpenReport(reportId);
+    const removal = { reportId, messageId, moderatorId: adminId };
+    const resolvedReportIds = await this.deps.repository.removeReportedMessage(removal);
+    if (resolvedReportIds.length === 0) throw new ReportAlreadyResolvedError();
+
+    await this.deps.warner.warn(authorId, { reason, reportId }, adminId);
     const details = { reportId, resolvedReportIds, ...statusChange(status, ReportStatus.RESOLVED) };
     await this.audit(
       { reason, adminId },
@@ -183,19 +235,24 @@ export class CommunityAdminService {
   ): Promise<AdminGroupDetail> {
     const group = await this.getGroup(id);
     const changed =
-      group.status === from && (await this.deps.repository.changeGroupStatus({ id, from, to }));
+      from.includes(group.status) &&
+      (await this.deps.repository.changeGroupStatus({ id, from, to }));
     if (!changed) throw conflict();
 
-    const details = statusChange(from, to);
+    const details = statusChange(group.status, to);
     await this.audit(moderation, { action, entityType: 'group', entityId: id, details });
     return { ...group, status: to };
   }
 
   private async findOpenReport(id: string): Promise<OpenReport> {
     const report = await this.deps.repository.findGroupMessageReportState(id);
-    if (!report?.groupMessageId) throw new ReportNotFoundError();
+    if (!report?.groupMessageId || !report.groupMessage) throw new ReportNotFoundError();
     if (!isOpenReportStatus(report.status)) throw new ReportAlreadyResolvedError();
-    return { ...report, groupMessageId: report.groupMessageId };
+    return {
+      ...report,
+      groupMessageId: report.groupMessageId,
+      authorId: report.groupMessage.authorId,
+    };
   }
 
   private async audit({ reason, adminId }: Moderation, moderation: AuditedModeration) {

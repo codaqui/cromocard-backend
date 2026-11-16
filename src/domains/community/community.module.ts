@@ -1,4 +1,6 @@
 import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
+import { authService } from '@/domains/auth/auth.module';
+import { createSanctionsService } from '@/domains/users/users.module';
 import { prisma } from '@/lib/prisma';
 import type { DomainModule } from '@/shared/types/domain-module';
 
@@ -11,6 +13,7 @@ import { registerCommunityAdminDocs } from './admin/community-admin.swagger';
 const communityAdminService = new CommunityAdminService({
   repository: new PrismaCommunityAdminRepository(prisma),
   auditLog: auditLogService,
+  warner: createSanctionsService(authService),
   now: () => new Date(),
 });
 

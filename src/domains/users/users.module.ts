@@ -6,6 +6,7 @@ import type { DomainModule } from '@/shared/types/domain-module';
 
 import type { AdminAuthService } from './admin-users.service';
 import { AdminUsersService } from './admin-users.service';
+import type { SanctionAuthService } from './user-sanctions.service';
 import { UserSanctionsService } from './user-sanctions.service';
 import { UsersController } from './users.controller';
 import { PrismaUsersRepository } from './users.repository';
@@ -15,6 +16,18 @@ import { registerUsersDocs } from './users.swagger';
 
 const usersRepository = new PrismaUsersRepository(prisma);
 const usersService = new UsersService(usersRepository);
+
+/** Para outro domínio conseguir advertir/suspender/banir um usuário sem importar o repository daqui. */
+export function createSanctionsService(authService: SanctionAuthService): UserSanctionsService {
+  return new UserSanctionsService({
+    usersRepository,
+    authService,
+    auditLogService,
+    notifier: notificationsService,
+    runInTransaction,
+    now: () => new Date(),
+  });
+}
 
 /**
  * O domínio `auth` depende de `usersService`; a gestão pelo admin depende de `auth` (convite e revogação de
@@ -28,14 +41,7 @@ export function createUsersModule(adminAuthService: AdminAuthService): DomainMod
     auditLogService,
     runInTransaction,
   });
-  const sanctionsService = new UserSanctionsService({
-    usersRepository,
-    authService: adminAuthService,
-    auditLogService,
-    notifier: notificationsService,
-    runInTransaction,
-    now: () => new Date(),
-  });
+  const sanctionsService = createSanctionsService(adminAuthService);
   const usersController = new UsersController(usersService, adminUsersService, sanctionsService);
 
   return {
