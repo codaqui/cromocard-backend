@@ -17,8 +17,8 @@ export type DefaultCategory = Omit<DefaultCategoryCandidate, 'parentCategoryId'>
 
 export interface DefaultCategoriesRepository {
   findDefaults(tx?: Transaction): Promise<DefaultCategory[]>;
-  findActiveByIds(ids: string[], tx?: Transaction): Promise<DefaultCategoryCandidate[]>;
-  replaceDefaults(ids: string[], tx?: Transaction): Promise<void>;
+  findActiveByIds(ids: string[], tx: Transaction): Promise<DefaultCategoryCandidate[]>;
+  replaceDefaults(ids: string[], tx: Transaction): Promise<void>;
 }
 
 export class PrismaDefaultCategoriesRepository implements DefaultCategoriesRepository {
@@ -32,19 +32,18 @@ export class PrismaDefaultCategoriesRepository implements DefaultCategoriesRepos
     });
   }
 
-  findActiveByIds(ids: string[], tx?: Transaction): Promise<DefaultCategoryCandidate[]> {
-    return (tx ?? this.prisma).category.findMany({
+  findActiveByIds(ids: string[], tx: Transaction): Promise<DefaultCategoryCandidate[]> {
+    return tx.category.findMany({
       where: { id: { in: ids }, ...notDeleted },
       select: defaultCategorySelect,
     });
   }
 
-  async replaceDefaults(ids: string[], tx?: Transaction): Promise<void> {
-    const client = tx ?? this.prisma;
-    await client.category.updateMany({
+  async replaceDefaults(ids: string[], tx: Transaction): Promise<void> {
+    await tx.category.updateMany({
       where: { isDefault: true, id: { notIn: ids } },
       data: { isDefault: false },
     });
-    await client.category.updateMany({ where: { id: { in: ids } }, data: { isDefault: true } });
+    await tx.category.updateMany({ where: { id: { in: ids } }, data: { isDefault: true } });
   }
 }
