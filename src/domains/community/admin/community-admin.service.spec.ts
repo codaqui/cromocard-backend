@@ -339,6 +339,7 @@ describe('CommunityAdminService', () => {
           id: MESSAGE_ID,
           content: 'Compre agora!',
           createdAt: NOW,
+          authorId: AUTHOR_ID,
           authorName: 'Carla',
           groupName: 'Colecionadores de Pokémon',
           authorAccountAgeDays: 120,

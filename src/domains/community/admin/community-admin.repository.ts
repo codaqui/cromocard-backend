@@ -77,6 +77,7 @@ function toReportedMessage(
   const authorAccountAgeDays = Math.floor((now.getTime() - author.createdAt.getTime()) / DAY_IN_MS);
   return {
     ...message,
+    authorId: author.id,
     authorName: author.name,
     groupName: group.name,
     authorAccountAgeDays,

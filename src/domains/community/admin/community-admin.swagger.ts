@@ -58,6 +58,7 @@ const groupMessageReport = z.object({
       id: z.uuid(),
       content: z.string(),
       createdAt: z.iso.datetime(),
+      authorId: z.uuid(),
       authorName: z.string(),
       groupName: z.string(),
       authorAccountAgeDays: count,

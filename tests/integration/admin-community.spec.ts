@@ -27,6 +27,7 @@ let groupId: string;
 let suspendedGroupId: string;
 let warnableGroupId: string;
 let messageId: string;
+let messageAuthorId: string;
 let adminToken: string;
 
 async function createUser(label: string, role: 'CUSTOMER' | 'ADMIN' = 'CUSTOMER') {
@@ -102,6 +103,7 @@ beforeAll(async () => {
     data: { groupId, authorId: memberId!, content: 'Vendo figurinha falsa' },
   });
   messageId = message.id;
+  messageAuthorId = memberId!;
 });
 
 afterAll(async () => {
@@ -215,6 +217,7 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
         id: messageId,
         content: 'Vendo figurinha falsa',
         createdAt: expect.any(String) as string,
+        authorId: messageAuthorId,
         authorName: `membro ${suffix}`,
         groupName: `Copa ${suffix}`,
         authorAccountAgeDays: 0,
