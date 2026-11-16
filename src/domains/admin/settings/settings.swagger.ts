@@ -16,7 +16,7 @@ const json = (schema: z.ZodType) => ({ content: { 'application/json': { schema }
 
 const settingView = z.object({
   key: z.string().openapi({ example: SETTING_KEYS.homeBanner }),
-  value: z.json().openapi({ description: 'JSON validado pelo schema da chave (ADR-051)' }),
+  value: z.unknown().openapi({ description: 'JSON validado pelo schema da chave (ADR-051)' }),
   description: z.string().nullable(),
   updatedAt: z.iso.datetime(),
   updatedBy: z.object({ id: z.uuid(), name: z.string() }).nullable(),
