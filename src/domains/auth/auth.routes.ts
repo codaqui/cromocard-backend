@@ -16,7 +16,7 @@ export function createAuthRoutes(controller: AuthController): Router {
   router.use(cookieParser());
   router.post(
     '/login',
-    rateLimitRequests({ ...loginLimit, keyByBodyField: 'email' }),
+    rateLimitRequests({ ...loginLimit, keyByBodyField: 'login' }),
     controller.login,
   );
   router.post('/google', rateLimitRequests(loginLimit), controller.loginWithGoogle);

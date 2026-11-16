@@ -4,6 +4,7 @@
     "name": "Admin CromoCard",
     "email": "admin@cromocard.dev",
     "role": "ADMIN",
+    "username": "admin",
     "createdDaysAgo": 200
   },
   {
@@ -11,6 +12,9 @@
     "name": "Ana Colecionadora",
     "email": "ana@cromocard.dev",
     "role": "CUSTOMER",
+    "username": "ana.colecionadora",
+    "cpf": "94670928244",
+    "phone": "11912345678",
     "createdDaysAgo": 150
   },
   {
@@ -40,6 +44,9 @@
     "name": "Elisa Cartas Raras",
     "email": "elisa@cromocard.dev",
     "role": "SELLER",
+    "username": "elisa.raras",
+    "cpf": "37723614209",
+    "phone": "21987654321",
     "createdDaysAgo": 35
   },
   {
@@ -47,6 +54,8 @@
     "name": "Fábio TCG Store",
     "email": "fabio@cromocard.dev",
     "role": "SELLER",
+    "username": "fabio.tcg",
+    "phone": "31976543210",
     "createdDaysAgo": 10
   },
   {

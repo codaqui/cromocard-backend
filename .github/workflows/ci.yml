@@ -46,6 +46,9 @@ jobs:
       - name: Gerar client Prisma
         run: npx prisma generate
 
+      - name: Formatação
+        run: npm run format:check
+
       - name: Lint
         run: npm run lint
 
@@ -79,6 +82,8 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cromocard_test
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # a cobertura compara o PR com a branch base
 
       - uses: actions/setup-node@v5
         with:
@@ -96,6 +101,12 @@ jobs:
 
       - name: Testes de integração
         run: npm run test:integration
+
+      - name: Cobertura dos arquivos alterados (mínimo de 90%, ADR-060)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: bash .github/scripts/coverage-changed-files.sh "$BASE_REF"
 
   # 3) Scan de segredos com o gitleaks em todo o histórico do repositório.
   #    O repositório é público: um segredo que chega ao GitHub conta como vazado.

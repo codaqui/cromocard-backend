@@ -14,3 +14,7 @@ export const uploadsModule: DomainModule = {
   router: createUploadsRoutes(uploadsController),
   registerDocs: registerUploadsDocs,
 };
+
+export { MissingFileError } from './uploads.errors';
+export { parseSingleFile } from './uploads.middleware';
+export { MAX_UPLOAD_SIZE_IN_MEGABYTES } from './uploads.validator';

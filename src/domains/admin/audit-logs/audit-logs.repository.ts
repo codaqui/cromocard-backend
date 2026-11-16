@@ -1,7 +1,8 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 import { toSkipTake } from '@/shared/utils/pagination';
-import { parseAuditLogFromDate, parseAuditLogToDate } from './audit-logs.validator';
 
+import { parseAuditLogFromDate, parseAuditLogToDate } from './audit-logs.validator';
 import type { AuditAction, AuditLogDetails, ListAuditLogsQuery } from './audit-logs.validator';
 
 const auditLogEntrySelect = {
@@ -36,7 +37,7 @@ export interface AuditLogListResult {
 }
 
 export interface AuditLogRepository {
-  create(auditLog: NewAuditLog): Promise<AuditLogEntry>;
+  create(auditLog: NewAuditLog, tx?: Transaction): Promise<AuditLogEntry>;
   findMany(filters: ListAuditLogsQuery): Promise<AuditLogListResult>;
   countSince(since: Date): Promise<number>;
   findById(id: string): Promise<AuditLogEntry | null>;
@@ -45,8 +46,8 @@ export interface AuditLogRepository {
 export class PrismaAuditLogRepository implements AuditLogRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  create(auditLog: NewAuditLog): Promise<AuditLogEntry> {
-    return this.prisma.auditLog.create({ data: auditLog, select: auditLogEntrySelect });
+  create(auditLog: NewAuditLog, tx?: Transaction): Promise<AuditLogEntry> {
+    return (tx ?? this.prisma).auditLog.create({ data: auditLog, select: auditLogEntrySelect });
   }
 
   private buildWhereClause(filters: ListAuditLogsQuery): Prisma.AuditLogWhereInput {
