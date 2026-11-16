@@ -11,6 +11,8 @@ import { registerCatalogDocs } from './catalog.swagger';
 import { PrismaCatalogImportRepository } from './catalog-import.repository';
 import { CatalogImportService } from './catalog-import.service';
 import { PrismaCategoriesRepository } from './catalog-categories.repository';
+import { PrismaDefaultCategoriesRepository } from './catalog-default-categories.repository';
+import { DefaultCategoriesService } from './catalog-default-categories.service';
 import { PrismaReferencesRepository } from './catalog-references.repository';
 
 const catalogService = new CatalogService({
@@ -32,4 +34,8 @@ export const catalogModule: DomainModule = {
   registerDocs: registerCatalogDocs,
 };
 
-export { catalogService };
+const defaultCategoriesService = new DefaultCategoriesService(
+  new PrismaDefaultCategoriesRepository(prisma),
+);
+
+export { catalogService, defaultCategoriesService };
