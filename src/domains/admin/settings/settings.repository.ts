@@ -22,7 +22,7 @@ export interface SettingValueChange {
 export interface SettingsRepository {
   findAll(): Promise<StoredSetting[]>;
   findByKey(key: string, tx?: Transaction): Promise<StoredSetting | null>;
-  updateValue(change: SettingValueChange, tx?: Transaction): Promise<StoredSetting>;
+  updateValue(change: SettingValueChange, tx: Transaction): Promise<StoredSetting>;
 }
 
 export class PrismaSettingsRepository implements SettingsRepository {
@@ -45,9 +45,9 @@ export class PrismaSettingsRepository implements SettingsRepository {
 
   updateValue(
     { key, value, adminId }: SettingValueChange,
-    tx?: Transaction,
+    tx: Transaction,
   ): Promise<StoredSetting> {
-    return (tx ?? this.prisma).globalSetting.update({
+    return tx.globalSetting.update({
       where: { key },
       data: { value, updatedById: adminId },
       select: settingSelect,
