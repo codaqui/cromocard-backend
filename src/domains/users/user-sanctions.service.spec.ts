@@ -116,6 +116,10 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.warnings.filter((warning) => warning.userId === userId).length);
   }
 
+  reactivateExpiredSuspensions(): Promise<number> {
+    return Promise.reject(new Error('não usado neste teste'));
+  }
+
   countMembers(): Promise<number> {
     return Promise.reject(new Error('não usado neste teste'));
   }

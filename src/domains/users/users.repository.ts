@@ -156,6 +156,7 @@ export interface UsersRepository {
   softDelete(id: string, tx?: Transaction): Promise<void>;
   createWarning(warning: NewUserWarning, tx?: Transaction): Promise<void>;
   countWarningsByUserId(userId: string): Promise<number>;
+  reactivateExpiredSuspensions(now: Date): Promise<number>;
   countMembers(): Promise<number>;
   countSignupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   findSellersCreatedWithin(range: DateRange, pagination: PaginationQuery): Promise<SellersPage>;
@@ -311,6 +312,14 @@ export class PrismaUsersRepository implements UsersRepository {
 
   countWarningsByUserId(userId: string): Promise<number> {
     return this.prisma.userWarning.count({ where: { userId, ...notDeleted } });
+  }
+
+  async reactivateExpiredSuspensions(now: Date): Promise<number> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { status: 'SUSPENDED', suspendedUntil: { lte: now } },
+      data: { status: 'ACTIVE', suspendedUntil: null },
+    });
+    return count;
   }
 
   countMembers(): Promise<number> {

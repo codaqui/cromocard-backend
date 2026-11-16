@@ -45,4 +45,9 @@ export function createUsersModule(adminAuthService: AdminAuthService): DomainMod
   };
 }
 
+/** Só o repository: o job não envolve admin, auditoria nem notificação (R9). */
+export const expiredSuspensionsLifter = {
+  liftExpiredSuspensions: () => usersRepository.reactivateExpiredSuspensions(new Date()),
+};
+
 export { usersService };
