@@ -1,5 +1,13 @@
 import { env } from '@/config/env';
 import { AUDIT_ACTIONS } from '@/domains/admin/audit-logs/audit-logs.validator';
+import {
+  defaultBacksSchema,
+  homeBannerSchema,
+  monthlySignupGoalSchema,
+  notificationTemplatesSchema,
+  SETTING_KEYS,
+  votingGoalSchema,
+} from '@/domains/admin/settings/setting-schemas';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { CatalogRequestType, RequestStatus } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
@@ -24,25 +32,20 @@ const catalogRequestsSchema = z.array(
   }),
 );
 
+const describedSetting = <T extends z.ZodType>(value: T) =>
+  z.object({ description: z.string().max(255), value });
+
 const globalSettingsSchema = z.object({
-  homeBanner: z.object({
-    description: z.string(),
-    enabled: z.boolean(),
-    title: z.string().max(80),
-    subtitle: z.string().max(200),
-    ctaText: z.string().max(30),
-    ctaPath: z.string().startsWith('/'),
-  }),
+  homeBanner: homeBannerSchema
+    .omit({ ctaUrl: true, imageUrl: true })
+    .extend({ description: z.string().max(255), ctaPath: z.string().startsWith('/') }),
   notificationTemplates: z.object({
-    description: z.string(),
-    templates: z.array(
-      z.object({
-        name: z.string().max(60),
-        title: z.string().max(120),
-        content: z.string().max(500),
-      }),
-    ),
+    description: z.string().max(255),
+    templates: notificationTemplatesSchema,
   }),
+  monthlySignupGoal: describedSetting(monthlySignupGoalSchema),
+  votingGoal: describedSetting(votingGoalSchema),
+  defaultBacks: describedSetting(defaultBacksSchema),
 });
 
 const auditLogsSchema = z.array(
@@ -72,8 +75,11 @@ const entityIdResolvers: Record<(typeof auditLogs)[number]['entityType'], KeyRes
   REPORT: reportIdOf,
 };
 
-const DEVELOPMENT_FRONTEND_URL = 'http://localhost:5173';
-const frontendUrl = env.CORS_ORIGIN[0] ?? DEVELOPMENT_FRONTEND_URL;
+// O link do banner só aceita https (CCD066, L12). O ambiente local roda em http, então usa o endereço de produção.
+const PRODUCTION_FRONTEND_URL = 'https://cromocard.com.br';
+const bannerBaseUrl = env.FRONTEND_URL.startsWith('https://')
+  ? env.FRONTEND_URL
+  : PRODUCTION_FRONTEND_URL;
 
 const sampleBanner = {
   key: 'banners/seed-home-banner.png',
@@ -99,24 +105,45 @@ const toCatalogRequestData = (request: (typeof catalogRequests)[number]) => ({
   data: toRequestPayload(request.data) as Prisma.InputJsonObject,
 });
 
+const settingRow = (key: string, value: unknown, description: string) => ({
+  id: seedId(SeedNamespace.globalSettings, key),
+  key,
+  value: JSON.stringify(value),
+  description,
+});
+
+function seedTemplates() {
+  const { templates } = globalSettings.notificationTemplates;
+  return templates.map((template, index) => ({
+    ...template,
+    id: seedId(SeedNamespace.globalSettings, `notification.templates.${index}`),
+  }));
+}
+
 function buildGlobalSettings(bannerImageUrl?: string): Prisma.GlobalSettingCreateManyInput[] {
-  const { description: bannerDescription, ctaPath, ...banner } = globalSettings.homeBanner;
-  const { description: templatesDescription, templates } = globalSettings.notificationTemplates;
-  const homeBanner = { ...banner, ctaUrl: `${frontendUrl}${ctaPath}`, imageUrl: bannerImageUrl };
+  const { homeBanner, notificationTemplates, monthlySignupGoal, votingGoal, defaultBacks } =
+    globalSettings;
+  const { description: bannerDescription, ctaPath, ...banner } = homeBanner;
+  const bannerValue = homeBannerSchema.parse({
+    ...banner,
+    ctaUrl: `${bannerBaseUrl}${ctaPath}`,
+    imageUrl: bannerImageUrl ?? null,
+  });
 
   return [
-    {
-      id: seedId(SeedNamespace.globalSettings, 'home.banner'),
-      key: 'home.banner',
-      value: JSON.stringify(homeBanner),
-      description: bannerDescription,
-    },
-    {
-      id: seedId(SeedNamespace.globalSettings, 'notification.templates'),
-      key: 'notification.templates',
-      value: JSON.stringify(templates),
-      description: templatesDescription,
-    },
+    settingRow(SETTING_KEYS.homeBanner, bannerValue, bannerDescription),
+    settingRow(
+      SETTING_KEYS.notificationTemplates,
+      seedTemplates(),
+      notificationTemplates.description,
+    ),
+    settingRow(
+      SETTING_KEYS.monthlySignupGoal,
+      monthlySignupGoal.value,
+      monthlySignupGoal.description,
+    ),
+    settingRow(SETTING_KEYS.votingGoal, votingGoal.value, votingGoal.description),
+    settingRow(SETTING_KEYS.defaultBacks, defaultBacks.value, defaultBacks.description),
   ];
 }
 
