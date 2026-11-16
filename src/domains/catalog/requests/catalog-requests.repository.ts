@@ -110,10 +110,10 @@ export class PrismaCatalogRequestsRepository implements CatalogRequestsRepositor
       where: { ...notDeleted, status: 'PENDING' },
       _count: { _all: true },
     });
-    const countOf = (type: CatalogRequestType) =>
-      counts.find((row) => row.type === type)?._count._all ?? 0;
+    const totals: PendingByType = { CARD: 0, ALBUM: 0, CATEGORY: 0 };
+    counts.forEach(({ type, _count }) => (totals[type] = _count._all));
 
-    return { CARD: countOf('CARD'), ALBUM: countOf('ALBUM'), CATEGORY: countOf('CATEGORY') };
+    return totals;
   }
 
   findById(id: string): Promise<CatalogRequestRecord | null> {

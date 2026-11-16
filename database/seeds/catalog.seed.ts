@@ -55,8 +55,8 @@ const categories = loadSeedData('categories.json', categoriesSchema);
 const albums = loadSeedData('albums.json', albumsSchema);
 const cards = loadSeedData('cards.json', cardsSchema);
 
-const rarityIdOf = keyResolver(SeedNamespace.rarities, rarities, 'rarities.json');
-const languageIdOf = keyResolver(SeedNamespace.languages, languages, 'languages.json');
+export const rarityIdOf = keyResolver(SeedNamespace.rarities, rarities, 'rarities.json');
+export const languageIdOf = keyResolver(SeedNamespace.languages, languages, 'languages.json');
 export const categoryIdOf = keyResolver(SeedNamespace.categories, categories, 'categories.json');
 export const albumIdOf = keyResolver(SeedNamespace.albums, albums, 'albums.json');
 export const cardIdOf = keyResolver(SeedNamespace.cards, cards, 'cards.json');
