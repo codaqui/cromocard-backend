@@ -10,17 +10,20 @@ import { SettingsController } from './settings.controller';
 import { PrismaSettingsRepository } from './settings.repository';
 import { createPublicSettingsRoutes, createSettingsRoutes } from './settings.routes';
 import { SettingsService } from './settings.service';
+import { SettingsStore } from './settings.store';
 import { registerPublicSettingsDocs, registerSettingsDocs } from './settings.swagger';
+import { DefaultCategoriesSettingsService } from './settings-default-categories.service';
 
-const settingsService = new SettingsService({
-  settings: new PrismaSettingsRepository(prisma),
-  defaultCategories: defaultCategoriesService,
-  auditLog: auditLogService,
-  runInTransaction,
-  newId: randomUUID,
-});
+const store = new SettingsStore(new PrismaSettingsRepository(prisma), auditLogService);
 
-const settingsController = new SettingsController(settingsService);
+const settingsController = new SettingsController(
+  new SettingsService({ store, runInTransaction, newId: randomUUID }),
+  new DefaultCategoriesSettingsService({
+    store,
+    defaultCategories: defaultCategoriesService,
+    runInTransaction,
+  }),
+);
 
 export const settingsModule: DomainModule = {
   basePath: '/admin/settings',
@@ -33,5 +36,3 @@ export const publicSettingsModule: DomainModule = {
   router: createPublicSettingsRoutes(settingsController),
   registerDocs: registerPublicSettingsDocs,
 };
-
-export { settingsService };

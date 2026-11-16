@@ -20,7 +20,7 @@ const httpsUrl = z
   .url({ protocol: /^https$/, error: 'Informe um link válido, começando com https://' })
   .max(URL_MAX_LENGTH);
 
-const imageUrl = z.url().max(URL_MAX_LENGTH);
+export const imageUrlSchema = z.url({ protocol: /^https?$/ }).max(URL_MAX_LENGTH);
 
 export const homeBannerSchema = z.object({
   enabled: z.boolean(),
@@ -28,7 +28,7 @@ export const homeBannerSchema = z.object({
   subtitle: z.string().trim().max(200),
   ctaText: z.string().trim().min(1).max(30),
   ctaUrl: httpsUrl,
-  imageUrl: imageUrl.nullable(),
+  imageUrl: imageUrlSchema.nullable(),
 });
 
 const templateSchema = z.object({
@@ -41,21 +41,32 @@ const templateSchema = z.object({
 type TemplateInput = z.infer<typeof templateSchema>;
 
 const DUPLICATED_NAME = 'Já existe um template com este nome';
+const DUPLICATED_ID = 'O template aparece mais de uma vez';
 
-function addDuplicatedNameIssues(templates: TemplateInput[], ctx: z.RefinementCtx): void {
+function repeatedIndexes(values: (string | undefined)[]): number[] {
   const seen = new Set<string>();
-  templates.forEach(({ name }, index) => {
-    const normalized = name.toLocaleLowerCase('pt-BR');
-    if (seen.has(normalized))
-      ctx.addIssue({ code: 'custom', path: [index, 'name'], message: DUPLICATED_NAME });
-    seen.add(normalized);
+  return values.flatMap((value, index) => {
+    if (value === undefined) return [];
+    const repeated = seen.has(value);
+    seen.add(value);
+    return repeated ? [index] : [];
   });
+}
+
+function addRepeatedTemplateIssues(templates: TemplateInput[], ctx: z.RefinementCtx): void {
+  const names = templates.map(({ name }) => name.toLocaleLowerCase('pt-BR'));
+  repeatedIndexes(names).forEach((index) =>
+    ctx.addIssue({ code: 'custom', path: [index, 'name'], message: DUPLICATED_NAME }),
+  );
+  repeatedIndexes(templates.map(({ id }) => id)).forEach((index) =>
+    ctx.addIssue({ code: 'custom', path: [index, 'id'], message: DUPLICATED_ID }),
+  );
 }
 
 export const notificationTemplatesSchema = z
   .array(templateSchema)
   .max(TEMPLATES_MAX)
-  .superRefine(addDuplicatedNameIssues);
+  .superRefine(addRepeatedTemplateIssues);
 
 export type NotificationTemplate = Required<TemplateInput>;
 
@@ -65,19 +76,21 @@ export const monthlySignupGoalSchema = goalSchema.nullable();
 
 export const votingGoalSchema = goalSchema;
 
-export const defaultBacksSchema = z.record(z.uuid(), imageUrl);
+export const defaultBacksSchema = z.record(z.uuid(), imageUrlSchema);
 
 export type DefaultBacks = z.infer<typeof defaultBacksSchema>;
 
-export const editableSettingSchemas = {
-  [SETTING_KEYS.homeBanner]: homeBannerSchema,
-  [SETTING_KEYS.notificationTemplates]: notificationTemplatesSchema,
-} as const;
+export const EDITABLE_SETTING_KEYS = [
+  SETTING_KEYS.homeBanner,
+  SETTING_KEYS.notificationTemplates,
+] as const;
 
-export type EditableSettingKey = keyof typeof editableSettingSchemas;
+export const PUBLIC_SETTING_KEYS = [SETTING_KEYS.homeBanner] as const;
 
-export const PUBLIC_SETTING_KEYS: readonly string[] = [SETTING_KEYS.homeBanner];
+export function isEditableSettingKey(key: string): boolean {
+  return EDITABLE_SETTING_KEYS.some((editable) => editable === key);
+}
 
-export function isEditableSettingKey(key: string): key is EditableSettingKey {
-  return Object.hasOwn(editableSettingSchemas, key);
+export function isPublicSettingKey(key: string): boolean {
+  return PUBLIC_SETTING_KEYS.some((publicKey) => publicKey === key);
 }

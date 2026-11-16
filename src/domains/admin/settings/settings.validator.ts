@@ -1,40 +1,38 @@
 import { z } from '@/lib/zod';
 
 import {
-  type EditableSettingKey,
-  editableSettingSchemas,
-  isEditableSettingKey,
+  homeBannerSchema,
+  imageUrlSchema,
   monthlySignupGoalSchema,
+  notificationTemplatesSchema,
+  SETTING_KEYS,
   votingGoalSchema,
 } from './setting-schemas';
-import { SettingNotFoundError } from './settings.errors';
 
 const DEFAULT_CATEGORIES_MAX = 50;
-const URL_MAX_LENGTH = 500;
+const SETTING_KEY_MAX_LENGTH = 90;
 
-export const settingKeyParamSchema = z.object({ key: z.string().trim().min(1).max(90) });
+export const settingKeyParamSchema = z.object({
+  key: z.string().trim().min(1).max(SETTING_KEY_MAX_LENGTH),
+});
 
-export type SettingUpdate = {
-  [K in EditableSettingKey]: { key: K; value: z.infer<(typeof editableSettingSchemas)[K]> };
-}[EditableSettingKey];
+export const settingValueBodySchema = z.object({ value: z.json() });
 
-export function parseSettingUpdate(params: unknown, body: unknown): SettingUpdate {
-  const { key } = settingKeyParamSchema.parse(params);
-  if (!isEditableSettingKey(key)) throw new SettingNotFoundError();
-  const { value } = z.object({ value: editableSettingSchemas[key] }).parse(body);
-  return { key, value } as SettingUpdate;
-}
+export const settingUpdateSchema = z.discriminatedUnion('key', [
+  z.object({ key: z.literal(SETTING_KEYS.homeBanner), value: homeBannerSchema }),
+  z.object({
+    key: z.literal(SETTING_KEYS.notificationTemplates),
+    value: notificationTemplatesSchema,
+  }),
+]);
+
+export type SettingUpdate = z.infer<typeof settingUpdateSchema>;
 
 const DUPLICATED_CATEGORY = 'A categoria aparece mais de uma vez';
 
 export const defaultCategoriesBodySchema = z.object({
   categories: z
-    .array(
-      z.object({
-        id: z.uuid(),
-        backImageUrl: z.url().max(URL_MAX_LENGTH).nullable(),
-      }),
-    )
+    .array(z.object({ id: z.uuid(), backImageUrl: imageUrlSchema.nullable() }))
     .max(DEFAULT_CATEGORIES_MAX)
     .refine((items) => new Set(items.map(({ id }) => id)).size === items.length, {
       message: DUPLICATED_CATEGORY,

@@ -1,8 +1,15 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
+import { CategoryType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 
-import { homeBannerSchema, notificationTemplatesSchema, SETTING_KEYS } from './setting-schemas';
+import {
+  EDITABLE_SETTING_KEYS,
+  homeBannerSchema,
+  notificationTemplatesSchema,
+  PUBLIC_SETTING_KEYS,
+  SETTING_KEYS,
+} from './setting-schemas';
 import { defaultCategoriesBodySchema, goalsBodySchema } from './settings.validator';
 
 const tags = ['Administração - Configurações'];
@@ -25,13 +32,11 @@ const settingView = z.object({
 const defaultCategoryView = z.object({
   id: z.uuid(),
   name: z.string(),
-  type: z.enum(['ALBUM', 'CARD']),
+  type: z.enum(CategoryType),
   backImageUrl: z.url().nullable(),
 });
 
-const settingKeyParam = z.object({
-  key: z.enum([SETTING_KEYS.homeBanner, SETTING_KEYS.notificationTemplates]),
-});
+const settingKeyParam = z.object({ key: z.enum(EDITABLE_SETTING_KEYS) });
 
 const settingUpdateBody = z.object({
   value: z.union([homeBannerSchema, notificationTemplatesSchema]).openapi({
@@ -118,7 +123,7 @@ const publicSettingsPaths: RouteConfig[] = [
     path: '/settings/public/{key}',
     tags: ['Acesso Público'],
     summary: 'Banner da Home, sem login, mesmo desligado (CCD066)',
-    request: { params: z.object({ key: z.enum([SETTING_KEYS.homeBanner]) }) },
+    request: { params: z.object({ key: z.enum(PUBLIC_SETTING_KEYS) }) },
     responses: {
       200: { description: 'Banner da Home', ...json(z.object({ data: homeBannerSchema })) },
       404: { description: 'SETTING_NOT_FOUND: só home.banner tem leitura pública' },

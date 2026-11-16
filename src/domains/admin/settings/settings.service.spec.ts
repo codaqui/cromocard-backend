@@ -1,18 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
-import { CategoryNotFoundError } from '@/domains/catalog/catalog.errors';
-import type { DefaultCategory } from '@/domains/catalog/catalog-default-categories.service';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 
 import { SETTING_KEYS } from './setting-schemas';
 import { SettingNotFoundError } from './settings.errors';
 import type { SettingsRepository, SettingValueChange, StoredSetting } from './settings.repository';
-import { type SettingsDefaultCategories, SettingsService } from './settings.service';
+import { SettingsService } from './settings.service';
+import { SettingsStore } from './settings.store';
 
 const ADMIN_ID = '0190f3a4-0000-7000-8000-00000000ad01';
 const NEW_TEMPLATE_ID = '0190f3a4-0000-7000-8000-00000000aa01';
-const BACK_URL = 'https://cdn.cromocard.com.br/backs/pokemon.png';
 
 const id = (n: number) => `0190f3a4-0000-7000-8000-${String(n).padStart(12, '0')}`;
 
@@ -31,9 +30,6 @@ const TEMPLATE = {
   title: 'Manutenção programada no {dia}',
   content: 'A plataforma ficará fora do ar das {início} às {fim}.',
 };
-
-const pokemon: DefaultCategory = { id: id(101), name: 'Pokémon', type: 'CARD' };
-const magic: DefaultCategory = { id: id(102), name: 'Magic: The Gathering', type: 'CARD' };
 
 class InMemorySettings implements SettingsRepository {
   rows = new Map<string, StoredSetting>();
@@ -71,35 +67,22 @@ class InMemorySettings implements SettingsRepository {
   }
 }
 
-class FakeDefaultCategories implements SettingsDefaultCategories {
-  defaults: DefaultCategory[] = [pokemon];
-  readonly known = [pokemon, magic];
-
-  listDefaults(): Promise<DefaultCategory[]> {
-    return Promise.resolve(this.defaults);
-  }
-
-  replaceDefaults(ids: string[]): Promise<DefaultCategory[]> {
-    const chosen = this.known.filter((category) => ids.includes(category.id));
-    if (chosen.length !== ids.length) throw new CategoryNotFoundError();
-    this.defaults = chosen;
-    return Promise.resolve(chosen);
-  }
+function issueFieldsOf(error: unknown): string[] {
+  if (!(error instanceof ZodError)) throw error;
+  return error.issues.map(({ path }) => path.join('.'));
 }
 
 describe('SettingsService', () => {
   let settings: InMemorySettings;
-  let defaultCategories: FakeDefaultCategories;
   let audits: RecordAuditLogInput[];
   let service: SettingsService;
 
   const rollbackOnError: TransactionRunner = async (work) => {
-    const snapshot = { rows: new Map(settings.rows), defaults: defaultCategories.defaults };
+    const snapshot = new Map(settings.rows);
     try {
       return await work({} as Transaction);
     } catch (error) {
-      settings.rows = snapshot.rows;
-      defaultCategories.defaults = snapshot.defaults;
+      settings.rows = snapshot;
       throw error;
     }
   };
@@ -110,13 +93,12 @@ describe('SettingsService', () => {
     settings.seed(SETTING_KEYS.notificationTemplates, [TEMPLATE], 2);
     settings.seed(SETTING_KEYS.monthlySignupGoal, 4000, 3);
     settings.seed(SETTING_KEYS.votingGoal, 200, 4);
-    settings.seed(SETTING_KEYS.defaultBacks, {}, 5);
-    defaultCategories = new FakeDefaultCategories();
     audits = [];
+    const auditLog = {
+      record: (entry: RecordAuditLogInput) => Promise.resolve(audits.push(entry)),
+    };
     service = new SettingsService({
-      settings,
-      defaultCategories,
-      auditLog: { record: (entry) => Promise.resolve(audits.push(entry)) },
+      store: new SettingsStore(settings, auditLog),
       runInTransaction: rollbackOnError,
       newId: () => NEW_TEMPLATE_ID,
     });
@@ -132,7 +114,7 @@ describe('SettingsService', () => {
   it('CA2: salva o banner, registra quem alterou e audita o antes e o depois', async () => {
     const value = { ...BANNER, title: 'Semana de Cartas Raras', imageUrl: 'https://cdn/b.png' };
 
-    const saved = await service.update({ key: SETTING_KEYS.homeBanner, value }, ADMIN_ID);
+    const saved = await service.update(SETTING_KEYS.homeBanner, value, ADMIN_ID);
 
     expect(saved.value).toEqual(value);
     expect(saved.updatedBy?.id).toBe(ADMIN_ID);
@@ -147,6 +129,28 @@ describe('SettingsService', () => {
     ]);
   });
 
+  it('CA3: valor inválido para a chave não grava nada e aponta o campo', async () => {
+    const invalid = { ...BANNER, ctaUrl: 'http://cromocard.com.br/cadastro' };
+
+    const error: unknown = await service
+      .update(SETTING_KEYS.homeBanner, invalid, ADMIN_ID)
+      .catch((reason: unknown) => reason);
+
+    expect(issueFieldsOf(error)).toEqual(['value.ctaUrl']);
+    expect(settings.valueOf(SETTING_KEYS.homeBanner)).toEqual(BANNER);
+    expect(audits).toEqual([]);
+  });
+
+  it('R16: chave que não se edita por /:key responde como não encontrada', async () => {
+    await expect(service.update(SETTING_KEYS.votingGoal, 10, ADMIN_ID)).rejects.toThrow(
+      SettingNotFoundError,
+    );
+    await expect(service.update('chave.inexistente', 1, ADMIN_ID)).rejects.toThrow(
+      SettingNotFoundError,
+    );
+    expect(audits).toEqual([]);
+  });
+
   it('CA7: o template novo ganha um id e o que já existia mantém o seu', async () => {
     const created = {
       name: 'Novo álbum',
@@ -154,10 +158,7 @@ describe('SettingsService', () => {
       content: 'Confira {álbum}.',
     };
 
-    await service.update(
-      { key: SETTING_KEYS.notificationTemplates, value: [TEMPLATE, created] },
-      ADMIN_ID,
-    );
+    await service.update(SETTING_KEYS.notificationTemplates, [TEMPLATE, created], ADMIN_ID);
 
     expect(settings.valueOf(SETTING_KEYS.notificationTemplates)).toEqual([
       TEMPLATE,
@@ -168,9 +169,9 @@ describe('SettingsService', () => {
   it('R5: chave que ainda não existe no banco responde como não encontrada', async () => {
     settings.rows.delete(SETTING_KEYS.homeBanner);
 
-    await expect(
-      service.update({ key: SETTING_KEYS.homeBanner, value: BANNER }, ADMIN_ID),
-    ).rejects.toThrow(SettingNotFoundError);
+    await expect(service.update(SETTING_KEYS.homeBanner, BANNER, ADMIN_ID)).rejects.toThrow(
+      SettingNotFoundError,
+    );
     expect(audits).toEqual([]);
   });
 
@@ -193,57 +194,6 @@ describe('SettingsService', () => {
       service.updateGoals({ monthlySignupGoal: 5000, votingGoal: 150 }, ADMIN_ID),
     ).rejects.toThrow(SettingNotFoundError);
     expect(settings.valueOf(SETTING_KEYS.monthlySignupGoal)).toBe(4000);
-  });
-
-  it('R17: lista as categorias padrão com o verso de cada uma', async () => {
-    settings.seed(SETTING_KEYS.defaultBacks, { [pokemon.id]: BACK_URL }, 5);
-
-    expect(await service.listDefaultCategories()).toEqual([{ ...pokemon, backImageUrl: BACK_URL }]);
-  });
-
-  it('R17: sem a chave dos versos, ou com valor inválido, nenhuma categoria tem verso', async () => {
-    settings.seed(SETTING_KEYS.defaultBacks, { [pokemon.id]: 'não é url' }, 5);
-    expect((await service.listDefaultCategories())[0]?.backImageUrl).toBeNull();
-
-    settings.rows.delete(SETTING_KEYS.defaultBacks);
-    expect((await service.listDefaultCategories())[0]?.backImageUrl).toBeNull();
-  });
-
-  it('CA10: grava as categorias padrão e os versos juntos e audita o antes e o depois', async () => {
-    const saved = await service.updateDefaultCategories(
-      {
-        categories: [
-          { id: pokemon.id, backImageUrl: BACK_URL },
-          { id: magic.id, backImageUrl: null },
-        ],
-      },
-      ADMIN_ID,
-    );
-
-    expect(saved).toEqual([
-      { ...pokemon, backImageUrl: BACK_URL },
-      { ...magic, backImageUrl: null },
-    ]);
-    expect(settings.valueOf(SETTING_KEYS.defaultBacks)).toEqual({ [pokemon.id]: BACK_URL });
-    expect(audits).toEqual([
-      expect.objectContaining({
-        action: 'DEFAULT_CATEGORIES_UPDATED',
-        entityId: id(5),
-        details: { before: [{ ...pokemon, backImageUrl: null }], after: saved },
-      }),
-    ]);
-  });
-
-  it('CA4: categoria inexistente não muda o conjunto nem os versos', async () => {
-    await expect(
-      service.updateDefaultCategories(
-        { categories: [{ id: id(999), backImageUrl: BACK_URL }] },
-        ADMIN_ID,
-      ),
-    ).rejects.toThrow(CategoryNotFoundError);
-    expect(defaultCategories.defaults).toEqual([pokemon]);
-    expect(settings.valueOf(SETTING_KEYS.defaultBacks)).toEqual({});
-    expect(audits).toEqual([]);
   });
 
   it('CA8: a leitura pública devolve o banner mesmo desligado', async () => {
