@@ -676,7 +676,7 @@ describe('POST /api/v1/users/:id/suspend', () => {
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/suspend`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Violou as regras da comunidade' });
+      .send({ reason: 'Violou as regras da comunidade', days: 7 });
 
     expect(res.status).toBe(200);
     expect((res.body as UserResponse).data.status).toBe('SUSPENDED');
@@ -698,7 +698,7 @@ describe('POST /api/v1/users/:id/suspend', () => {
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/suspend`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Violou as regras da comunidade' });
+      .send({ reason: 'Violou as regras da comunidade', days: 7 });
 
     expect(res.status).toBe(409);
     expect((res.body as ErrorResponse).error).toBe('ALREADY_SUSPENDED');
@@ -710,7 +710,7 @@ describe('POST /api/v1/users/:id/suspend', () => {
     const res = await request(app)
       .post(`/api/v1/users/${admin.id}/suspend`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Violou as regras da comunidade' });
+      .send({ reason: 'Violou as regras da comunidade', days: 7 });
 
     expect(res.status).toBe(422);
     expect((res.body as ErrorResponse).error).toBe('CANNOT_SANCTION_SELF');
@@ -746,6 +746,20 @@ describe('POST /api/v1/users/:id/suspend', () => {
       .send({});
 
     expect(res.status).toBe(400);
+  });
+
+  it('R3: suspender sem prazo responde 400 e o usuário continua ativo', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/suspend`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'Violou as regras da comunidade' });
+
+    expect(res.status).toBe(400);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored.status).toBe('ACTIVE');
   });
 });
 
@@ -791,6 +805,19 @@ describe('POST /api/v1/users/:id/reactivate', () => {
 });
 
 describe('POST /api/v1/users/:id/warn', () => {
+  it('R3: justificativa acima de 255 caracteres responde 400 sem gravar a advertência', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/warn`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'a'.repeat(256) });
+
+    expect(res.status).toBe(400);
+    await expect(prisma.userWarning.count({ where: { userId: target.id } })).resolves.toBe(0);
+  });
+
   it('CA1: adverte, notifica o usuário e grava a auditoria com o motivo', async () => {
     const admin = await createAdmin();
     const target = await createUser({ status: 'ACTIVE' });

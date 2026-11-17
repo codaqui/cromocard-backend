@@ -2,7 +2,7 @@ import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 import { isValidCpf, normalizeCpf } from '@/shared/validators/cpf';
 import { isValidPhone, normalizePhone } from '@/shared/validators/phone';
-import { reasonBodySchema } from '@/shared/validators/reason';
+import { reasonBodySchema, warningReasonBodySchema } from '@/shared/validators/reason';
 import { isValidUsername, normalizeUsername } from '@/shared/validators/username';
 
 const userRoleSchema = z.enum(['CUSTOMER', 'SELLER', 'ADMIN']);
@@ -68,12 +68,12 @@ export const adminUpdateUserSchema = z
 
 export const reasonSchema = reasonBodySchema;
 
-export const warnUserSchema = reasonBodySchema.extend({
+export const warnUserSchema = warningReasonBodySchema.extend({
   reportId: z.uuid().optional(),
 });
 
 export const suspendUserSchema = reasonBodySchema.extend({
-  days: suspensionDaysSchema.optional(),
+  days: suspensionDaysSchema,
 });
 
 export const blockUserSchema = reasonBodySchema;

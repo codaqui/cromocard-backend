@@ -8,6 +8,7 @@ import {
   listGroupMessageReportsQuerySchema,
   listGroupsQuerySchema,
   moderationReasonSchema,
+  warningModerationReasonSchema,
 } from './community-admin.validator';
 
 const groupsTags = ['Administração - Comunidades'];
@@ -103,14 +104,14 @@ function groupAction(path: string, summary: string, conflict: string): RouteConf
   };
 }
 
-function reportAction(path: string, summary: string): RouteConfig {
+function reportAction(path: string, summary: string, request = moderationRequest): RouteConfig {
   return {
     method: 'post',
     path,
     tags: moderationTags,
     security,
     summary,
-    request: moderationRequest,
+    request,
     responses: {
       200: { description: 'Denúncia com o status novo', ...dataOf(reportResolution) },
       ...validationError,
@@ -211,6 +212,7 @@ const moderationPaths: RouteConfig[] = [
   reportAction(
     '/admin/community/reports/{id}/remove-and-warn',
     'Remove a mensagem, adverte o autor e resolve a denúncia (CCD099)',
+    { params: communityAdminIdParamSchema, body: json(warningModerationReasonSchema) },
   ),
   reportAction(
     '/admin/community/reports/{id}/dismiss',

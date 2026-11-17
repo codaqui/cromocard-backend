@@ -1,7 +1,7 @@
 import { GroupStatus, ReportStatus } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
-import { reasonBodySchema } from '@/shared/validators/reason';
+import { reasonBodySchema, warningReasonBodySchema } from '@/shared/validators/reason';
 
 export const GROUP_NAME_MAX_LENGTH = 120;
 
@@ -41,6 +41,8 @@ export const listGroupMessageReportsQuerySchema = paginationQuerySchema.extend({
 });
 
 export const moderationReasonSchema = reasonBodySchema;
+
+export const warningModerationReasonSchema = warningReasonBodySchema;
 
 export type ListGroupsQuery = z.infer<typeof listGroupsQuerySchema>;
 export type ListGroupMessageReportsQuery = z.infer<typeof listGroupMessageReportsQuerySchema>;

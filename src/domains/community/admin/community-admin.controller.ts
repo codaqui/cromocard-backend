@@ -10,6 +10,7 @@ import {
   listGroupsQuerySchema,
   type ModerationReasonInput,
   moderationReasonSchema,
+  warningModerationReasonSchema,
 } from './community-admin.validator';
 
 type ModerationArgs = [id: string, input: ModerationReasonInput, adminId: string];
@@ -18,8 +19,8 @@ function idOf(req: Request): string {
   return communityAdminIdParamSchema.parse(req.params).id;
 }
 
-function moderationOf(req: Request): ModerationArgs {
-  return [idOf(req), moderationReasonSchema.parse(req.body), getAuthenticatedUser(req).id];
+function moderationOf(req: Request, schema = moderationReasonSchema): ModerationArgs {
+  return [idOf(req), schema.parse(req.body), getAuthenticatedUser(req).id];
 }
 
 export class CommunityAdminController {
@@ -66,7 +67,7 @@ export class CommunityAdminController {
   };
 
   removeAndWarn = async (req: Request, res: Response): Promise<void> => {
-    ok(res, await this.service.removeAndWarn(...moderationOf(req)));
+    ok(res, await this.service.removeAndWarn(...moderationOf(req, warningModerationReasonSchema)));
   };
 
   dismissReport = async (req: Request, res: Response): Promise<void> => {
