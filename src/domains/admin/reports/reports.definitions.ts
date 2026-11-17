@@ -50,8 +50,24 @@ const dateFormatter = new Intl.DateTimeFormat('pt-BR', {
   year: 'numeric',
 });
 
+const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: BRASILIA_TIME_ZONE,
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
+
+const isoDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: BRASILIA_TIME_ZONE });
+
 export function formatDate(date: Date): string {
   return dateFormatter.format(date);
+}
+
+export function formatDateTime(date: Date): string {
+  return dateTimeFormatter.format(date).replace(',', '');
+}
+
+export function formatIsoDate(date: Date): string {
+  return isoDateFormatter.format(date);
 }
 
 export type CellValue = string | number | Date | null | undefined;

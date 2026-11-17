@@ -3,23 +3,23 @@ import type { UserRole } from '@/generated/prisma/enums';
 import { notDeleted } from '@/shared/utils/soft-delete';
 import type { DateRange } from '@/shared/utils/time-zone';
 
-export interface SignupRow {
+export type SignupRow = {
   name: string;
   email: string;
   role: UserRole;
   createdAt: Date;
-}
+};
 
 export type CatalogItemKind = 'CARD' | 'ALBUM';
 
-export interface CatalogRow {
+export type CatalogRow = {
   kind: CatalogItemKind;
   name: string;
   number: string | null;
   album: string | null;
   franchise: string | null;
   createdAt: Date;
-}
+};
 
 export interface ReportRows<T> {
   rows: T[];
