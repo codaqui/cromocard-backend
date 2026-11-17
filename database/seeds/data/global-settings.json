@@ -12,14 +12,26 @@
     "templates": [
       {
         "name": "Manutenção programada",
-        "title": "Manutenção programada",
-        "content": "A plataforma ficará indisponível para manutenção no horário informado."
+        "title": "Manutenção programada no {dia}",
+        "content": "A plataforma ficará indisponível para manutenção das {início} às {fim}."
       },
       {
         "name": "Novo álbum no catálogo",
-        "title": "Novo álbum disponível",
-        "content": "Um novo álbum foi adicionado ao catálogo. Confira e comece sua coleção!"
+        "title": "Novo álbum disponível: {álbum}",
+        "content": "O álbum {álbum} já está no catálogo. Marque as cartas que você já tem e complete sua coleção."
       }
     ]
+  },
+  "monthlySignupGoal": {
+    "description": "Meta mensal de novos cadastros, usada no Dashboard",
+    "value": 4000
+  },
+  "votingGoal": {
+    "description": "Meta de votos das sugestões de categoria",
+    "value": 200
+  },
+  "defaultBacks": {
+    "description": "Verso padrão de cada franquia, pelo id da categoria",
+    "value": {}
   }
 }

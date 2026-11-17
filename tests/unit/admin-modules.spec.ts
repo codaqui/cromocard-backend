@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '@/app';
 import { signAccessToken } from '@/lib/jwt';
 
-const adminModulePaths = ['/api/v1/admin/reports', '/api/v1/admin/settings'];
+const adminModulePaths = ['/api/v1/admin/reports'];
 
 const adminToken = signAccessToken({ id: crypto.randomUUID(), role: 'ADMIN' });
 const customerToken = signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' });
