@@ -12,6 +12,8 @@ interface SellerVerificationDetailBody {
   legalName: string;
   responsibleName: string;
   bankName: string | null;
+  pixKey: string | null;
+  address: Record<string, string | null> | null;
   documents: { id: string; status: string }[];
   notes: { content: string }[];
 }
@@ -65,6 +67,22 @@ async function createAdmin() {
   return admin;
 }
 
+async function createAddress(userId: string) {
+  return prisma.address.create({
+    data: {
+      userId,
+      label: 'Comercial',
+      zipCode: '01310-100',
+      street: 'Av. Paulista',
+      number: '1000',
+      complement: 'Sala 12',
+      neighborhood: 'Bela Vista',
+      city: 'São Paulo',
+      state: 'SP',
+    },
+  });
+}
+
 async function createSeller() {
   const seller = await prisma.user.create({
     data: { name: 'Vendedor Integração', email: uniqueEmail('vendedor'), role: 'SELLER' },
@@ -73,8 +91,19 @@ async function createSeller() {
   return seller;
 }
 
-async function createVerification(overrides: { status?: SellerVerificationStatus } = {}) {
+interface VerificationOverrides {
+  status?: SellerVerificationStatus;
+  createdAt?: Date;
+  reviewedAt?: Date;
+}
+
+const DECIDED_STATUSES = new Set<SellerVerificationStatus>(['APPROVED', 'REJECTED']);
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const daysAgo = (days: number) => new Date(Date.now() - days * DAY_IN_MS);
+
+async function createVerification(overrides: VerificationOverrides = {}) {
   const seller = await createSeller();
+  const decided = overrides.status !== undefined && DECIDED_STATUSES.has(overrides.status);
   const verification = await prisma.sellerVerification.create({
     data: {
       userId: seller.id,
@@ -82,6 +111,7 @@ async function createVerification(overrides: { status?: SellerVerificationStatus
       cnpj: uniqueCnpj(),
       responsibleName: 'Responsável Teste',
       responsibleCpf: '52998224725',
+      ...(decided && { reviewedAt: new Date() }),
       ...overrides,
     },
   });
@@ -103,6 +133,7 @@ afterAll(async () => {
   });
   await prisma.notification.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.sellerVerification.deleteMany({ where: { id: { in: createdVerificationIds } } });
+  await prisma.address.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
 });
 
@@ -140,7 +171,7 @@ describe('GET /api/v1/admin/seller-verifications/summary', () => {
     await createVerification({ status: 'APPROVED' });
     await createVerification({ status: 'APPROVED' });
     await createVerification({ status: 'REJECTED' });
-    const last30Days = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+    const last30Days = { gte: daysAgo(30) };
 
     const res = await request(app)
       .get('/api/v1/admin/seller-verifications/summary')
@@ -148,8 +179,8 @@ describe('GET /api/v1/admin/seller-verifications/summary', () => {
 
     expect(res.status).toBe(200);
     const [approvedTotal, rejectedTotal] = await Promise.all([
-      prisma.sellerVerification.count({ where: { status: 'APPROVED', createdAt: last30Days } }),
-      prisma.sellerVerification.count({ where: { status: 'REJECTED', createdAt: last30Days } }),
+      prisma.sellerVerification.count({ where: { status: 'APPROVED', reviewedAt: last30Days } }),
+      prisma.sellerVerification.count({ where: { status: 'REJECTED', reviewedAt: last30Days } }),
     ]);
     const body = res.body as SummaryResponse;
     expect(body.data.approved).toBe(approvedTotal);
@@ -158,12 +189,49 @@ describe('GET /api/v1/admin/seller-verifications/summary', () => {
       5,
     );
   });
+
+  it('R4: conta os cadastros decididos no período, mesmo os criados antes dele', async () => {
+    const admin = await createAdmin();
+    const summary = async () => {
+      const res = await request(app)
+        .get('/api/v1/admin/seller-verifications/summary')
+        .set('Authorization', bearer(admin));
+      return res.body as SummaryResponse;
+    };
+    const before = await summary();
+
+    await createVerification({
+      status: 'APPROVED',
+      createdAt: daysAgo(40),
+      reviewedAt: daysAgo(1),
+    });
+    await createVerification({
+      status: 'APPROVED',
+      createdAt: daysAgo(50),
+      reviewedAt: daysAgo(45),
+    });
+
+    const after = await summary();
+    expect(after.data.approved).toBe(before.data.approved + 1);
+  });
 });
 
 describe('GET /api/v1/admin/seller-verifications/:id', () => {
   it('CA2: devolve empresa, responsável, dados bancários, endereço e documentos', async () => {
     const admin = await createAdmin();
     const { verification } = await createVerification();
+    const address = await createAddress(verification.userId);
+    await prisma.sellerVerification.update({
+      where: { id: verification.id },
+      data: { addressId: address.id, bankName: 'Banco do Brasil', pixKey: 'pix@kanto.com.br' },
+    });
+    const document = await prisma.sellerDocument.create({
+      data: {
+        sellerVerificationId: verification.id,
+        type: 'CNPJ_CARD',
+        fileUrl: 'https://files.cromocard.dev/doc.pdf',
+      },
+    });
 
     const res = await request(app)
       .get(`/api/v1/admin/seller-verifications/${verification.id}`)
@@ -175,8 +243,21 @@ describe('GET /api/v1/admin/seller-verifications/:id', () => {
       id: verification.id,
       legalName: verification.legalName,
       responsibleName: verification.responsibleName,
+      bankName: 'Banco do Brasil',
+      pixKey: 'pix@kanto.com.br',
+      address: {
+        zipCode: '01310-100',
+        street: 'Av. Paulista',
+        number: '1000',
+        complement: 'Sala 12',
+        neighborhood: 'Bela Vista',
+        city: 'São Paulo',
+        state: 'SP',
+      },
     });
-    expect(body.data.documents).toEqual([]);
+    expect(body.data.documents).toEqual([
+      expect.objectContaining({ id: document.id, type: 'CNPJ_CARD' }),
+    ]);
     expect(body.data.notes).toEqual([]);
   });
 
@@ -229,6 +310,31 @@ describe('POST /api/v1/admin/seller-verifications/:id/documents/:documentId/vali
       where: { entityId: verification.id, action: 'SELLER_DOCUMENT_VALIDATED' },
     });
     expect(log.adminId).toBe(admin.id);
+  });
+
+  it('R6: validar de novo um documento já validado não troca quem validou nem duplica o log', async () => {
+    const firstAdmin = await createAdmin();
+    const secondAdmin = await createAdmin();
+    const { verification } = await createVerification();
+    const document = await prisma.sellerDocument.create({
+      data: {
+        sellerVerificationId: verification.id,
+        type: 'ADDRESS_PROOF',
+        fileUrl: 'https://files.cromocard.dev/address.pdf',
+      },
+    });
+    const path = `/api/v1/admin/seller-verifications/${verification.id}/documents/${document.id}/validate`;
+
+    await request(app).post(path).set('Authorization', bearer(firstAdmin));
+    const res = await request(app).post(path).set('Authorization', bearer(secondAdmin));
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.sellerDocument.findUniqueOrThrow({ where: { id: document.id } });
+    expect(stored.validatedById).toBe(firstAdmin.id);
+    const logs = await prisma.auditLog.count({
+      where: { entityId: verification.id, action: 'SELLER_DOCUMENT_VALIDATED' },
+    });
+    expect(logs).toBe(1);
   });
 
   it('documento inexistente responde 404', async () => {
@@ -361,6 +467,34 @@ describe('POST /api/v1/admin/seller-verifications/:id/reject', () => {
       where: { id: verification.id },
     });
     expect(stored.status).toBe('UNDER_REVIEW');
+  });
+
+  it('R14: aprovar e reprovar ao mesmo tempo decide uma vez só', async () => {
+    const admin = await createAdmin();
+    const { seller, verification } = await createVerification({ status: 'UNDER_REVIEW' });
+    const base = `/api/v1/admin/seller-verifications/${verification.id}`;
+
+    const responses = await Promise.all([
+      request(app).post(`${base}/approve`).set('Authorization', bearer(admin)).send({}),
+      request(app)
+        .post(`${base}/reject`)
+        .set('Authorization', bearer(admin))
+        .send({ reason: 'Documento ilegível' }),
+    ]);
+
+    expect(responses.map((res) => res.status).sort()).toEqual([200, 409]);
+    const decisionLogs = await prisma.auditLog.count({
+      where: {
+        entityId: verification.id,
+        action: { in: ['SELLER_VERIFICATION_APPROVED', 'SELLER_VERIFICATION_REJECTED'] },
+      },
+    });
+    expect(decisionLogs).toBe(1);
+    const stored = await prisma.sellerVerification.findUniqueOrThrow({
+      where: { id: verification.id },
+    });
+    const notifications = await prisma.notification.count({ where: { userId: seller.id } });
+    expect(notifications).toBe(stored.status === 'REJECTED' ? 1 : 0);
   });
 
   it('CA7: credenciamento já rejeitado responde 409', async () => {

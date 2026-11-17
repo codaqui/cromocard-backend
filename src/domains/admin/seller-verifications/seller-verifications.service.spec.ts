@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
+import type { Transaction } from '@/lib/transaction';
 
 import {
   SellerDocumentNotFoundError,
@@ -46,6 +47,7 @@ function buildDetail(overrides: Partial<StoredVerification> = {}): StoredVerific
     reviewedAt: null,
     createdAt: new Date(),
     deletedAt: null,
+    address: null,
     seller: {
       id: crypto.randomUUID(),
       name: 'Cards Kanto Colecionáveis',
@@ -71,6 +73,8 @@ function buildDocument(overrides: Partial<SellerDocumentItem> = {}): SellerDocum
   };
 }
 
+const DECIDABLE_STATUSES = new Set(['UNDER_REVIEW', 'PENDING']);
+
 class InMemorySellerVerificationsRepository implements SellerVerificationsRepository {
   verifications: StoredVerification[] = [];
   documents: SellerDocumentItem[] = [];
@@ -83,7 +87,9 @@ class InMemorySellerVerificationsRepository implements SellerVerificationsReposi
 
   findById(id: string) {
     const found = this.verifications.find((item) => item.id === id && !item.deletedAt);
-    return Promise.resolve(found ? { id: found.id, status: found.status } : null);
+    return Promise.resolve(
+      found ? { id: found.id, status: found.status, userId: found.seller.id } : null,
+    );
   }
 
   findDetailById(id: string): Promise<SellerVerificationDetail | null> {
@@ -140,7 +146,9 @@ class InMemorySellerVerificationsRepository implements SellerVerificationsReposi
     return Promise.resolve();
   }
 
-  updateDecision(id: string, update: DecisionUpdate): Promise<void> {
+  updateDecisionIfUndecided(id: string, update: DecisionUpdate): Promise<boolean> {
+    const target = this.verifications.find((item) => item.id === id);
+    if (!target || !DECIDABLE_STATUSES.has(target.status)) return Promise.resolve(false);
     this.verifications = this.verifications.map((item) =>
       item.id === id
         ? {
@@ -151,7 +159,15 @@ class InMemorySellerVerificationsRepository implements SellerVerificationsReposi
           }
         : item,
     );
-    return Promise.resolve();
+    return Promise.resolve(true);
+  }
+}
+
+class StaleReadRepository extends InMemorySellerVerificationsRepository {
+  override findById(id: string) {
+    return super
+      .findById(id)
+      .then((found) => (found ? { ...found, status: 'UNDER_REVIEW' as const } : null));
   }
 }
 
@@ -172,12 +188,16 @@ class FakeAuditLog implements AdminAuditLog {
 
 class FakeNotifier implements SellerNotifier {
   notifications: { userId: string; title: string; message: string; type: string }[] = [];
+  transactions: (Transaction | undefined)[] = [];
 
-  notify(notification: Parameters<SellerNotifier['notify']>[0]) {
+  notify(notification: Parameters<SellerNotifier['notify']>[0], tx?: Transaction) {
     this.notifications.push(notification);
+    this.transactions.push(tx);
     return Promise.resolve();
   }
 }
+
+const transaction = { id: 'tx' } as unknown as Transaction;
 
 describe('SellerVerificationsService', () => {
   let repository: InMemorySellerVerificationsRepository;
@@ -194,7 +214,7 @@ describe('SellerVerificationsService', () => {
       repository,
       auditLogService: auditLog,
       notifier,
-      runInTransaction: (work) => work({} as never),
+      runInTransaction: (work) => work(transaction),
       now: () => new Date('2026-11-13T12:00:00Z'),
     });
   });
@@ -234,12 +254,31 @@ describe('SellerVerificationsService', () => {
 
   describe('getDetail', () => {
     it('CA2: devolve empresa, responsável, dados bancários, endereço e documentos', async () => {
-      const verification = buildDetail();
+      const document = buildDocument();
+      const address = {
+        zipCode: '01310-100',
+        street: 'Av. Paulista',
+        number: '1000',
+        complement: 'Sala 12',
+        neighborhood: 'Bela Vista',
+        city: 'São Paulo',
+        state: 'SP',
+      };
+      const verification = buildDetail({
+        bankName: 'Banco do Brasil',
+        pixKey: 'financeiro@cardskanto.com.br',
+        address,
+        documents: [document],
+      });
       repository.verifications = [verification];
 
       await expect(service.getDetail(verification.id)).resolves.toMatchObject({
         legalName: verification.legalName,
         responsibleName: verification.responsibleName,
+        bankName: 'Banco do Brasil',
+        pixKey: 'financeiro@cardskanto.com.br',
+        address,
+        documents: [{ id: document.id, type: 'CNPJ_CARD' }],
       });
     });
 
@@ -269,6 +308,20 @@ describe('SellerVerificationsService', () => {
           entityId: verification.id,
         },
       ]);
+    });
+
+    it('R6: documento já validado não é regravado nem gera outro log', async () => {
+      const firstValidatorId = crypto.randomUUID();
+      const verification = buildDetail();
+      const document = buildDocument({ status: 'VALIDATED', validatedById: firstValidatorId });
+      repository.verifications = [verification];
+      repository.documents = [document];
+      repository.documentOwners.set(document.id, verification.id);
+
+      await service.validateDocument(verification.id, document.id, adminId);
+
+      expect(repository.documents[0]?.validatedById).toBe(firstValidatorId);
+      expect(auditLog.entries).toEqual([]);
     });
 
     it('documento de outro credenciamento lança SellerDocumentNotFoundError', async () => {
@@ -358,6 +411,15 @@ describe('SellerVerificationsService', () => {
       ]);
     });
 
+    it('CA5: a notificação é gravada na mesma transação da decisão', async () => {
+      const verification = buildDetail({ status: 'UNDER_REVIEW' });
+      repository.verifications = [verification];
+
+      await service.reject(verification.id, adminId, 'Documento ilegível');
+
+      expect(notifier.transactions).toEqual([transaction]);
+    });
+
     it('CA7: credenciamento já rejeitado responde 409', async () => {
       const verification = buildDetail({ status: 'REJECTED' });
       repository.verifications = [verification];
@@ -365,6 +427,41 @@ describe('SellerVerificationsService', () => {
       await expect(service.reject(verification.id, adminId, 'Outro motivo')).rejects.toBeInstanceOf(
         VerificationAlreadyDecidedError,
       );
+    });
+  });
+
+  describe('decisão concorrente', () => {
+    beforeEach(() => {
+      repository = new StaleReadRepository();
+      service = new SellerVerificationsService({
+        repository,
+        auditLogService: auditLog,
+        notifier,
+        runInTransaction: (work) => work(transaction),
+        now: () => new Date('2026-11-13T12:00:00Z'),
+      });
+    });
+
+    it('R14: aprovar um cadastro decidido entre a leitura e a gravação responde 409 sem log', async () => {
+      const verification = buildDetail({ status: 'REJECTED' });
+      repository.verifications = [verification];
+
+      await expect(service.approve(verification.id, adminId)).rejects.toBeInstanceOf(
+        VerificationAlreadyDecidedError,
+      );
+      expect(repository.verifications[0]?.status).toBe('REJECTED');
+      expect(auditLog.entries).toEqual([]);
+    });
+
+    it('R14: reprovar um cadastro decidido entre a leitura e a gravação não notifica', async () => {
+      const verification = buildDetail({ status: 'APPROVED' });
+      repository.verifications = [verification];
+
+      await expect(service.reject(verification.id, adminId, 'Motivo')).rejects.toBeInstanceOf(
+        VerificationAlreadyDecidedError,
+      );
+      expect(repository.verifications[0]?.status).toBe('APPROVED');
+      expect(notifier.notifications).toEqual([]);
     });
   });
 });

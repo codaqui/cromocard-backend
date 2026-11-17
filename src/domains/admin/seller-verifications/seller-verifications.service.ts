@@ -12,6 +12,7 @@ import {
   VerificationAlreadyDecidedError,
 } from './seller-verifications.errors';
 import type {
+  DecisionUpdate,
   SellerVerificationDetail,
   SellerVerificationListItem,
   SellerVerificationsRepository,
@@ -19,7 +20,6 @@ import type {
 } from './seller-verifications.repository';
 import type { ListSellerVerificationsQuery } from './seller-verifications.validator';
 
-const DECIDABLE_STATUSES = new Set(['UNDER_REVIEW', 'PENDING']);
 const SELLER_REVIEW_NOTIFICATION_TYPE = 'SELLER_REVIEW';
 
 export interface AdminAuditLog {
@@ -36,12 +36,10 @@ export interface AdminAuditLog {
 }
 
 export interface SellerNotifier {
-  notify(notification: {
-    userId: string;
-    title: string;
-    message: string;
-    type: string;
-  }): Promise<void>;
+  notify(
+    notification: { userId: string; title: string; message: string; type: string },
+    tx?: Transaction,
+  ): Promise<void>;
 }
 
 export interface SellerVerificationsServiceDeps {
@@ -98,6 +96,7 @@ export class SellerVerificationsService {
     await this.findOrThrow(id);
     const document = await repository.findDocumentById(id, documentId);
     if (!document) throw new SellerDocumentNotFoundError();
+    if (document.status === 'VALIDATED') return this.getDetail(id);
 
     await runInTransaction(async (tx) => {
       await repository.validateDocument(documentId, adminId, tx);
@@ -122,12 +121,11 @@ export class SellerVerificationsService {
   }
 
   async approve(id: string, adminId: string, reason?: string): Promise<SellerVerificationDetail> {
-    const { repository, auditLogService, runInTransaction } = this.deps;
-    const target = await this.findOrThrow(id);
-    this.assertDecidable(target.status);
+    const { auditLogService, runInTransaction } = this.deps;
+    await this.findOrThrow(id);
 
     await runInTransaction(async (tx) => {
-      await repository.updateDecision(id, { status: 'APPROVED', reviewedById: adminId }, tx);
+      await this.decide(id, { status: 'APPROVED', reviewedById: adminId }, tx);
       await this.recordDecision({
         auditLogService,
         action: 'SELLER_VERIFICATION_APPROVED',
@@ -142,12 +140,11 @@ export class SellerVerificationsService {
   }
 
   async reject(id: string, adminId: string, reason: string): Promise<SellerVerificationDetail> {
-    const { repository, auditLogService, notifier, runInTransaction } = this.deps;
+    const { auditLogService, runInTransaction } = this.deps;
     const target = await this.findOrThrow(id);
-    this.assertDecidable(target.status);
 
     await runInTransaction(async (tx) => {
-      await repository.updateDecision(
+      await this.decide(
         id,
         { status: 'REJECTED', reviewedById: adminId, rejectionReason: reason },
         tx,
@@ -160,11 +157,10 @@ export class SellerVerificationsService {
         reason,
         tx,
       });
+      await this.notifyRejection(target.userId, reason, tx);
     });
 
-    const detail = await this.getDetail(id);
-    await this.notifySeller(notifier, detail, reason);
-    return detail;
+    return this.getDetail(id);
   }
 
   private async findOrThrow(id: string) {
@@ -173,8 +169,9 @@ export class SellerVerificationsService {
     return target;
   }
 
-  private assertDecidable(status: string): void {
-    if (!DECIDABLE_STATUSES.has(status)) throw new VerificationAlreadyDecidedError();
+  private async decide(id: string, update: DecisionUpdate, tx: Transaction): Promise<void> {
+    const decided = await this.deps.repository.updateDecisionIfUndecided(id, update, tx);
+    if (!decided) throw new VerificationAlreadyDecidedError();
   }
 
   private recordDecision(options: {
@@ -192,16 +189,15 @@ export class SellerVerificationsService {
     );
   }
 
-  private async notifySeller(
-    notifier: SellerNotifier,
-    detail: SellerVerificationDetail,
-    reason: string,
-  ): Promise<void> {
-    await notifier.notify({
-      userId: detail.seller.id,
-      title: 'Cadastro de vendedor reprovado',
-      message: reason,
-      type: SELLER_REVIEW_NOTIFICATION_TYPE,
-    });
+  private notifyRejection(sellerId: string, reason: string, tx: Transaction): Promise<void> {
+    return this.deps.notifier.notify(
+      {
+        userId: sellerId,
+        title: 'Cadastro de vendedor reprovado',
+        message: reason,
+        type: SELLER_REVIEW_NOTIFICATION_TYPE,
+      },
+      tx,
+    );
   }
 }

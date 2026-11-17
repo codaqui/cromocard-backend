@@ -7,6 +7,8 @@ import type { DateRange } from '@/shared/utils/time-zone';
 
 import type { ListSellerVerificationsQuery } from './seller-verifications.validator';
 
+const DECIDABLE_STATUSES: SellerVerificationStatus[] = ['UNDER_REVIEW', 'PENDING'];
+
 const sellerSummarySelect = {
   id: true,
   name: true,
@@ -50,6 +52,16 @@ export type SellerVerificationNoteItem = Prisma.SellerVerificationNoteGetPayload
   select: typeof noteSelect;
 }>;
 
+const addressSelect = {
+  zipCode: true,
+  street: true,
+  number: true,
+  complement: true,
+  neighborhood: true,
+  city: true,
+  state: true,
+} satisfies Prisma.AddressSelect;
+
 const detailSelect = {
   id: true,
   status: true,
@@ -71,6 +83,7 @@ const detailSelect = {
   reviewedAt: true,
   createdAt: true,
   seller: { select: sellerSummarySelect },
+  address: { select: addressSelect },
   documents: { where: notDeleted, select: documentSelect, orderBy: { createdAt: 'asc' } },
   notes: { where: notDeleted, select: noteSelect, orderBy: { createdAt: 'desc' } },
 } satisfies Prisma.SellerVerificationSelect;
@@ -91,6 +104,12 @@ export interface StatusCounts {
   rejected: number;
 }
 
+export interface VerificationTarget {
+  id: string;
+  status: SellerVerificationStatus;
+  userId: string;
+}
+
 export interface DecisionUpdate {
   status: SellerVerificationStatus;
   reviewedById: string;
@@ -99,7 +118,7 @@ export interface DecisionUpdate {
 
 export interface SellerVerificationsRepository {
   findPage(query: ListSellerVerificationsQuery): Promise<SellerVerificationsPage>;
-  findById(id: string): Promise<{ id: string; status: SellerVerificationStatus } | null>;
+  findById(id: string): Promise<VerificationTarget | null>;
   findDetailById(id: string): Promise<SellerVerificationDetail | null>;
   countByStatusWithin(range: DateRange): Promise<StatusCounts>;
   findDocumentById(
@@ -108,7 +127,7 @@ export interface SellerVerificationsRepository {
   ): Promise<{ id: string; status: SellerDocumentStatus } | null>;
   validateDocument(documentId: string, validatedById: string, tx: Transaction): Promise<void>;
   addNote(sellerVerificationId: string, authorId: string, content: string): Promise<void>;
-  updateDecision(id: string, update: DecisionUpdate, tx: Transaction): Promise<void>;
+  updateDecisionIfUndecided(id: string, update: DecisionUpdate, tx: Transaction): Promise<boolean>;
 }
 
 function buildWhere(status?: SellerVerificationStatus): Prisma.SellerVerificationWhereInput {
@@ -137,10 +156,10 @@ export class PrismaSellerVerificationsRepository implements SellerVerificationsR
     return { items, total };
   }
 
-  findById(id: string): Promise<{ id: string; status: SellerVerificationStatus } | null> {
+  findById(id: string): Promise<VerificationTarget | null> {
     return this.prisma.sellerVerification.findFirst({
       where: { id, ...notDeleted },
-      select: { id: true, status: true },
+      select: { id: true, status: true, userId: true },
     });
   }
 
@@ -152,12 +171,15 @@ export class PrismaSellerVerificationsRepository implements SellerVerificationsR
   }
 
   async countByStatusWithin({ from, to }: DateRange): Promise<StatusCounts> {
-    const where = { ...notDeleted, createdAt: { gte: from, lte: to } };
+    const createdWithin = { ...notDeleted, createdAt: { gte: from, lte: to } };
+    const decidedWithin = { ...notDeleted, reviewedAt: { gte: from, lte: to } };
+    const count = (where: Prisma.SellerVerificationWhereInput) =>
+      this.prisma.sellerVerification.count({ where });
     const [underReview, pending, approved, rejected] = await this.prisma.$transaction([
-      this.prisma.sellerVerification.count({ where: { ...where, status: 'UNDER_REVIEW' } }),
-      this.prisma.sellerVerification.count({ where: { ...where, status: 'PENDING' } }),
-      this.prisma.sellerVerification.count({ where: { ...where, status: 'APPROVED' } }),
-      this.prisma.sellerVerification.count({ where: { ...where, status: 'REJECTED' } }),
+      count({ ...createdWithin, status: 'UNDER_REVIEW' }),
+      count({ ...createdWithin, status: 'PENDING' }),
+      count({ ...decidedWithin, status: 'APPROVED' }),
+      count({ ...decidedWithin, status: 'REJECTED' }),
     ]);
     return { underReview, pending, approved, rejected };
   }
@@ -189,14 +211,15 @@ export class PrismaSellerVerificationsRepository implements SellerVerificationsR
     });
   }
 
-  async updateDecision(
+  async updateDecisionIfUndecided(
     id: string,
     { status, reviewedById, rejectionReason }: DecisionUpdate,
     tx: Transaction,
-  ): Promise<void> {
-    await tx.sellerVerification.update({
-      where: { id },
+  ): Promise<boolean> {
+    const { count } = await tx.sellerVerification.updateMany({
+      where: { id, ...notDeleted, status: { in: DECIDABLE_STATUSES } },
       data: { status, reviewedById, reviewedAt: new Date(), rejectionReason },
     });
+    return count > 0;
   }
 }
