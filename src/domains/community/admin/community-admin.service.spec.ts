@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { GroupAccessType, GroupStatus, ReportStatus } from '@/generated/prisma/enums';
+import type { Transaction } from '@/lib/transaction';
 
 import {
   GroupAlreadySuspendedError,
@@ -138,25 +139,27 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
   }
 }
 
+const TRANSACTION = { id: 'tx' } as unknown as Transaction;
+
 class FakeAuditLog implements CommunityAuditLog {
   entries: RecordAuditLogInput[] = [];
+  transactions: (Transaction | undefined)[] = [];
 
-  record(input: RecordAuditLogInput): Promise<unknown> {
+  record(input: RecordAuditLogInput, tx?: Transaction): Promise<unknown> {
     this.entries.push(input);
+    this.transactions.push(tx);
     return Promise.resolve(input);
   }
 }
 
 class FakeWarner implements AuthorWarner {
-  calls: Parameters<AuthorWarner['warn']>[] = [];
+  calls: Parameters<AuthorWarner['warnWithin']>[] = [];
+  failure: Error | null = null;
 
-  warn(
-    userId: string,
-    input: { reason: string; reportId?: string },
-    adminId: string,
-  ): Promise<{ warningsCount: number }> {
-    this.calls.push([userId, input, adminId]);
-    return Promise.resolve({ warningsCount: this.calls.length });
+  warnWithin(warning: Parameters<AuthorWarner['warnWithin']>[0], tx: Transaction): Promise<void> {
+    if (this.failure) return Promise.reject(this.failure);
+    this.calls.push([warning, tx]);
+    return Promise.resolve();
   }
 }
 
@@ -170,7 +173,13 @@ describe('CommunityAdminService', () => {
     repository = new FakeCommunityAdminRepository();
     auditLog = new FakeAuditLog();
     warner = new FakeWarner();
-    service = new CommunityAdminService({ repository, auditLog, warner, now: () => NOW });
+    service = new CommunityAdminService({
+      repository,
+      auditLog,
+      warner,
+      runInTransaction: (work) => work(TRANSACTION),
+      now: () => NOW,
+    });
   });
 
   describe('grupos', () => {
@@ -416,7 +425,10 @@ describe('CommunityAdminService', () => {
 
       expect(resolution).toEqual({ id: REPORT_ID, status: ReportStatus.RESOLVED });
       expect(repository.deletedMessages.has(MESSAGE_ID)).toBe(true);
-      expect(warner.calls).toEqual([[AUTHOR_ID, { ...REASON, reportId: REPORT_ID }, ADMIN_ID]]);
+      expect(warner.calls).toEqual([
+        [{ userId: AUTHOR_ID, adminId: ADMIN_ID, ...REASON, reportId: REPORT_ID }, TRANSACTION],
+      ]);
+      expect(auditLog.transactions).toEqual([TRANSACTION]);
       expect(auditLog.entries).toEqual([
         {
           adminId: ADMIN_ID,
@@ -432,6 +444,28 @@ describe('CommunityAdminService', () => {
           ...REASON,
         },
       ]);
+    });
+
+    it('R7: se a advertência falhar, o erro sobe de dentro da transação da remoção', async () => {
+      repository.reports.set(REPORT_ID, buildReport());
+      warner.failure = new Error('advertência recusada');
+      const transactions: string[] = [];
+      service = new CommunityAdminService({
+        repository,
+        auditLog,
+        warner,
+        runInTransaction: async (work) => {
+          transactions.push('aberta');
+          return work(TRANSACTION);
+        },
+        now: () => NOW,
+      });
+
+      await expect(service.removeAndWarn(REPORT_ID, REASON, ADMIN_ID)).rejects.toThrow(
+        'advertência recusada',
+      );
+      expect(transactions).toEqual(['aberta']);
+      expect(auditLog.transactions).toEqual([TRANSACTION]);
     });
 
     it('CA7: dispensa a denúncia sem apagar a mensagem e registra o log', async () => {

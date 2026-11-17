@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 
 export interface NewNotification {
   userId: string;
@@ -9,13 +10,13 @@ export interface NewNotification {
 }
 
 export interface NotificationsRepository {
-  create(notification: NewNotification): Promise<void>;
+  create(notification: NewNotification, tx?: Transaction): Promise<void>;
 }
 
 export class PrismaNotificationsRepository implements NotificationsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async create(notification: NewNotification): Promise<void> {
-    await this.prisma.notification.create({ data: notification });
+  async create(notification: NewNotification, tx?: Transaction): Promise<void> {
+    await (tx ?? this.prisma).notification.create({ data: notification });
   }
 }

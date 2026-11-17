@@ -35,12 +35,17 @@ export interface SanctionAuthService {
 }
 
 export interface SanctionNotifier {
-  notify(notification: {
-    userId: string;
-    title: string;
-    message: string;
-    type: string;
-  }): Promise<void>;
+  notify(
+    notification: { userId: string; title: string; message: string; type: string },
+    tx?: Transaction,
+  ): Promise<void>;
+}
+
+export interface Warning {
+  userId: string;
+  adminId: string;
+  reason: string;
+  reportId?: string;
 }
 
 export interface UserSanctionsServiceDeps {
@@ -64,24 +69,30 @@ export class UserSanctionsService {
     { reason, reportId }: WarnUserInput,
     adminId: string,
   ): Promise<WarnResult> {
-    const { usersRepository, auditLogService, notifier, runInTransaction } = this.deps;
-    const target = await this.findByIdOrThrow(id);
-    this.assertNotSelf(target, adminId);
+    const warning = { userId: id, adminId, reason, reportId };
+    await this.deps.runInTransaction((tx) => this.warnWithin(warning, tx));
+    return { warningsCount: await this.deps.usersRepository.countWarningsByUserId(id) };
+  }
 
-    await runInTransaction(async (tx) => {
-      await usersRepository.createWarning({ userId: id, adminId, reportId, reason }, tx);
-      await auditLogService.record(
-        { adminId, action: 'USER_WARNED', entityType: USER_ENTITY, entityId: id, reason },
-        tx,
-      );
-    });
-    await notifier.notify({
-      userId: id,
-      title: 'Você recebeu uma advertência',
-      message: reason,
-      type: WARNING_NOTIFICATION_TYPE,
-    });
-    return { warningsCount: await usersRepository.countWarningsByUserId(id) };
+  async warnWithin(warning: Warning, tx: Transaction): Promise<void> {
+    const { usersRepository, auditLogService, notifier } = this.deps;
+    const { userId, adminId, reason } = warning;
+    this.assertNotSelf(await this.findByIdOrThrow(userId), adminId);
+
+    await usersRepository.createWarning(warning, tx);
+    await auditLogService.record(
+      { adminId, action: 'USER_WARNED', entityType: USER_ENTITY, entityId: userId, reason },
+      tx,
+    );
+    await notifier.notify(
+      {
+        userId,
+        title: 'Você recebeu uma advertência',
+        message: reason,
+        type: WARNING_NOTIFICATION_TYPE,
+      },
+      tx,
+    );
   }
 
   async suspend(
@@ -95,7 +106,7 @@ export class UserSanctionsService {
     if (target.status === 'SUSPENDED') throw new AlreadySuspendedError();
     await this.assertNotLastActiveAdmin(target);
 
-    const suspendedUntil = days ? new Date(now().getTime() + days * DAY_IN_MS) : null;
+    const suspendedUntil = new Date(now().getTime() + days * DAY_IN_MS);
     const updated = await runInTransaction(async (tx) => {
       const user = await usersRepository.updateStatus(
         id,
@@ -110,7 +121,7 @@ export class UserSanctionsService {
   }
 
   private recordSuspension(
-    { adminId, id, reason, days }: { adminId: string; id: string; reason: string; days?: number },
+    { adminId, id, reason, days }: { adminId: string; id: string; reason: string; days: number },
     tx: Transaction,
   ): Promise<unknown> {
     return this.deps.auditLogService.record(
@@ -120,7 +131,7 @@ export class UserSanctionsService {
         entityType: USER_ENTITY,
         entityId: id,
         reason,
-        details: days ? { days } : undefined,
+        details: { days },
       },
       tx,
     );

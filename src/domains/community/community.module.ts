@@ -2,6 +2,7 @@ import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
 import { authService } from '@/domains/auth/auth.module';
 import { createSanctionsService } from '@/domains/users/users.module';
 import { prisma } from '@/lib/prisma';
+import { runInTransaction } from '@/lib/transaction';
 import type { DomainModule } from '@/shared/types/domain-module';
 
 import { CommunityAdminController } from './admin/community-admin.controller';
@@ -14,6 +15,7 @@ const communityAdminService = new CommunityAdminService({
   repository: new PrismaCommunityAdminRepository(prisma),
   auditLog: auditLogService,
   warner: createSanctionsService(authService),
+  runInTransaction,
   now: () => new Date(),
 });
 

@@ -193,11 +193,18 @@ class FakeAuditLog implements SanctionAuditLog {
   }
 }
 
+const TRANSACTION = { id: 'tx' } as never;
+
 class FakeNotifier implements SanctionNotifier {
   notifications: Parameters<SanctionNotifier['notify']>[0][] = [];
+  transactions: unknown[] = [];
 
-  notify(notification: Parameters<SanctionNotifier['notify']>[0]): Promise<void> {
+  notify(
+    notification: Parameters<SanctionNotifier['notify']>[0],
+    tx?: Parameters<SanctionNotifier['notify']>[1],
+  ): Promise<void> {
     this.notifications.push(notification);
+    this.transactions.push(tx);
     return Promise.resolve();
   }
 }
@@ -222,12 +229,21 @@ describe('UserSanctionsService', () => {
       authService,
       auditLogService: auditLog,
       notifier,
-      runInTransaction: (work) => work({} as never),
+      runInTransaction: (work) => work(TRANSACTION),
       now: () => NOW,
     });
   });
 
   describe('warn', () => {
+    it('CA1: a notificação é gravada na mesma transação da advertência', async () => {
+      const user = buildUser();
+      repository.users = [user];
+
+      await service.warn(user.id, { reason: 'Mensagem ofensiva no grupo' }, adminId);
+
+      expect(notifier.transactions).toEqual([TRANSACTION]);
+    });
+
     it('CA1: adverte, notifica o usuário e grava USER_WARNED', async () => {
       const user = buildUser();
       repository.users = [user];
@@ -303,21 +319,12 @@ describe('UserSanctionsService', () => {
       ]);
     });
 
-    it('sem prazo, suspende por tempo indeterminado', async () => {
-      const user = buildUser();
-      repository.users = [user];
-
-      const updated = await service.suspend(user.id, { reason: 'Violou as regras' }, adminId);
-
-      expect(updated.suspendedUntil).toBeNull();
-    });
-
     it('usuário já suspenso responde 409', async () => {
       const user = buildUser({ status: 'SUSPENDED' });
       repository.users = [user];
 
       await expect(
-        service.suspend(user.id, { reason: 'Violou as regras' }, adminId),
+        service.suspend(user.id, { reason: 'Violou as regras', days: 7 }, adminId),
       ).rejects.toBeInstanceOf(AlreadySuspendedError);
     });
 
@@ -326,7 +333,7 @@ describe('UserSanctionsService', () => {
       repository.users = [admin];
 
       await expect(
-        service.suspend(adminId, { reason: 'Violou as regras' }, adminId),
+        service.suspend(adminId, { reason: 'Violou as regras', days: 7 }, adminId),
       ).rejects.toBeInstanceOf(CannotSanctionSelfError);
     });
 
@@ -335,7 +342,7 @@ describe('UserSanctionsService', () => {
       repository.users = [lastAdmin];
 
       await expect(
-        service.suspend(lastAdmin.id, { reason: 'Violou as regras' }, adminId),
+        service.suspend(lastAdmin.id, { reason: 'Violou as regras', days: 7 }, adminId),
       ).rejects.toBeInstanceOf(LastAdminError);
     });
   });

@@ -3,6 +3,7 @@ import type {
   RecordAuditLogInput,
 } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { GroupStatus, ReportStatus } from '@/generated/prisma/enums';
+import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import type { AppError } from '@/shared/errors/app-error';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 import { daysBefore } from '@/shared/utils/time-zone';
@@ -33,21 +34,21 @@ import {
 const MESSAGES_WINDOW_IN_DAYS = 7;
 
 export interface CommunityAuditLog {
-  record(input: RecordAuditLogInput): Promise<unknown>;
+  record(input: RecordAuditLogInput, tx?: Transaction): Promise<unknown>;
 }
 
 export interface AuthorWarner {
-  warn(
-    userId: string,
-    input: { reason: string; reportId?: string },
-    adminId: string,
-  ): Promise<{ warningsCount: number }>;
+  warnWithin(
+    warning: { userId: string; adminId: string; reason: string; reportId?: string },
+    tx: Transaction,
+  ): Promise<void>;
 }
 
 export interface CommunityAdminServiceDeps {
   repository: CommunityAdminRepository;
   auditLog: CommunityAuditLog;
   warner: AuthorWarner;
+  runInTransaction: TransactionRunner;
   now: () => Date;
 }
 
@@ -168,20 +169,9 @@ export class CommunityAdminService {
     { reason }: ModerationReasonInput,
     adminId: string,
   ): Promise<ReportResolution> {
-    const { groupMessageId: messageId, status } = await this.findOpenReport(reportId);
-    const removal = { reportId, messageId, moderatorId: adminId };
-    const resolvedReportIds = await this.deps.repository.removeReportedMessage(removal);
-    if (resolvedReportIds.length === 0) throw new ReportAlreadyResolvedError();
-
-    const details = { reportId, resolvedReportIds, ...statusChange(status, ReportStatus.RESOLVED) };
-    await this.audit(
-      { reason, adminId },
-      {
-        action: 'GROUP_MESSAGE_REMOVED',
-        entityType: 'group_message',
-        entityId: messageId,
-        details,
-      },
+    const report = await this.findOpenReport(reportId);
+    await this.deps.runInTransaction((tx) =>
+      this.removeMessage({ report, moderation: { reason, adminId } }, tx),
     );
     return { id: reportId, status: ReportStatus.RESOLVED };
   }
@@ -191,23 +181,36 @@ export class CommunityAdminService {
     { reason }: ModerationReasonInput,
     adminId: string,
   ): Promise<ReportResolution> {
-    const { groupMessageId: messageId, authorId, status } = await this.findOpenReport(reportId);
-    const removal = { reportId, messageId, moderatorId: adminId };
-    const resolvedReportIds = await this.deps.repository.removeReportedMessage(removal);
+    const report = await this.findOpenReport(reportId);
+    const warning = { userId: report.authorId, adminId, reason, reportId };
+
+    await this.deps.runInTransaction(async (tx) => {
+      await this.removeMessage({ report, moderation: { reason, adminId } }, tx);
+      await this.deps.warner.warnWithin(warning, tx);
+    });
+    return { id: reportId, status: ReportStatus.RESOLVED };
+  }
+
+  private async removeMessage(
+    { report, moderation }: { report: OpenReport; moderation: Moderation },
+    tx: Transaction,
+  ): Promise<void> {
+    const { id: reportId, groupMessageId: messageId, status } = report;
+    const removal = { reportId, messageId, moderatorId: moderation.adminId };
+    const resolvedReportIds = await this.deps.repository.removeReportedMessage(removal, tx);
     if (resolvedReportIds.length === 0) throw new ReportAlreadyResolvedError();
 
-    await this.deps.warner.warn(authorId, { reason, reportId }, adminId);
     const details = { reportId, resolvedReportIds, ...statusChange(status, ReportStatus.RESOLVED) };
     await this.audit(
-      { reason, adminId },
+      moderation,
       {
         action: 'GROUP_MESSAGE_REMOVED',
         entityType: 'group_message',
         entityId: messageId,
         details,
       },
+      tx,
     );
-    return { id: reportId, status: ReportStatus.RESOLVED };
   }
 
   async dismissReport(
@@ -255,7 +258,11 @@ export class CommunityAdminService {
     };
   }
 
-  private async audit({ reason, adminId }: Moderation, moderation: AuditedModeration) {
-    await this.deps.auditLog.record({ adminId, reason, ...moderation });
+  private async audit(
+    { reason, adminId }: Moderation,
+    moderation: AuditedModeration,
+    tx?: Transaction,
+  ) {
+    await this.deps.auditLog.record({ adminId, reason, ...moderation }, tx);
   }
 }
