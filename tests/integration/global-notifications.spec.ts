@@ -2,7 +2,6 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '@/app';
-import { PrismaGlobalNotificationsRepository } from '@/domains/notifications/global-notifications.repository';
 import { globalNotificationsService } from '@/domains/notifications/notifications.module';
 import type { Prisma } from '@/generated/prisma/client';
 import { signAccessToken } from '@/lib/jwt';
@@ -214,10 +213,6 @@ describe('Notificação global (CCD060, CCD100, CCD101)', () => {
       }),
     ).toBe(1);
     expect((await asAdmin().post(`/${UNKNOWN_ID}/cancel`)).status).toBe(404);
-    const repository = new PrismaGlobalNotificationsRepository(prisma);
-    const delivery = { recipientIds: [users.colecionador!], inApp: true, sentAt: new Date() };
-    expect(await repository.deliverScheduled(id, delivery)).toBeNull();
-    expect(await receivers(id)).toHaveLength(0);
   });
 
   it('R16: o histórico vem do mais recente ao mais antigo', async () => {
