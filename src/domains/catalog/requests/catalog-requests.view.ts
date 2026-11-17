@@ -113,18 +113,22 @@ export function quorumOf(counts: VoteCounts, goal: number): QuorumVotes {
 /** O total e as três raridades mais altas presentes no checklist (CCD103, L10). */
 export function checklistSummaryOf(
   checklist: ChecklistItem[],
-  { names, rarityRanks }: Pick<ViewContext, 'names' | 'rarityRanks'>,
+  rarityRanks: RarityRanks,
 ): ChecklistSummary | null {
   if (checklist.length === 0) return null;
   const counts = new Map<string, number>();
   checklist.forEach(({ rarityId }) => {
-    if (rarityId) counts.set(rarityId, (counts.get(rarityId) ?? 0) + 1);
+    const rarity = textOf(rarityId);
+    if (rarity) counts.set(rarity, (counts.get(rarity) ?? 0) + 1);
   });
   const rarities = [...counts.entries()]
-    .filter(([id]) => rarityRanks.has(id))
-    .sort(([a], [b]) => (rarityRanks.get(b) ?? 0) - (rarityRanks.get(a) ?? 0))
+    .flatMap(([id, count]) => {
+      const rarity = rarityRanks.get(id);
+      return rarity ? [{ ...rarity, count }] : [];
+    })
+    .sort((a, b) => b.sortOrder - a.sortOrder)
     .slice(0, SUMMARY_RARITIES)
-    .map(([id, count]) => ({ name: names.get(id) ?? '', count }));
+    .map(({ name, count }) => ({ name, count }));
   return { total: checklist.length, rarities };
 }
 
@@ -154,6 +158,6 @@ export function toView(record: CatalogRequestRecord, context: ViewContext): Cata
     },
     votes: record.type === 'CATEGORY' && counts ? quorumOf(counts, context.goal) : null,
     checklistSummary:
-      record.type === 'ALBUM' ? checklistSummaryOf(checklistOf(data), context) : null,
+      record.type === 'ALBUM' ? checklistSummaryOf(checklistOf(data), context.rarityRanks) : null,
   };
 }

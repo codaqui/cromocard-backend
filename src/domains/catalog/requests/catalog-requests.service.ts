@@ -128,7 +128,9 @@ export class CatalogRequestsService {
       details: {
         type: request.type,
         createdItemId: createdItem.id,
-        ...(createdItem.subcategoryIds && { subcategoryIds: createdItem.subcategoryIds }),
+        ...(createdItem.subcategoryIds.length > 0 && {
+          subcategoryIds: createdItem.subcategoryIds,
+        }),
       },
     });
     await this.notify(request, approvedNotice(createdItem.name));

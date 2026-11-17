@@ -78,12 +78,14 @@ export class PrismaCatalogRequestVotesRepository implements CatalogRequestVotesR
       where: activeVotes(ids),
       _count: { _all: true },
     });
-    const counts = new Map(ids.map((id) => [id, emptyCounts()]));
-    groups.forEach(({ catalogRequestId, vote, _count }) => {
-      const tally = counts.get(catalogRequestId);
-      if (tally) tally[vote] = _count._all;
-    });
-    return counts;
+    const countsOf = (id: string) =>
+      groups
+        .filter(({ catalogRequestId }) => catalogRequestId === id)
+        .reduce<VoteCounts>(
+          (counts, { vote, _count }) => ({ ...counts, [vote]: _count._all }),
+          emptyCounts(),
+        );
+    return new Map(ids.map((id) => [id, countsOf(id)]));
   }
 
   async findUserVotes(ids: string[], userId: string): Promise<Map<string, CatalogVote>> {

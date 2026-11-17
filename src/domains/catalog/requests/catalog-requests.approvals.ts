@@ -28,8 +28,8 @@ export interface CreatedItem {
   type: CatalogRequestType;
   id: string;
   name: string;
-  /** Subcategorias criadas junto com a categoria (CCD103, R12). */
-  subcategoryIds?: string[];
+  /** Subcategorias criadas junto com a categoria (CCD103, R12); vazio nos outros tipos. */
+  subcategoryIds: string[];
 }
 
 export interface Approval {
@@ -82,7 +82,7 @@ export const APPROVALS: Record<CatalogRequestType, ApprovalFactory> = {
     return {
       create: async (adminId) => {
         const { id, name } = await catalog.createCard(adminId, input);
-        return { type: 'CARD', id, name };
+        return { type: 'CARD', id, name, subcategoryIds: [] };
       },
       link: ({ id }) => ({ cardId: id }),
     };
@@ -92,7 +92,7 @@ export const APPROVALS: Record<CatalogRequestType, ApprovalFactory> = {
     return {
       create: async (adminId) => {
         const { id, title } = await catalog.createAlbum(adminId, input);
-        return { type: 'ALBUM', id, name: title };
+        return { type: 'ALBUM', id, name: title, subcategoryIds: [] };
       },
       link: ({ id }) => ({ albumId: id }),
     };
@@ -103,7 +103,7 @@ export const APPROVALS: Record<CatalogRequestType, ApprovalFactory> = {
     return {
       create: (adminId) => createCategoryTree(catalog, adminId, { input, subcategories }),
       link: ({ id, subcategoryIds }) => ({
-        data: { ...data, createdCategoryId: id, createdSubcategoryIds: subcategoryIds ?? [] },
+        data: { ...data, createdCategoryId: id, createdSubcategoryIds: subcategoryIds },
       }),
     };
   },

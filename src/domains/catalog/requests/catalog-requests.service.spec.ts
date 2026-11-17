@@ -43,6 +43,7 @@ const CREATED_ID = '0199a000-0000-7000-8000-000000000099';
 const COMMON_ID = '0199a000-0000-7000-8000-000000000021';
 const RARE_ID = '0199a000-0000-7000-8000-000000000023';
 const EPIC_ID = '0199a000-0000-7000-8000-000000000024';
+const UNKNOWN_RARITY_ID = '0199a000-0000-7000-8000-000000000029';
 const QUERY: ListCatalogRequestsQuery = { page: 1, pageSize: 10, status: 'PENDING' };
 
 const cardData = {
@@ -111,11 +112,11 @@ class FakeRepository implements CatalogRequestsRepository {
 
   findRarityRanks(rarityIds: string[]) {
     this.lastRarityIds = rarityIds;
-    const ranks: [string, number][] = [
-      [COMMON_ID, 1],
-      [RARE_ID, 3],
-      [EPIC_ID, 4],
-      [RARITY_ID, 5],
+    const ranks: [string, { name: string; sortOrder: number }][] = [
+      [COMMON_ID, { name: 'Comum', sortOrder: 1 }],
+      [RARE_ID, { name: 'Rara', sortOrder: 3 }],
+      [EPIC_ID, { name: 'Épica', sortOrder: 4 }],
+      [RARITY_ID, { name: 'Lendária', sortOrder: 5 }],
     ];
     return Promise.resolve(new Map(ranks.filter(([id]) => rarityIds.includes(id))));
   }
@@ -298,27 +299,45 @@ describe('CatalogRequestsService', () => {
         { number: '017', code: 'JU-017', name: 'Jolteon', rarityId: RARE_ID, variants: '' },
         { number: '051', code: 'JU-051', name: 'Eevee', rarityId: COMMON_ID, variants: '' },
       ];
-      store({ type: 'ALBUM', data: { title: 'Pokémon Jungle', checklist } });
+      const withoutRarity = { number: '090', code: 'JU-090', name: 'Sem raridade' };
+      const unknownRarity = {
+        number: '091',
+        code: 'JU-091',
+        name: 'Raridade apagada',
+        rarityId: UNKNOWN_RARITY_ID,
+      };
+      store({
+        type: 'ALBUM',
+        data: { title: 'Pokémon Jungle', checklist: [...checklist, withoutRarity, unknownRarity] },
+      });
 
       const view = await service.find(REQUEST_ID);
 
       expect(view.checklistSummary).toEqual({
-        total: 5,
+        total: 7,
         rarities: [
           { name: 'Lendária', count: 1 },
           { name: 'Épica', count: 2 },
           { name: 'Rara', count: 1 },
         ],
       });
-      expect(view.data.checklist).toMatchObject(checklist);
+      expect(view.data.checklist).toMatchObject([...checklist, withoutRarity, unknownRarity]);
       expect((view.data.checklist as { rarity: string }[]).map(({ rarity }) => rarity)).toEqual([
         'Lendária',
         'Épica',
         'Épica',
         'Rara',
         'Comum',
+        undefined,
+        undefined,
       ]);
-      expect(repository.lastRarityIds).toEqual([RARITY_ID, EPIC_ID, RARE_ID, COMMON_ID]);
+      expect(repository.lastRarityIds).toEqual([
+        RARITY_ID,
+        EPIC_ID,
+        RARE_ID,
+        COMMON_ID,
+        UNKNOWN_RARITY_ID,
+      ]);
     });
 
     it('CA6: baixa o checklist do álbum sugerido em CSV, com o nome da raridade', async () => {
@@ -371,6 +390,7 @@ describe('CatalogRequestsService', () => {
         type: 'CARD',
         id: CREATED_ID,
         name: 'Pikachu Promo Illustrator',
+        subcategoryIds: [],
       });
       expect(stored()).toMatchObject({ status: 'APPROVED', cardId: CREATED_ID });
       expect(stored().reviewedBy?.id).toBe(ADMIN_ID);
