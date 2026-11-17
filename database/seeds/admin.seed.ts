@@ -1,7 +1,7 @@
 import { env } from '@/config/env';
 import { AUDIT_ACTIONS } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import { CatalogRequestType, RequestStatus } from '@/generated/prisma/enums';
+import { CatalogRequestType, CatalogVote, RequestStatus } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import type { StorageProvider } from '@/providers/storage/storage.provider';
 
@@ -25,8 +25,14 @@ const catalogRequestsSchema = z.array(
       category: seedKey.optional(),
       rarity: seedKey.optional(),
       language: seedKey.optional(),
+      checklist: z.array(z.looseObject({ rarity: seedKey })).optional(),
+      sampleLogo: z.boolean().optional(),
     }),
   }),
+);
+
+const catalogRequestVotesSchema = z.array(
+  z.object({ request: seedKey, user: seedKey, vote: z.enum(CatalogVote) }),
 );
 
 const globalSettingsSchema = z.object({
@@ -48,6 +54,7 @@ const globalSettingsSchema = z.object({
       }),
     ),
   }),
+  votingGoal: z.object({ description: z.string(), value: z.int().positive() }),
 });
 
 const auditLogsSchema = z.array(
@@ -65,6 +72,7 @@ const auditLogsSchema = z.array(
 const catalogRequests = loadSeedData('catalog-requests.json', catalogRequestsSchema);
 const globalSettings = loadSeedData('global-settings.json', globalSettingsSchema);
 const auditLogs = loadSeedData('audit-logs.json', auditLogsSchema);
+const catalogRequestVotes = loadSeedData('catalog-request-votes.json', catalogRequestVotesSchema);
 
 const catalogRequestIdOf = keyResolver(
   SeedNamespace.catalogRequests,
@@ -86,50 +94,82 @@ const sampleBanner = {
   contentType: 'image/png',
 };
 
-function toRequestPayload({
-  album,
-  category,
-  rarity,
-  language,
-  ...data
-}: (typeof catalogRequests)[number]['data']) {
+const sampleCategoryLogo = {
+  key: 'catalog-requests/seed-category-logo.png',
+  content: solidColorPng({ width: 400, height: 240, rgb: [72, 52, 160] }),
+  contentType: 'image/png',
+};
+
+/** Imagens de exemplo enviadas ao storage local (o banco compartilhado fica sem elas). */
+export interface SampleImages {
+  bannerImageUrl?: string;
+  categoryLogoUrl?: string;
+}
+
+type RequestData = (typeof catalogRequests)[number]['data'];
+
+const toChecklistItem = ({ rarity, ...item }: NonNullable<RequestData['checklist']>[number]) => ({
+  ...item,
+  rarityId: rarityIdOf(rarity),
+});
+
+function toRequestPayload(
+  { album, category, rarity, language, checklist, sampleLogo, ...data }: RequestData,
+  { categoryLogoUrl }: SampleImages,
+) {
   return {
     ...data,
     ...(album && { albumId: albumIdOf(album) }),
     ...(category && { categoryId: categoryIdOf(category) }),
     ...(rarity && { rarityId: rarityIdOf(rarity) }),
     ...(language && { languageId: languageIdOf(language) }),
+    ...(checklist && { checklist: checklist.map(toChecklistItem) }),
+    ...(sampleLogo && categoryLogoUrl && { logoUrl: categoryLogoUrl }),
   };
 }
 
-const toCatalogRequestData = (request: (typeof catalogRequests)[number]) => ({
-  id: catalogRequestIdOf(request.key),
-  requesterId: userIdOf(request.requester),
-  reviewedById: optional(userIdOf)(request.reviewedBy),
-  type: request.type,
-  status: request.status,
-  reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : undefined,
-  data: toRequestPayload(request.data) as Prisma.InputJsonObject,
+const toCatalogRequestData =
+  (images: SampleImages) => (request: (typeof catalogRequests)[number]) => ({
+    id: catalogRequestIdOf(request.key),
+    requesterId: userIdOf(request.requester),
+    reviewedById: optional(userIdOf)(request.reviewedBy),
+    type: request.type,
+    status: request.status,
+    reviewedAt: request.reviewedAt ? new Date(request.reviewedAt) : undefined,
+    data: toRequestPayload(request.data, images) as Prisma.InputJsonObject,
+  });
+
+const toCatalogRequestVoteData = ({
+  request,
+  user,
+  vote,
+}: (typeof catalogRequestVotes)[number]) => ({
+  catalogRequestId: catalogRequestIdOf(request),
+  userId: userIdOf(user),
+  vote,
+});
+
+const globalSetting = (
+  key: string,
+  value: unknown,
+  description: string,
+): Prisma.GlobalSettingCreateManyInput => ({
+  id: seedId(SeedNamespace.globalSettings, key),
+  key,
+  value: JSON.stringify(value),
+  description,
 });
 
 function buildGlobalSettings(bannerImageUrl?: string): Prisma.GlobalSettingCreateManyInput[] {
   const { description: bannerDescription, ctaPath, ...banner } = globalSettings.homeBanner;
   const { description: templatesDescription, templates } = globalSettings.notificationTemplates;
+  const { description: votingGoalDescription, value: votingGoal } = globalSettings.votingGoal;
   const homeBanner = { ...banner, ctaUrl: `${frontendUrl}${ctaPath}`, imageUrl: bannerImageUrl };
 
   return [
-    {
-      id: seedId(SeedNamespace.globalSettings, 'home.banner'),
-      key: 'home.banner',
-      value: JSON.stringify(homeBanner),
-      description: bannerDescription,
-    },
-    {
-      id: seedId(SeedNamespace.globalSettings, 'notification.templates'),
-      key: 'notification.templates',
-      value: JSON.stringify(templates),
-      description: templatesDescription,
-    },
+    globalSetting('home.banner', homeBanner, bannerDescription),
+    globalSetting('notification.templates', templates, templatesDescription),
+    globalSetting('catalog.voting_goal', votingGoal, votingGoalDescription),
   ];
 }
 
@@ -149,16 +189,27 @@ const toAuditLogData = ({
   createdAt: new Date(createdAt),
 });
 
-export async function uploadSampleBanner(storage: StorageProvider): Promise<string> {
-  const banner = await storage.upload(sampleBanner);
-  return banner.url;
+export async function uploadSampleImages(storage: StorageProvider): Promise<SampleImages> {
+  const [banner, categoryLogo] = await Promise.all([
+    storage.upload(sampleBanner),
+    storage.upload(sampleCategoryLogo),
+  ]);
+  return { bannerImageUrl: banner.url, categoryLogoUrl: categoryLogo.url };
 }
 
-export async function seedAdmin(prisma: PrismaClient, bannerImageUrl?: string): Promise<void> {
-  for (const data of catalogRequests.map(toCatalogRequestData)) {
+export async function seedAdmin(prisma: PrismaClient, images: SampleImages = {}): Promise<void> {
+  for (const data of catalogRequests.map(toCatalogRequestData(images))) {
     await prisma.catalogRequest.upsert({ where: { id: data.id }, create: data, update: data });
   }
-  for (const setting of buildGlobalSettings(bannerImageUrl)) {
+  for (const data of catalogRequestVotes.map(toCatalogRequestVoteData)) {
+    const { catalogRequestId, userId } = data;
+    await prisma.catalogRequestVote.upsert({
+      where: { catalogRequestId_userId: { catalogRequestId, userId } },
+      create: data,
+      update: data,
+    });
+  }
+  for (const setting of buildGlobalSettings(images.bannerImageUrl)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
   }
   for (const data of auditLogs.map(toAuditLogData)) {

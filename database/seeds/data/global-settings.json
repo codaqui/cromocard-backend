@@ -21,5 +21,9 @@
         "content": "Um novo álbum foi adicionado ao catálogo. Confira e comece sua coleção!"
       }
     ]
+  },
+  "votingGoal": {
+    "description": "Meta de votos das sugestões de categoria",
+    "value": 200
   }
 }

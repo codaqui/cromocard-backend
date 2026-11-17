@@ -1,0 +1,42 @@
+[
+  {
+    "request": "disney-lorcana",
+    "user": "ana",
+    "vote": "FOR"
+  },
+  {
+    "request": "disney-lorcana",
+    "user": "bruno",
+    "vote": "FOR"
+  },
+  {
+    "request": "disney-lorcana",
+    "user": "carla",
+    "vote": "NEUTRAL"
+  },
+  {
+    "request": "disney-lorcana",
+    "user": "elisa",
+    "vote": "FOR"
+  },
+  {
+    "request": "disney-lorcana",
+    "user": "fabio",
+    "vote": "AGAINST"
+  },
+  {
+    "request": "gundam-card-game",
+    "user": "bruno",
+    "vote": "AGAINST"
+  },
+  {
+    "request": "gundam-card-game",
+    "user": "elisa",
+    "vote": "FOR"
+  },
+  {
+    "request": "formula-1",
+    "user": "gabriela",
+    "vote": "FOR"
+  }
+]
