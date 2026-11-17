@@ -38,14 +38,11 @@ export class SettingsService {
   }
 
   async updateGoals(goals: GoalsInput, adminId: string): Promise<GoalsInput> {
-    const { monthlySignupGoal, votingGoal } = SETTING_KEYS;
-    await this.deps.runInTransaction(async (tx) => {
-      await this.deps.store.save(
-        { key: monthlySignupGoal, value: goals.monthlySignupGoal, adminId },
-        tx,
-      );
-      await this.deps.store.save({ key: votingGoal, value: goals.votingGoal, adminId }, tx);
-    });
+    const values = [
+      { key: SETTING_KEYS.monthlySignupGoal, value: goals.monthlySignupGoal },
+      { key: SETTING_KEYS.votingGoal, value: goals.votingGoal },
+    ];
+    await this.deps.runInTransaction((tx) => this.deps.store.saveAll(values, adminId, tx));
     return goals;
   }
 

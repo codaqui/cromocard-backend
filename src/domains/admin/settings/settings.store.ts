@@ -18,9 +18,12 @@ export interface SettingView {
   updatedBy: { id: string; name: string } | null;
 }
 
-export interface SettingChange {
+export interface SettingValue {
   key: string;
   value: JsonValue;
+}
+
+export interface SettingChange extends SettingValue {
   adminId: string;
 }
 
@@ -69,9 +72,7 @@ export class SettingsStore {
     tx: Transaction,
     auditOf: AuditOf = settingUpdated(change),
   ): Promise<SettingView> {
-    const before = parseValue((await this.findOrFail(change.key, tx)).value);
-    const value = JSON.stringify(change.value);
-    const setting = await this.settings.updateValue({ ...change, value }, tx);
+    const { before, setting } = await this.write(change, tx);
     const { action, details } = auditOf(before);
     await this.auditLog.record(
       {
@@ -84,6 +85,32 @@ export class SettingsStore {
       tx,
     );
     return toView(setting);
+  }
+
+  async saveAll(values: SettingValue[], adminId: string, tx: Transaction): Promise<void> {
+    const before: Record<string, JsonValue> = {};
+    const after: Record<string, JsonValue> = {};
+    for (const { key, value } of values) {
+      before[key] = (await this.write({ key, value, adminId }, tx)).before;
+      after[key] = value;
+    }
+    const keys = values.map(({ key }) => key);
+    await this.auditLog.record(
+      {
+        adminId,
+        action: 'SETTING_UPDATED',
+        entityType: SETTING_ENTITY,
+        details: { keys, before, after },
+      },
+      tx,
+    );
+  }
+
+  private async write(change: SettingChange, tx: Transaction) {
+    const before = parseValue((await this.findOrFail(change.key, tx)).value);
+    const value = JSON.stringify(change.value);
+    const setting = await this.settings.updateValue({ ...change, value }, tx);
+    return { before, setting };
   }
 
   private async findOrFail(key: string, tx?: Transaction): Promise<StoredSetting> {

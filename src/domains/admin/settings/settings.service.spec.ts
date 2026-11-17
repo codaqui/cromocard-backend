@@ -175,15 +175,23 @@ describe('SettingsService', () => {
     expect(audits).toEqual([]);
   });
 
-  it('CA9: grava as duas metas, com a meta mensal vazia como "sem meta", e audita cada chave', async () => {
+  it('CA9: grava as duas metas, com a meta mensal vazia como "sem meta", num único registro de auditoria', async () => {
     const goals = await service.updateGoals({ monthlySignupGoal: null, votingGoal: 150 }, ADMIN_ID);
 
     expect(goals).toEqual({ monthlySignupGoal: null, votingGoal: 150 });
     expect(settings.valueOf(SETTING_KEYS.monthlySignupGoal)).toBeNull();
     expect(settings.valueOf(SETTING_KEYS.votingGoal)).toBe(150);
-    expect(audits.map(({ details }) => details)).toEqual([
-      { key: SETTING_KEYS.monthlySignupGoal, before: 4000, after: null },
-      { key: SETTING_KEYS.votingGoal, before: 200, after: 150 },
+    expect(audits).toEqual([
+      {
+        adminId: ADMIN_ID,
+        action: 'SETTING_UPDATED',
+        entityType: 'SETTING',
+        details: {
+          keys: [SETTING_KEYS.monthlySignupGoal, SETTING_KEYS.votingGoal],
+          before: { [SETTING_KEYS.monthlySignupGoal]: 4000, [SETTING_KEYS.votingGoal]: 200 },
+          after: { [SETTING_KEYS.monthlySignupGoal]: null, [SETTING_KEYS.votingGoal]: 150 },
+        },
+      },
     ]);
   });
 

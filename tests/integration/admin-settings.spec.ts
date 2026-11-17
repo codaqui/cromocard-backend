@@ -214,6 +214,25 @@ describe('metas', () => {
     expect(await storedValue(SETTING_KEYS.monthlySignupGoal)).toBeNull();
     expect(await storedValue(SETTING_KEYS.votingGoal)).toBe(150);
   });
+
+  it('CA9: salvar as metas grava um único SETTING_UPDATED com as duas chaves', async () => {
+    const settingLogs = { adminId, action: 'SETTING_UPDATED' };
+    const before = await prisma.auditLog.count({ where: settingLogs });
+
+    await asAdmin().patch('/goals', { monthlySignupGoal: 3000, votingGoal: 180 });
+    const after = await prisma.auditLog.count({ where: settingLogs });
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: settingLogs,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(after - before).toBe(1);
+    expect(log.entityId).toBeNull();
+    expect(log.details).toMatchObject({
+      keys: [SETTING_KEYS.monthlySignupGoal, SETTING_KEYS.votingGoal],
+      after: { [SETTING_KEYS.monthlySignupGoal]: 3000, [SETTING_KEYS.votingGoal]: 180 },
+    });
+  });
 });
 
 describe('categorias padrão', () => {
