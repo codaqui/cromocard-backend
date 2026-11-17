@@ -29,13 +29,23 @@ export const settingUpdateSchema = z.discriminatedUnion('key', [
 export type SettingUpdate = z.infer<typeof settingUpdateSchema>;
 
 const DUPLICATED_CATEGORY = 'A categoria aparece mais de uma vez';
+const SEVERAL_PINNED = 'Só uma categoria pode ser fixada no topo';
 
 export const defaultCategoriesBodySchema = z.object({
   categories: z
-    .array(z.object({ id: z.uuid(), backImageUrl: imageUrlSchema.nullable() }))
+    .array(
+      z.object({
+        id: z.uuid(),
+        backImageUrl: imageUrlSchema.nullable(),
+        isPinned: z.boolean().optional(),
+      }),
+    )
     .max(DEFAULT_CATEGORIES_MAX)
     .refine((items) => new Set(items.map(({ id }) => id)).size === items.length, {
       message: DUPLICATED_CATEGORY,
+    })
+    .refine((items) => items.filter(({ isPinned }) => isPinned).length <= 1, {
+      message: SEVERAL_PINNED,
     }),
 });
 

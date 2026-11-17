@@ -1,4 +1,7 @@
-import type { DefaultCategory } from '@/domains/catalog/catalog-default-categories.service';
+import type {
+  DefaultCategory,
+  DefaultCategoryPlacement,
+} from '@/domains/catalog/catalog-default-categories.service';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 
 import { type DefaultBacks, defaultBacksSchema, SETTING_KEYS } from './setting-schemas';
@@ -7,7 +10,10 @@ import type { DefaultCategoriesInput } from './settings.validator';
 
 export interface SettingsDefaultCategories {
   listDefaults(tx?: Transaction): Promise<DefaultCategory[]>;
-  replaceDefaults(ids: string[], tx: Transaction): Promise<DefaultCategory[]>;
+  replaceDefaults(
+    placements: DefaultCategoryPlacement[],
+    tx: Transaction,
+  ): Promise<DefaultCategory[]>;
 }
 
 export interface DefaultCategoriesSettingsServiceDeps {
@@ -20,6 +26,10 @@ export type DefaultCategoryView = DefaultCategory & { backImageUrl: string | nul
 
 function withBacks(categories: DefaultCategory[], backs: DefaultBacks): DefaultCategoryView[] {
   return categories.map((category) => ({ ...category, backImageUrl: backs[category.id] ?? null }));
+}
+
+function placementsOf({ categories }: DefaultCategoriesInput): DefaultCategoryPlacement[] {
+  return categories.map(({ id, isPinned }) => ({ id, isPinned: isPinned ?? false }));
 }
 
 function backsOf({ categories }: DefaultCategoriesInput): DefaultBacks {
@@ -39,9 +49,9 @@ export class DefaultCategoriesSettingsService {
   update(input: DefaultCategoriesInput, adminId: string): Promise<DefaultCategoryView[]> {
     return this.deps.runInTransaction(async (tx) => {
       const before = await this.list(tx);
-      const ids = input.categories.map(({ id }) => id);
       const backs = backsOf(input);
-      const after = withBacks(await this.deps.defaultCategories.replaceDefaults(ids, tx), backs);
+      const saved = await this.deps.defaultCategories.replaceDefaults(placementsOf(input), tx);
+      const after = withBacks(saved, backs);
       const change = { key: SETTING_KEYS.defaultBacks, value: backs, adminId };
       await this.deps.store.save(change, tx, () => ({
         action: 'DEFAULT_CATEGORIES_UPDATED',

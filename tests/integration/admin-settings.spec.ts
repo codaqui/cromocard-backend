@@ -5,6 +5,7 @@ import { createApp } from '@/app';
 import { SETTING_KEYS } from '@/domains/admin/settings/setting-schemas';
 import { signAccessToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { slugify } from '@/lib/slug';
 
 const app = createApp();
 const BASE = '/api/v1/admin/settings';
@@ -37,7 +38,7 @@ interface ErrorBody {
 let adminId: string;
 let adminToken: string;
 let originalSettings: { key: string; value: string }[];
-let originalDefaultIds: string[];
+let originalDefaults: { id: string; displayOrder: number; isPinned: boolean }[];
 const categories: Record<'pokemon' | 'magic' | 'child' | 'deleted', string> = {
   pokemon: '',
   magic: '',
@@ -60,8 +61,9 @@ async function storedValue(key: string): Promise<unknown> {
 }
 
 async function createCategory(name: string, extra: object = {}) {
+  const fullName = `${MARKER} ${name}`;
   const row = await prisma.category.create({
-    data: { name: `${MARKER} ${name}`, type: 'CARD', ...extra },
+    data: { name: fullName, slug: slugify(fullName), type: 'CARD', ...extra },
   });
   return row.id;
 }
@@ -77,11 +79,10 @@ beforeAll(async () => {
     where: { key: { in: keys } },
     select: { key: true, value: true },
   });
-  const defaults = await prisma.category.findMany({
+  originalDefaults = await prisma.category.findMany({
     where: { isDefault: true },
-    select: { id: true },
+    select: { id: true, displayOrder: true, isPinned: true },
   });
-  originalDefaultIds = defaults.map(({ id }) => id);
   for (const [key, value] of Object.entries(INITIAL_VALUES)) {
     const data = { value: JSON.stringify(value), deletedAt: null };
     await prisma.globalSetting.upsert({ where: { key }, create: { key, ...data }, update: data });
@@ -105,10 +106,12 @@ afterAll(async () => {
   for (const { key, value } of originalSettings) {
     await prisma.globalSetting.update({ where: { key }, data: { value } });
   }
-  await prisma.category.updateMany({
-    where: { id: { in: originalDefaultIds } },
-    data: { isDefault: true },
-  });
+  for (const { id, displayOrder, isPinned } of originalDefaults) {
+    await prisma.category.update({
+      where: { id },
+      data: { isDefault: true, displayOrder, isPinned },
+    });
+  }
   await prisma.category.deleteMany({
     where: { name: { startsWith: MARKER }, parentCategoryId: { not: null } },
   });
@@ -276,6 +279,110 @@ describe('categorias padrão', () => {
     expect((child.body as ErrorBody).error).toBe('DEFAULT_CATEGORY_NOT_ROOT');
     expect(deleted.status).toBe(404);
     expect(pokemon.isDefault).toBe(true);
+  });
+});
+
+describe('ordem das categorias padrão', () => {
+  const defaultCategoriesAudit = () =>
+    prisma.auditLog.findFirstOrThrow({
+      where: { adminId, action: 'DEFAULT_CATEGORIES_UPDATED' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+  it('CCD104 CA7: CUSTOMER recebe 403 no GET e no PATCH, e sem token responde 401', async () => {
+    const customer = {
+      Authorization: `Bearer ${signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' })}`,
+    };
+
+    const get = await request(app).get(`${BASE}/default-categories`).set(customer);
+    const patch = await request(app)
+      .patch(`${BASE}/default-categories`)
+      .set(customer)
+      .send({ categories: [] });
+    const anonymous = await request(app).get(`${BASE}/default-categories`);
+
+    expect([get.status, patch.status, anonymous.status]).toEqual([403, 403, 401]);
+  });
+
+  it('CCD104 CA2: grava a ordem da lista e o log traz a posição de antes e depois', async () => {
+    await asAdmin().patch('/default-categories', {
+      categories: [{ id: categories.pokemon, backImageUrl: null }],
+    });
+
+    const res = await asAdmin().patch('/default-categories', {
+      categories: [
+        { id: categories.magic, backImageUrl: null },
+        { id: categories.pokemon, backImageUrl: null },
+      ],
+    });
+
+    const body = res.body as { data: { id: string; displayOrder: number }[] };
+    expect(body.data.map(({ id, displayOrder }) => [id, displayOrder])).toEqual([
+      [categories.magic, 0],
+      [categories.pokemon, 1],
+    ]);
+    expect((await defaultCategoriesAudit()).details).toMatchObject({
+      before: [{ id: categories.pokemon, displayOrder: 0, isPinned: false }],
+      after: [
+        { id: categories.magic, displayOrder: 0 },
+        { id: categories.pokemon, displayOrder: 1 },
+      ],
+    });
+  });
+
+  it('CCD104 CA3 e CA11: a categoria fixada volta primeiro no GET e as outras seguem a ordem', async () => {
+    await asAdmin().patch('/default-categories', {
+      categories: [
+        { id: categories.magic, backImageUrl: null },
+        { id: categories.pokemon, backImageUrl: null, isPinned: true },
+      ],
+    });
+
+    const list = await asAdmin().get('/default-categories');
+
+    const ids = (list.body as { data: { id: string; isPinned: boolean }[] }).data.filter(({ id }) =>
+      [categories.magic, categories.pokemon].includes(id),
+    );
+    expect(ids.map(({ id, isPinned }) => [id, isPinned])).toEqual([
+      [categories.pokemon, true],
+      [categories.magic, false],
+    ]);
+  });
+
+  it('CCD104 CA8: dois itens fixados respondem 400 e nada é gravado', async () => {
+    const before = await prisma.category.findUniqueOrThrow({ where: { id: categories.magic } });
+
+    const res = await asAdmin().patch('/default-categories', {
+      categories: [
+        { id: categories.magic, backImageUrl: null, isPinned: true },
+        { id: categories.pokemon, backImageUrl: null, isPinned: true },
+      ],
+    });
+
+    const after = await prisma.category.findUniqueOrThrow({ where: { id: categories.magic } });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({
+      error: 'VALIDATION_ERROR',
+      details: [{ field: 'categories', message: 'Só uma categoria pode ser fixada no topo' }],
+    });
+    expect([after.isPinned, after.displayOrder]).toEqual([before.isPinned, before.displayOrder]);
+  });
+
+  it('CCD104 CA1: o GET devolve slug, selo e a quantidade de cartas', async () => {
+    await asAdmin().patch('/default-categories', {
+      categories: [{ id: categories.magic, backImageUrl: null }],
+    });
+
+    const list = await asAdmin().get('/default-categories');
+
+    expect((list.body as { data: unknown[] }).data).toEqual([
+      expect.objectContaining({
+        id: categories.magic,
+        slug: slugify(`${MARKER} Magic`),
+        badge: null,
+        cardsCount: 0,
+      }),
+    ]);
   });
 });
 

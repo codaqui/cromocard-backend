@@ -1,5 +1,6 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
+import { CATEGORY_BADGES } from '@/domains/catalog/catalog.validator';
 import { CategoryType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 
@@ -33,6 +34,11 @@ const defaultCategoryView = z.object({
   id: z.uuid(),
   name: z.string(),
   type: z.enum(CategoryType),
+  slug: z.string().nullable(),
+  badge: z.enum(CATEGORY_BADGES).nullable(),
+  isPinned: z.boolean(),
+  displayOrder: z.number().int(),
+  cardsCount: z.number().int(),
   backImageUrl: z.url().nullable(),
 });
 
@@ -89,14 +95,15 @@ const settingsPaths: RouteConfig[] = [
     path: '/admin/settings/default-categories',
     tags,
     security,
-    summary: 'Troca o conjunto de categorias padrão e os versos, numa transação (CCD066)',
+    summary:
+      'Troca o conjunto, a ordem, a categoria fixada e os versos das categorias padrão, numa transação (CCD066, CCD104)',
     request: { body: json(defaultCategoriesBodySchema) },
     responses: {
       200: {
         description: 'Categorias padrão salvas',
         ...json(z.object({ data: z.array(defaultCategoryView) })),
       },
-      400: { description: 'VALIDATION_ERROR' },
+      400: { description: 'VALIDATION_ERROR: categoria repetida ou mais de uma fixada no topo' },
       ...accessErrors,
       404: { description: 'CATEGORY_NOT_FOUND: categoria inexistente ou excluída' },
       422: { description: 'DEFAULT_CATEGORY_NOT_ROOT: categoria com categoria pai' },

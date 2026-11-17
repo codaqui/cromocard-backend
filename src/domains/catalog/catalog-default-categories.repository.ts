@@ -6,8 +6,23 @@ const defaultCategorySelect = {
   id: true,
   name: true,
   type: true,
+  slug: true,
+  badge: true,
+  displayOrder: true,
+  isPinned: true,
   parentCategoryId: true,
 } satisfies Prisma.CategorySelect;
+
+const defaultCategoriesOrder = [
+  { isPinned: 'desc' },
+  { displayOrder: 'asc' },
+  { name: 'asc' },
+] satisfies Prisma.CategoryOrderByWithRelationInput[];
+
+export interface DefaultCategoryPlacement {
+  id: string;
+  isPinned: boolean;
+}
 
 export type DefaultCategoryCandidate = Prisma.CategoryGetPayload<{
   select: typeof defaultCategorySelect;
@@ -18,7 +33,7 @@ export type DefaultCategory = Omit<DefaultCategoryCandidate, 'parentCategoryId'>
 export interface DefaultCategoriesRepository {
   findDefaults(tx?: Transaction): Promise<DefaultCategory[]>;
   findActiveByIds(ids: string[], tx: Transaction): Promise<DefaultCategoryCandidate[]>;
-  replaceDefaults(ids: string[], tx: Transaction): Promise<void>;
+  replaceDefaults(placements: DefaultCategoryPlacement[], tx: Transaction): Promise<void>;
 }
 
 export class PrismaDefaultCategoriesRepository implements DefaultCategoriesRepository {
@@ -27,8 +42,8 @@ export class PrismaDefaultCategoriesRepository implements DefaultCategoriesRepos
   findDefaults(tx?: Transaction): Promise<DefaultCategory[]> {
     return (tx ?? this.prisma).category.findMany({
       where: { isDefault: true, ...notDeleted },
-      select: { id: true, name: true, type: true },
-      orderBy: { name: 'asc' },
+      select: defaultCategorySelect,
+      orderBy: defaultCategoriesOrder,
     });
   }
 
@@ -39,11 +54,19 @@ export class PrismaDefaultCategoriesRepository implements DefaultCategoriesRepos
     });
   }
 
-  async replaceDefaults(ids: string[], tx: Transaction): Promise<void> {
+  async replaceDefaults(placements: DefaultCategoryPlacement[], tx: Transaction): Promise<void> {
+    const ids = placements.map(({ id }) => id);
     await tx.category.updateMany({
       where: { isDefault: true, id: { notIn: ids } },
-      data: { isDefault: false },
+      data: { isDefault: false, isPinned: false },
     });
-    await tx.category.updateMany({ where: { id: { in: ids } }, data: { isDefault: true } });
+    await Promise.all(
+      placements.map(({ id, isPinned }, position) =>
+        tx.category.update({
+          where: { id },
+          data: { isDefault: true, isPinned, displayOrder: position },
+        }),
+      ),
+    );
   }
 }

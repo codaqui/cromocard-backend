@@ -141,4 +141,22 @@ describe('settings.validator', () => {
       ),
     ).toEqual(['categories.1.backImageUrl', 'categories']);
   });
+
+  it('CCD104 CA8: aceita uma categoria fixada e recusa duas, no campo categories', () => {
+    const otherId = '0190f3a4-0000-7000-8000-000000000102';
+    const pinned = (...ids: string[]) =>
+      defaultCategoriesBodySchema.parse({
+        categories: ids.map((id) => ({ id, backImageUrl: null, isPinned: true })),
+      });
+
+    expect(pinned(CATEGORY_ID).categories).toEqual([
+      { id: CATEGORY_ID, backImageUrl: null, isPinned: true },
+    ]);
+    expect(fieldsOf(() => pinned(CATEGORY_ID, otherId))).toEqual(['categories']);
+    expect(() => pinned(CATEGORY_ID, otherId)).toThrow('Só uma categoria pode ser fixada no topo');
+  });
+
+  it('CCD104 R5: o isPinned é opcional e uma lista sem nenhum fixado vale', () => {
+    expect(backsUpdate(null).categories[0]).not.toHaveProperty('isPinned');
+  });
 });
