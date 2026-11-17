@@ -98,3 +98,12 @@ export class CsvInvalidError extends AppError {
     });
   }
 }
+
+export class DefaultCategoryNotRootError extends BusinessRuleError {
+  constructor() {
+    super(
+      'Só uma franquia, sem categoria pai, pode ser categoria padrão',
+      'DEFAULT_CATEGORY_NOT_ROOT',
+    );
+  }
+}
