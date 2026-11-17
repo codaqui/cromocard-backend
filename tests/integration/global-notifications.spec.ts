@@ -2,6 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '@/app';
+import { PrismaGlobalNotificationsRepository } from '@/domains/notifications/global-notifications.repository';
 import { globalNotificationsService } from '@/domains/notifications/notifications.module';
 import type { Prisma } from '@/generated/prisma/client';
 import { signAccessToken } from '@/lib/jwt';
@@ -151,6 +152,14 @@ describe('Notificação global (CCD060, CCD100, CCD101)', () => {
     expect(counts.data.ALL).toBeGreaterThanOrEqual(counts.data.ACTIVE_COLLECTORS!);
   });
 
+  it('CCD101 CA2: só por e-mail não cria notificação na central', async () => {
+    const res = await asAdmin().post('', message({ channels: ['EMAIL'] }));
+
+    expect(res.status).toBe(201);
+    expect(bodyOf(res).recipientCount).toBeGreaterThanOrEqual(3);
+    expect(await receivers(bodyOf(res).id)).toHaveLength(0);
+  });
+
   it('CCD101 CA4: sem canal responde 400', async () => {
     const res = await asAdmin().post('', message({ channels: [] }));
 
@@ -205,6 +214,10 @@ describe('Notificação global (CCD060, CCD100, CCD101)', () => {
       }),
     ).toBe(1);
     expect((await asAdmin().post(`/${UNKNOWN_ID}/cancel`)).status).toBe(404);
+    const repository = new PrismaGlobalNotificationsRepository(prisma);
+    const delivery = { recipientIds: [users.colecionador!], inApp: true, sentAt: new Date() };
+    expect(await repository.deliverScheduled(id, delivery)).toBeNull();
+    expect(await receivers(id)).toHaveLength(0);
   });
 
   it('R16: o histórico vem do mais recente ao mais antigo', async () => {
