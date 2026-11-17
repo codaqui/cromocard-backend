@@ -21,3 +21,17 @@ export function noContent(res: Response): void {
 export function paginated<T>(res: Response, data: T[], meta: PaginationMeta): void {
   res.status(200).json({ data, meta });
 }
+
+export function okWithMeta<T, M>(res: Response, data: T, meta: M): void {
+  res.status(200).json({ data, meta });
+}
+
+export interface FileDownload {
+  fileName: string;
+  contentType: string;
+  content: Buffer;
+}
+
+export function download(res: Response, { fileName, contentType, content }: FileDownload): void {
+  res.status(200).type(contentType).attachment(fileName).send(content);
+}
