@@ -338,6 +338,61 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
     await expect(auditOf('USER_WARNED', author)).resolves.not.toBeNull();
   });
 
+  it('R7: se a advertência falhar, a mensagem não é removida, a denúncia fica aberta e nada é registrado', async () => {
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: adminId, content: 'Mensagem do próprio admin' },
+    });
+    const reportId = await createReport(message.id);
+
+    const res = await asAdmin('post', `/reports/${reportId}/remove-and-warn`).send(REASON);
+
+    expect(res.status).toBe(422);
+    const storedMessage = await prisma.groupMessage.findUniqueOrThrow({
+      where: { id: message.id },
+    });
+    expect(storedMessage.deletedAt).toBeNull();
+    const report = await prisma.report.findUniqueOrThrow({ where: { id: reportId } });
+    expect(report.status).toBe('PENDING');
+    await expect(auditOf('GROUP_MESSAGE_REMOVED', message.id)).resolves.toBeNull();
+
+    await prisma.report.delete({ where: { id: reportId } });
+    await prisma.groupMessage.delete({ where: { id: message.id } });
+  });
+
+  it('R3: justificativa acima de 255 caracteres responde 400 sem remover a mensagem', async () => {
+    const author = await createUser('autor-justificativa-longa');
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: author, content: 'Mensagem denunciada' },
+    });
+    const reportId = await createReport(message.id);
+
+    const res = await asAdmin('post', `/reports/${reportId}/remove-and-warn`).send({
+      reason: 'a'.repeat(256),
+    });
+
+    expect(res.status).toBe(400);
+    const storedMessage = await prisma.groupMessage.findUniqueOrThrow({
+      where: { id: message.id },
+    });
+    expect(storedMessage.deletedAt).toBeNull();
+
+    await prisma.report.delete({ where: { id: reportId } });
+    await prisma.groupMessage.delete({ where: { id: message.id } });
+  });
+
+  it('R13: o histórico de resolvidas mostra a denúncia mesmo com a mensagem já removida', async () => {
+    const author = await createUser('autor-historico');
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: author, content: 'Mensagem que vai para o histórico' },
+    });
+    const reportId = await createReport(message.id);
+    await asAdmin('post', `/reports/${reportId}/remove-message`).send(REASON);
+
+    const res = await asAdmin('get', '/reports').query({ status: 'RESOLVED', pageSize: 100 });
+
+    expect(dataOf<{ id: string }[]>(res).map(({ id }) => id)).toContain(reportId);
+  });
+
   it('responde 404 para denúncia inexistente', async () => {
     const res = await asAdmin('post', `/reports/${UNKNOWN_ID}/dismiss`).send(REASON);
 

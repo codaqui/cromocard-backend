@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { GroupStatus, ReportStatus, ReportTargetType } from '@/generated/prisma/enums';
+import type { Transaction } from '@/lib/transaction';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
 import { DAY_IN_MS } from '@/shared/utils/time-zone';
@@ -65,8 +66,12 @@ interface MessageStats {
   reportersCount: number;
 }
 
-function uniqueDefined(values: (string | undefined)[]): string[] {
-  return [...new Set(values.filter((value): value is string => value !== undefined))];
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function countIn(counts: Map<string | null, number>, key: string): number {
+  return counts.get(key) ?? 0;
 }
 
 function toReportedMessage(
@@ -139,7 +144,7 @@ export interface CommunityAdminRepository {
     now: Date,
   ): Promise<Page<GroupMessageReport>>;
   findGroupMessageReportState(id: string): Promise<ReportState | null>;
-  removeReportedMessage(removal: MessageRemoval): Promise<string[]>;
+  removeReportedMessage(removal: MessageRemoval, tx: Transaction): Promise<string[]>;
   dismissReport(reportId: string, moderatorId: string): Promise<boolean>;
 }
 
@@ -304,8 +309,9 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
   private async messageStatsOf(
     rows: GroupMessageReportRow[],
   ): Promise<(authorId: string, messageId: string) => MessageStats> {
-    const authorIds = uniqueDefined(rows.map((row) => row.groupMessage?.author.id));
-    const messageIds = uniqueDefined(rows.map((row) => row.groupMessage?.id));
+    const messages = rows.map((row) => row.groupMessage).filter((message) => message !== null);
+    const authorIds = unique(messages.map((message) => message.author.id));
+    const messageIds = unique(messages.map((message) => message.id));
 
     const [warningsByAuthor, reportsByMessage] = await Promise.all([
       this.countWarningsByAuthor(authorIds),
@@ -316,8 +322,8 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
     const reportersMap = new Map(reportsByMessage.map((row) => [row.groupMessageId, row._count]));
 
     return (authorId, messageId) => ({
-      authorWarnings: warningsMap.get(authorId) ?? 0,
-      reportersCount: reportersMap.get(messageId) ?? 0,
+      authorWarnings: countIn(warningsMap, authorId),
+      reportersCount: countIn(reportersMap, messageId),
     });
   }
 
@@ -328,21 +334,19 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
     });
   }
 
-  removeReportedMessage(removal: MessageRemoval): Promise<string[]> {
-    return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.report.updateMany({
-        where: openReport(removal.reportId),
-        data: resolution(ReportStatus.RESOLVED, removal.moderatorId),
-      });
-      if (count === 0) return [];
-
-      const others = await resolveOtherOpenReports(tx, removal);
-      await tx.groupMessage.updateMany({
-        where: { id: removal.messageId, ...notDeleted },
-        data: softDeleteData(),
-      });
-      return [removal.reportId, ...others];
+  async removeReportedMessage(removal: MessageRemoval, tx: Transaction): Promise<string[]> {
+    const { count } = await tx.report.updateMany({
+      where: openReport(removal.reportId),
+      data: resolution(ReportStatus.RESOLVED, removal.moderatorId),
     });
+    if (count === 0) return [];
+
+    const others = await resolveOtherOpenReports(tx, removal);
+    await tx.groupMessage.updateMany({
+      where: { id: removal.messageId, ...notDeleted },
+      data: softDeleteData(),
+    });
+    return [removal.reportId, ...others];
   }
 
   async dismissReport(reportId: string, moderatorId: string): Promise<boolean> {
