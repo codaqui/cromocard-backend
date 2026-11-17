@@ -13,6 +13,7 @@ function uniqueEmail(prefix: string): string {
 async function createUser(overrides: {
   status?: 'ACTIVE' | 'SUSPENDED' | 'BLOCKED';
   suspendedUntil?: Date;
+  deletedAt?: Date;
 }) {
   const user = await prisma.user.create({
     data: {
@@ -50,6 +51,19 @@ describe('lift-expired-suspensions', () => {
 
     const ongoingAfter = await prisma.user.findUniqueOrThrow({ where: { id: ongoing.id } });
     expect(ongoingAfter.status).toBe('SUSPENDED');
+  });
+
+  it('não reativa um usuário excluído, mesmo com a suspensão vencida', async () => {
+    const deleted = await createUser({
+      status: 'SUSPENDED',
+      suspendedUntil: new Date(Date.now() - DAY_IN_MS),
+      deletedAt: new Date(),
+    });
+
+    await expiredSuspensionsLifter.liftExpiredSuspensions();
+
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: deleted.id } });
+    expect(after.status).toBe('SUSPENDED');
   });
 
   it('não reativa quem foi banido definitivamente', async () => {

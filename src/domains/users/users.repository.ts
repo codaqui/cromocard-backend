@@ -316,7 +316,7 @@ export class PrismaUsersRepository implements UsersRepository {
 
   async reactivateExpiredSuspensions(now: Date): Promise<number> {
     const { count } = await this.prisma.user.updateMany({
-      where: { status: 'SUSPENDED', suspendedUntil: { lte: now } },
+      where: { ...notDeleted, status: 'SUSPENDED', suspendedUntil: { lte: now } },
       data: { status: 'ACTIVE', suspendedUntil: null },
     });
     return count;
