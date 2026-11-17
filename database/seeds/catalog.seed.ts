@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@/generated/prisma/client';
 import { AlbumStatus, CategoryType } from '@/generated/prisma/enums';
+import { slugify } from '@/lib/slug';
 import { z } from '@/lib/zod';
 
 import { loadSeedData, seedKey } from './load-seed-data';
@@ -72,12 +73,26 @@ async function seedReferenceData(prisma: PrismaClient) {
   }
 }
 
+/** Posição de cada categoria padrão na ordem alfabética inicial, como a migration da CCD104 deixa. */
+function defaultDisplayOrders(): Map<string, number> {
+  const names = categories
+    .filter(({ isDefault }) => isDefault)
+    .map(({ key, name }) => ({ key, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+  return new Map(names.map(({ key }, position) => [key, position]));
+}
+
 async function seedCategories(prisma: PrismaClient) {
+  const orders = defaultDisplayOrders();
+
   for (const { key, parent, ...category } of categories) {
     const data = {
       ...category,
       id: categoryIdOf(key),
       parentCategoryId: optional(categoryIdOf)(parent),
+      slug: slugify(category.name),
+      displayOrder: orders.get(key) ?? 0,
     };
     await prisma.category.upsert({ where: { id: data.id }, create: data, update: data });
   }

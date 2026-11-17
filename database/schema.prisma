@@ -2,6 +2,7 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "esm"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -133,6 +134,10 @@ model Category {
   type             CategoryType
   description      String?      @db.VarChar(255)
   isDefault        Boolean      @default(false) @map("is_default")
+  slug             String?      @db.VarChar(100)
+  displayOrder     Int          @default(0) @map("display_order")
+  isPinned         Boolean      @default(false) @map("is_pinned")
+  badge            String?      @db.VarChar(20)
   createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
@@ -142,6 +147,7 @@ model Category {
   albums         Album[]
   cards          Card[]
 
+  @@unique([slug], map: "categories_slug_key", where: raw("deleted_at IS NULL"))
   @@map("categories")
 }
 
