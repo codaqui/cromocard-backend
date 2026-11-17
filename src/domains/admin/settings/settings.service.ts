@@ -4,6 +4,7 @@ import {
   isEditableSettingKey,
   isPublicSettingKey,
   type JsonValue,
+  monthlySignupGoalSchema,
   type NotificationTemplate,
   SETTING_KEYS,
 } from './setting-schemas';
@@ -27,6 +28,12 @@ export class SettingsService {
   async getPublic(key: string): Promise<JsonValue> {
     if (!isPublicSettingKey(key)) throw new SettingNotFoundError();
     return (await this.deps.store.getOrFail(key)).value;
+  }
+
+  async getMonthlySignupGoal(): Promise<number | null> {
+    const stored = await this.deps.store.findValue(SETTING_KEYS.monthlySignupGoal);
+    const goal = monthlySignupGoalSchema.safeParse(stored);
+    return goal.success ? goal.data : null;
   }
 
   async update(key: string, value: JsonValue, adminId: string): Promise<SettingView> {

@@ -25,7 +25,27 @@ const dashboardSummaryResponse = z.object({
       }),
       newUsers: count,
       newSellers: count,
+      collectors: count.openapi({ description: 'Colecionadores (CUSTOMER) sem conta excluída' }),
+      sellers: count.openapi({ description: 'Lojistas (SELLER) sem conta excluída' }),
+      newCardsThisWeek: count.openapi({
+        description: 'Cartas cadastradas nos últimos 7 dias, desde a meia-noite de Brasília',
+      }),
+      usersVariation: z.number().nullable().openapi({
+        example: 12.4,
+        description:
+          'Variação em % dos cadastros do período contra o período anterior de mesmo tamanho; null quando o anterior é zero e o atual não ("novo")',
+      }),
     }),
+    goal: z
+      .object({
+        monthly: z.number().int().min(1).openapi({ example: 4000 }),
+        percent: count.nullable().openapi({
+          example: 105,
+          description: 'Percentual da meta mensal; só no filtro de 30 dias, null nos demais',
+        }),
+      })
+      .nullable()
+      .openapi({ description: 'Meta mensal de cadastros; null quando não está configurada' }),
     signupsByMonth: z.array(
       z.object({
         month: z
@@ -54,7 +74,7 @@ const dashboardPaths: RouteConfig[] = [
     path: '/admin/dashboard',
     tags,
     security,
-    summary: 'KPIs, cadastros por mês e estado vazio do Dashboard (CCD058)',
+    summary: 'KPIs, meta, cadastros por mês e estado vazio do Dashboard (CCD058, CCD096)',
     request: { query: dashboardQuerySchema },
     responses: {
       200: { description: 'Resumo do período', ...json(dashboardSummaryResponse) },
