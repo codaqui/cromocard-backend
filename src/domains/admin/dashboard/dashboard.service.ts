@@ -7,7 +7,13 @@ import {
   startOfDayIn,
 } from '@/shared/utils/time-zone';
 
-import { previousRange } from './dashboard.evolution';
+import {
+  bucketFor,
+  type EvolutionBucket,
+  type EvolutionTotals,
+  previousRange,
+  totalsOf,
+} from './dashboard.evolution';
 import {
   goalOf,
   isMonthlyWindow,
@@ -17,7 +23,7 @@ import {
   variationOf,
 } from './dashboard.kpis';
 import { resolvePeriod } from './dashboard.period';
-import type { DashboardRepository, MembersByRole } from './dashboard.repository';
+import type { DashboardRepository, EvolutionPoint, MembersByRole } from './dashboard.repository';
 import type { PeriodQuery, RecentSellersQuery } from './dashboard.validator';
 
 export interface DashboardUsers {
@@ -60,6 +66,13 @@ export interface DashboardSummary {
   isEmpty: boolean;
 }
 
+export interface SignupsEvolution {
+  period: DateRange;
+  bucket: EvolutionBucket;
+  points: EvolutionPoint[];
+  totals: EvolutionTotals;
+}
+
 const DAYS_IN_WEEK = 7;
 
 export class DashboardService {
@@ -90,6 +103,17 @@ export class DashboardService {
     const goal = goalOf(monthly, signups.newUsers, isMonthlyWindow(query));
 
     return { period, kpis, goal, signupsByMonth, isEmpty: !totalUsers && !totalCards };
+  }
+
+  async getSignupsEvolution(query: PeriodQuery): Promise<SignupsEvolution> {
+    const period = this.resolve(query);
+    const bucket = bucketFor(period);
+    const points = await this.deps.repository.countSignupsEvolution({
+      range: period,
+      bucket,
+      timeZone: BRASILIA_TIME_ZONE,
+    });
+    return { period, bucket, points, totals: totalsOf(points) };
   }
 
   listRecentSellers({

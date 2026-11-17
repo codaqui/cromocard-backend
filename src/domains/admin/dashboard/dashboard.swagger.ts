@@ -2,6 +2,7 @@ import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openap
 
 import { z } from '@/lib/zod';
 
+import { EVOLUTION_BUCKETS } from './dashboard.evolution';
 import { dashboardQuerySchema, recentSellersQuerySchema } from './dashboard.validator';
 
 const tags = ['Administração - Dashboard'];
@@ -59,6 +60,23 @@ const dashboardSummaryResponse = z.object({
   }),
 });
 
+const signupsEvolutionResponse = z.object({
+  data: z.object({
+    period: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }),
+    bucket: z.enum(EVOLUTION_BUCKETS).openapi({
+      description: 'hour (até 1 dia), day (até 92 dias) ou month, no horário de Brasília',
+    }),
+    points: z.array(
+      z.object({
+        at: z.iso.datetime().openapi({ description: 'Início do intervalo do ponto' }),
+        collectors: count.openapi({ description: 'Colecionadores (CUSTOMER) cadastrados' }),
+        sellers: count.openapi({ description: 'Lojistas certificados (cadastro aprovado)' }),
+      }),
+    ),
+    totals: z.object({ collectors: count, sellers: count }),
+  }),
+});
+
 const recentSellersResponse = z.object({
   data: z.array(
     z.object({ id: z.uuid(), name: z.string(), email: z.email(), createdAt: z.iso.datetime() }),
@@ -78,6 +96,21 @@ const dashboardPaths: RouteConfig[] = [
     request: { query: dashboardQuerySchema },
     responses: {
       200: { description: 'Resumo do período', ...json(dashboardSummaryResponse) },
+      ...accessErrors,
+    },
+  },
+  {
+    method: 'get',
+    path: '/admin/dashboard/signups-evolution',
+    tags,
+    security,
+    summary: 'Evolução de colecionadores e lojistas certificados por hora, dia ou mês (CCD096)',
+    request: { query: dashboardQuerySchema },
+    responses: {
+      200: {
+        description: 'Pontos do período, inclusive os zerados',
+        ...json(signupsEvolutionResponse),
+      },
       ...accessErrors,
     },
   },

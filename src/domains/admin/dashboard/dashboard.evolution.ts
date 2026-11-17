@@ -19,3 +19,18 @@ export function previousRange({ from, to }: DateRange): DateRange {
   const length = to.getTime() - from.getTime();
   return { from: new Date(from.getTime() - length - 1), to: new Date(from.getTime() - 1) };
 }
+
+export interface EvolutionTotals {
+  collectors: number;
+  sellers: number;
+}
+
+export function totalsOf(points: EvolutionTotals[]): EvolutionTotals {
+  return points.reduce(
+    (total, point) => ({
+      collectors: total.collectors + point.collectors,
+      sellers: total.sellers + point.sellers,
+    }),
+    { collectors: 0, sellers: 0 },
+  );
+}

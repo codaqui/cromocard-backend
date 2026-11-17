@@ -196,6 +196,36 @@ describe('DashboardService', () => {
       expect(kpis.usersVariation).toBe(0);
     });
 
+    it('CA1: em 7 dias, agrupa a evolução por dia e soma cada linha', async () => {
+      repository.points = [
+        { at: new Date('2026-10-27T03:00:00Z'), collectors: 2, sellers: 1 },
+        { at: new Date('2026-10-28T03:00:00Z'), collectors: 3, sellers: 0 },
+      ];
+
+      const evolution = await serviceWith().getSignupsEvolution({ period: '7d' });
+
+      expect(evolution.bucket).toBe('day');
+      expect(evolution.totals).toEqual({ collectors: 5, sellers: 1 });
+      expect(repository.lastEvolutionQuery).toEqual({
+        range: { from: new Date('2026-10-23T03:00:00Z'), to: NOW },
+        bucket: 'day',
+        timeZone: 'America/Sao_Paulo',
+      });
+    });
+
+    it('CA2: no período de hoje, agrupa por hora', async () => {
+      const evolution = await serviceWith().getSignupsEvolution({ period: 'today' });
+
+      expect(evolution.bucket).toBe('hour');
+      expect(evolution.totals).toEqual({ collectors: 0, sellers: 0 });
+    });
+
+    it('R4: em 1 ano, agrupa por mês', async () => {
+      const { bucket } = await serviceWith().getSignupsEvolution({ period: '1y' });
+
+      expect(bucket).toBe('month');
+    });
+
     it('R11: conta as cartas novas dos últimos 7 dias, desde a meia-noite de Brasília', async () => {
       repository.newCards = 3120;
 
