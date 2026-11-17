@@ -75,11 +75,10 @@ const entityIdResolvers: Record<(typeof auditLogs)[number]['entityType'], KeyRes
   REPORT: reportIdOf,
 };
 
-// O link do banner só aceita https (CCD066, L12). O ambiente local roda em http, então usa o endereço de produção.
-const PRODUCTION_FRONTEND_URL = 'https://cromocard.com.br';
-const bannerBaseUrl = env.FRONTEND_URL.startsWith('https://')
+const HTTPS_FALLBACK_FRONTEND_URL = 'https://cromocard.com.br';
+const httpsOnlyFrontendUrl = env.FRONTEND_URL.startsWith('https://')
   ? env.FRONTEND_URL
-  : PRODUCTION_FRONTEND_URL;
+  : HTTPS_FALLBACK_FRONTEND_URL;
 
 const sampleBanner = {
   key: 'banners/seed-home-banner.png',
@@ -126,7 +125,7 @@ function buildGlobalSettings(bannerImageUrl?: string): Prisma.GlobalSettingCreat
   const { description: bannerDescription, ctaPath, ...banner } = homeBanner;
   const bannerValue = homeBannerSchema.parse({
     ...banner,
-    ctaUrl: `${bannerBaseUrl}${ctaPath}`,
+    ctaUrl: `${httpsOnlyFrontendUrl}${ctaPath}`,
     imageUrl: bannerImageUrl ?? null,
   });
 
