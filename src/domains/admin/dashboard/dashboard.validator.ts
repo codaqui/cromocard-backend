@@ -8,7 +8,7 @@ const MAX_RANGE_IN_DAYS = 5 * 366;
 
 const isoDate = z.iso.datetime({ offset: true, error: 'Informe a data no formato ISO 8601' });
 
-const periodShape = {
+export const periodShape = {
   period: z.enum(PERIOD_PRESETS).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
@@ -25,7 +25,7 @@ const hasBothOrNeither = ({ from, to }: PeriodFields) => Boolean(from) === Boole
 const rangeInDays = ({ from, to }: PeriodFields) =>
   from && to ? (new Date(to).getTime() - new Date(from).getTime()) / DAY_IN_MS : 0;
 
-function withPeriodRules<T extends z.ZodType<PeriodFields>>(schema: T) {
+export function withPeriodRules<T extends z.ZodType<PeriodFields>>(schema: T) {
   return schema
     .refine(hasBothOrNeither, { path: ['to'], error: 'Informe as duas datas do intervalo' })
     .refine((fields) => rangeInDays(fields) >= 0, {
