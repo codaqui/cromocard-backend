@@ -62,6 +62,16 @@ function createCard(albumId: string, number: string) {
   });
 }
 
+async function createCategory(name: string, type: 'ALBUM' | 'CARD', parentCategoryId?: string) {
+  const res = await asAdmin().post('/categories', { name, type, parentCategoryId });
+  return { ...(res.body as Created).data, name };
+}
+
+function cardsCountOf(body: unknown, id: string): number | undefined {
+  const items = (body as { data: { id: string; cardsCount: number }[] }).data;
+  return items.find((item) => item.id === id)?.cardsCount;
+}
+
 function namesOf(body: unknown): string[] {
   return (body as { data: { name: string }[] }).data.map(({ name }) => name);
 }
@@ -289,6 +299,46 @@ describe('álbuns e categorias', () => {
     });
     expect(recreated.status).toBe(201);
     expect((recreated.body as Created).data.id).not.toBe(first.data.id);
+  });
+
+  it('CA1: a quantidade de cartas soma as da categoria, as dos álbuns e as das subcategorias', async () => {
+    const suffix = crypto.randomUUID().slice(0, 6);
+    const root = await createCategory(`${MARKER} Futebol ${suffix}`, 'ALBUM');
+    const child = await createCategory(`${MARKER} Copa ${suffix}`, 'ALBUM', root.id);
+    const franchise = await createCategory(`${MARKER} Magic ${suffix}`, 'CARD');
+    const album = (
+      await asAdmin().post('/albums', { title: `${MARKER} Copa ${suffix}`, categoryId: child.id })
+    ).body as Created;
+    await createCard(album.data.id, '1');
+    const removed = (await createCard(album.data.id, '2')).body as Created;
+    await asAdmin().delete(`/cards/${removed.data.id}`);
+    await asAdmin().post('/cards', {
+      name: `${MARKER} avulsa ${suffix}`,
+      frontImageUrl: FRONT_IMAGE_URL,
+      ...publishable,
+      categoryId: franchise.id,
+    });
+
+    const list = await asAdmin().get(`/categories?q=${suffix}&pageSize=50`);
+    const counts = [root, child, franchise].map(({ id }) => cardsCountOf(list.body, id));
+
+    expect(counts).toEqual([1, 1, 1]);
+  });
+
+  it('CA15: a busca pelo slug encontra a categoria', async () => {
+    const suffix = crypto.randomUUID().slice(0, 6);
+    const category = await createCategory(`${MARKER} Magic: The Gathering ${suffix}`, 'CARD');
+
+    const bySlug = await asAdmin().get(
+      `/categories?q=${encodeURIComponent(`magic-the-gathering-${suffix}`)}`,
+    );
+    const byName = await asAdmin().get(
+      `/categories?q=${encodeURIComponent(`Gathering ${suffix}`)}`,
+    );
+
+    expect((bySlug.body as ListBody).meta.total).toBe(1);
+    expect(namesOf(bySlug.body)).toEqual([category.name]);
+    expect(namesOf(byName.body)).toEqual([category.name]);
   });
 
   it('CA12: renomear refaz o slug e libera o antigo', async () => {

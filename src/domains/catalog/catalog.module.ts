@@ -11,6 +11,7 @@ import { registerCatalogDocs } from './catalog.swagger';
 import { PrismaCatalogImportRepository } from './catalog-import.repository';
 import { CatalogImportService } from './catalog-import.service';
 import { PrismaCategoriesRepository } from './catalog-categories.repository';
+import { PrismaCategoryCardCounts } from './catalog-category-counts';
 import { PrismaDefaultCategoriesRepository } from './catalog-default-categories.repository';
 import { DefaultCategoriesService } from './catalog-default-categories.service';
 import { PrismaReferencesRepository } from './catalog-references.repository';
@@ -19,6 +20,7 @@ const catalogService = new CatalogService({
   albums: new PrismaAlbumsRepository(prisma),
   cards: new PrismaCardsRepository(prisma),
   categories: new PrismaCategoriesRepository(prisma),
+  cardCounts: new PrismaCategoryCardCounts(prisma),
   references: new PrismaReferencesRepository(prisma),
   auditLog: auditLogService,
 });

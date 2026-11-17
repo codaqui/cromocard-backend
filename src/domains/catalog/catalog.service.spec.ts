@@ -42,6 +42,7 @@ import type {
   CreateCategoryRecord,
   UpdateCategoryRecord,
 } from './catalog-categories.repository';
+import type { CategoryCardCounts } from './catalog-category-counts';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
 type Stored<T> = T & { deletedAt: Date | null };
@@ -232,6 +233,14 @@ class InMemoryCategoriesRepository implements CategoriesRepository {
   }
 }
 
+class InMemoryCardCounts implements CategoryCardCounts {
+  totals = new Map<string, number>();
+
+  countByCategory(ids: string[]): Promise<Map<string, number>> {
+    return Promise.resolve(new Map(ids.map((id) => [id, this.totals.get(id) ?? 0])));
+  }
+}
+
 class InMemoryReferencesRepository implements ReferencesRepository {
   rarities: CatalogReference[] = [{ id: crypto.randomUUID(), name: 'Rara' }];
   languages: CatalogReference[] = [{ id: crypto.randomUUID(), name: 'Português' }];
@@ -281,6 +290,7 @@ describe('CatalogService', () => {
   let references: InMemoryReferencesRepository;
   let auditLog: InMemoryAuditLog;
   let cardUsage: InMemoryCardUsage;
+  let cardCounts: InMemoryCardCounts;
   let service: CatalogService;
   let franchise: Stored<Category>;
 
@@ -291,7 +301,16 @@ describe('CatalogService', () => {
     references = new InMemoryReferencesRepository();
     auditLog = new InMemoryAuditLog();
     cardUsage = new InMemoryCardUsage();
-    service = new CatalogService({ albums, cards, categories, references, auditLog, cardUsage });
+    cardCounts = new InMemoryCardCounts();
+    service = new CatalogService({
+      albums,
+      cards,
+      categories,
+      cardCounts,
+      references,
+      auditLog,
+      cardUsage,
+    });
     franchise = buildCategory({ name: 'Pokémon', type: 'CARD' });
   });
 
@@ -535,7 +554,14 @@ describe('CatalogService', () => {
     });
 
     it('R11: sem a checagem de coleções ligada, a carta é excluída', async () => {
-      const withoutUsage = new CatalogService({ albums, cards, categories, references, auditLog });
+      const withoutUsage = new CatalogService({
+        albums,
+        cards,
+        categories,
+        cardCounts,
+        references,
+        auditLog,
+      });
       const card = await newCard();
 
       await withoutUsage.deleteCard(ADMIN_ID, card.id);
@@ -557,6 +583,29 @@ describe('CatalogService', () => {
         items: [{ name: 'Esportes' }],
       });
       expect(auditLog.actions()).toEqual(['CATEGORY_CREATED', 'CATEGORY_UPDATED']);
+    });
+
+    it('CA1: lista as categorias com a quantidade de cartas de cada uma', async () => {
+      const football = await newCategory();
+      const empty = await newCategory({ name: 'Magic', type: 'CARD' });
+      cardCounts.totals.set(football.id, 7300);
+
+      const page = await service.listCategories(PAGE);
+
+      expect(page.items.map(({ id, cardsCount }) => [id, cardsCount])).toEqual([
+        [football.id, 7300],
+        [empty.id, 0],
+      ]);
+    });
+
+    it('CA1: devolve a quantidade de cartas ao buscar, cadastrar e editar a categoria', async () => {
+      const created = await newCategory();
+      cardCounts.totals.set(created.id, 12);
+
+      const found = await service.findCategory(created.id);
+      const edited = await service.updateCategory(ADMIN_ID, created.id, { description: 'Álbuns' });
+
+      expect([created.cardsCount, found.cardsCount, edited.cardsCount]).toEqual([0, 12, 12]);
     });
 
     it('CA6: gera o slug one-piece ao cadastrar "One Piece"', async () => {

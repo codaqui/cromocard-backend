@@ -81,6 +81,7 @@ const categoryResponse = z.object({
   type: categoryTypeSchema,
   slug: z.string().nullable(),
   badge: z.enum(CATEGORY_BADGES).nullable(),
+  cardsCount: count,
   parentCategoryId: z.uuid().nullable(),
   parentCategory: reference.nullable(),
   createdAt: timestamp,

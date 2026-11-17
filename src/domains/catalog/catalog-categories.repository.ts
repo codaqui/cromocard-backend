@@ -46,7 +46,12 @@ export interface CategoriesRepository {
 function buildCategoriesFilter({ q, type }: ListCategoriesQuery): Prisma.CategoryWhereInput {
   return {
     ...notDeleted,
-    ...(q && { name: { contains: q, mode: 'insensitive' } }),
+    ...(q && {
+      OR: [
+        { name: { contains: q, mode: 'insensitive' } },
+        { slug: { contains: q, mode: 'insensitive' } },
+      ],
+    }),
     ...(type && { type }),
   };
 }
