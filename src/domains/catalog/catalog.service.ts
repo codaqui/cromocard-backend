@@ -20,6 +20,8 @@ import {
   CategoryTypeMismatchError,
   LanguageNotFoundError,
   RarityNotFoundError,
+  rejectDuplicateSlug,
+  SlugTakenError,
   rejectDuplicateNumber,
 } from './catalog.errors';
 import type {
@@ -34,6 +36,7 @@ import type {
   UpdateCategoryInput,
 } from './catalog.validator';
 import type { CategoryType } from '@/generated/prisma/enums';
+import { slugify } from '@/lib/slug';
 import type { CategoriesRepository, Category } from './catalog-categories.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
@@ -176,7 +179,11 @@ export class CatalogService {
 
   async createCategory(adminId: string, input: CreateCategoryInput): Promise<Category> {
     await this.ensureCategory(input.parentCategoryId, input.type);
-    const category = await this.deps.categories.create(input);
+    const slug = slugify(input.name);
+    await this.ensureSlugAvailable(slug);
+    const category = await this.deps.categories
+      .create({ ...input, slug })
+      .catch((error: unknown) => rejectDuplicateSlug(error));
     await this.audit(adminId, {
       action: 'CATEGORY_CREATED',
       entityType: 'category',
@@ -193,7 +200,10 @@ export class CatalogService {
       keepOrReplace(input.type, current.type),
     );
     await this.ensureNotOwnAncestor(id, input.parentCategoryId);
-    const category = await this.deps.categories.update(id, input);
+    const slug = await this.slugAfterRename(current, input.name);
+    const category = await this.deps.categories
+      .update(id, { ...input, ...(slug && { slug }) })
+      .catch((error: unknown) => rejectDuplicateSlug(error));
     await this.audit(adminId, { action: 'CATEGORY_UPDATED', entityType: 'category', entityId: id });
     return category;
   }
@@ -265,6 +275,18 @@ export class CatalogService {
       (id) => references.languageExists(id),
       () => new LanguageNotFoundError(),
     );
+  }
+
+  private async ensureSlugAvailable(slug: string, exceptId?: string) {
+    if (await this.deps.categories.findActiveBySlug(slug, exceptId)) throw new SlugTakenError();
+  }
+
+  /** O slug acompanha o nome (L14): só é refeito, e conferido, quando o nome muda. */
+  private async slugAfterRename(current: Category, name: string | undefined) {
+    if (name === undefined || name === current.name) return undefined;
+    const slug = slugify(name);
+    if (slug !== current.slug) await this.ensureSlugAvailable(slug, current.id);
+    return slug;
   }
 
   private async ensureCategory(

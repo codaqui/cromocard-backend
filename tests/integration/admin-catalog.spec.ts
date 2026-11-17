@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '@/app';
 import { signAccessToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { slugify } from '@/lib/slug';
 
 const app = createApp();
 const BASE = '/api/v1/admin/catalog';
@@ -17,7 +18,7 @@ let adminToken: string;
 let publishable: { categoryId: string; rarityId: string; languageId: string };
 
 interface Created {
-  data: { id: string; totalCards?: number };
+  data: { id: string; totalCards?: number; slug?: string | null; badge?: string | null };
 }
 
 interface ListBody {
@@ -256,6 +257,51 @@ describe('álbuns e categorias', () => {
 
     expect(res.status).toBe(422);
     expect((res.body as ErrorBody).error).toBe('CATEGORY_IN_USE');
+  });
+
+  it('CA6: cadastra com o slug gerado do nome e o selo escolhido', async () => {
+    const name = `${MARKER} Pokémon ${crypto.randomUUID().slice(0, 6)}`;
+
+    const res = await asAdmin().post('/categories', { name, type: 'CARD', badge: 'TRENDING' });
+
+    expect(res.status).toBe(201);
+    expect((res.body as Created).data).toMatchObject({
+      slug: slugify(name),
+      badge: 'TRENDING',
+    });
+  });
+
+  it('CA13: o índice parcial recusa o slug de uma ativa e aceita o de uma excluída', async () => {
+    const name = `${MARKER} One Piece ${crypto.randomUUID().slice(0, 6)}`;
+    const first = (await asAdmin().post('/categories', { name, type: 'CARD' })).body as Created;
+
+    const duplicate = await asAdmin().post('/categories', {
+      name: name.toUpperCase(),
+      type: 'CARD',
+    });
+    await asAdmin().delete(`/categories/${first.data.id}`);
+    const recreated = await asAdmin().post('/categories', { name, type: 'CARD' });
+
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body).toMatchObject({
+      error: 'SLUG_TAKEN',
+      details: [{ field: 'name' }],
+    });
+    expect(recreated.status).toBe(201);
+    expect((recreated.body as Created).data.id).not.toBe(first.data.id);
+  });
+
+  it('CA12: renomear refaz o slug e libera o antigo', async () => {
+    const name = `${MARKER} Yu-Gi-Oh ${crypto.randomUUID().slice(0, 6)}`;
+    const created = (await asAdmin().post('/categories', { name, type: 'CARD' })).body as Created;
+
+    const renamed = await asAdmin().patch(`/categories/${created.data.id}`, {
+      name: `${name} TCG`,
+    });
+    const reused = await asAdmin().post('/categories', { name, type: 'CARD' });
+
+    expect((renamed.body as Created).data).toMatchObject({ slug: slugify(`${name} TCG`) });
+    expect(reused.status).toBe(201);
   });
 
   it('L6: lista só as categorias do tipo pedido', async () => {

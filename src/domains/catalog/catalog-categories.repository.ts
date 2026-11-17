@@ -13,6 +13,8 @@ const categorySelect = {
   name: true,
   type: true,
   description: true,
+  slug: true,
+  badge: true,
   parentCategoryId: true,
   parentCategory: { select: { id: true, name: true } },
   createdAt: true,
@@ -26,11 +28,17 @@ export interface CategoriesPage {
   total: number;
 }
 
+/** O slug não vem do corpo da requisição: a service o gera a partir do nome. */
+export type CreateCategoryRecord = CreateCategoryInput & { slug: string };
+export type UpdateCategoryRecord = UpdateCategoryInput & { slug?: string };
+
 export interface CategoriesRepository {
   findPage(query: ListCategoriesQuery): Promise<CategoriesPage>;
   findById(id: string): Promise<Category | null>;
-  create(input: CreateCategoryInput): Promise<Category>;
-  update(id: string, input: UpdateCategoryInput): Promise<Category>;
+  /** Categoria não excluída com este slug, ignorando `exceptId` (a que está sendo renomeada). */
+  findActiveBySlug(slug: string, exceptId?: string): Promise<Category | null>;
+  create(input: CreateCategoryRecord): Promise<Category>;
+  update(id: string, input: UpdateCategoryRecord): Promise<Category>;
   softDelete(id: string): Promise<void>;
   isInUse(id: string): Promise<boolean>;
 }
@@ -66,11 +74,18 @@ export class PrismaCategoriesRepository implements CategoriesRepository {
     return this.prisma.category.findFirst({ where: { id, ...notDeleted }, select: categorySelect });
   }
 
-  create(input: CreateCategoryInput): Promise<Category> {
+  findActiveBySlug(slug: string, exceptId?: string): Promise<Category | null> {
+    return this.prisma.category.findFirst({
+      where: { slug, ...notDeleted, ...(exceptId && { id: { not: exceptId } }) },
+      select: categorySelect,
+    });
+  }
+
+  create(input: CreateCategoryRecord): Promise<Category> {
     return this.prisma.category.create({ data: input, select: categorySelect });
   }
 
-  update(id: string, input: UpdateCategoryInput): Promise<Category> {
+  update(id: string, input: UpdateCategoryRecord): Promise<Category> {
     return this.prisma.category.update({ where: { id }, data: input, select: categorySelect });
   }
 
