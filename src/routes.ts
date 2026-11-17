@@ -10,6 +10,7 @@ import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/settings.module';
 import { communityAdminModule } from '@/domains/community/community.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
+import { globalNotificationsModule } from '@/domains/notifications/notifications.module';
 import { createUsersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
 import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
@@ -26,6 +27,7 @@ const sharedModules: DomainModule[] = [
   publicSettingsModule,
   auditLogsModule,
   communityAdminModule,
+  globalNotificationsModule,
 ];
 
 export interface RoutesOptions {
