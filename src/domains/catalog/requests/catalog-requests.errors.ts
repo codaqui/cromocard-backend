@@ -37,3 +37,9 @@ export class CatalogRequestDataIncompleteError extends AppError {
     });
   }
 }
+
+export class ChecklistNotFoundError extends NotFoundError {
+  constructor() {
+    super('Esta solicitação não tem checklist de cartas', 'CHECKLIST_NOT_FOUND');
+  }
+}

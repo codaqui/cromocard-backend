@@ -321,6 +321,28 @@ describe('CatalogRequestsService', () => {
       expect(repository.lastRarityIds).toEqual([RARITY_ID, EPIC_ID, RARE_ID, COMMON_ID]);
     });
 
+    it('CA6: baixa o checklist do álbum sugerido em CSV, com o nome da raridade', async () => {
+      const checklist = [
+        { number: '001', code: 'JU-001', name: 'Clefable', rarityId: RARITY_ID, variants: 'Holo' },
+      ];
+      store({ type: 'ALBUM', data: { title: 'Pokémon Jungle', checklist } });
+
+      const file = await service.checklist(REQUEST_ID);
+
+      expect(file.fileName).toBe('checklist-SOL-88A2.csv');
+      expect(file.content.split('\r\n')[1]).toBe('001;JU-001;Clefable;Lendária;Holo');
+    });
+
+    it('carta ou álbum sem checklist não tem planilha (CHECKLIST_NOT_FOUND)', async () => {
+      await expect(service.checklist(REQUEST_ID)).rejects.toMatchObject({
+        code: 'CHECKLIST_NOT_FOUND',
+      });
+      store({ type: 'ALBUM', data: { title: 'Pokémon Jungle' } });
+      await expect(service.checklist(REQUEST_ID)).rejects.toMatchObject({
+        code: 'CHECKLIST_NOT_FOUND',
+      });
+    });
+
     it('álbum sem checklist não tem resumo', async () => {
       store({ type: 'ALBUM', data: { title: 'Pokémon Jungle' } });
 

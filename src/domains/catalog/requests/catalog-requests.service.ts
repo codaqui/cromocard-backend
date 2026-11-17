@@ -9,9 +9,11 @@ import {
   type CatalogRequestsCatalog,
   type CreatedItem,
 } from './catalog-requests.approvals';
+import { checklistFileName, toChecklistCsv } from './catalog-requests.checklist';
 import {
   CatalogRequestAlreadyReviewedError,
   CatalogRequestNotFoundError,
+  ChecklistNotFoundError,
 } from './catalog-requests.errors';
 import type {
   CatalogRequestRecord,
@@ -58,6 +60,11 @@ export interface CatalogRequestsList {
   meta: PaginationMeta & { pendingByType: PendingByType & { ALL: number } };
 }
 
+export interface ChecklistFile {
+  fileName: string;
+  content: string;
+}
+
 export type ApprovedCatalogRequest = CatalogRequestView & { createdItem: CreatedItem };
 
 const AUDIT_ENTITY = 'catalog_request';
@@ -96,6 +103,14 @@ export class CatalogRequestsService {
   async find(id: string): Promise<CatalogRequestView> {
     const record = await this.findRecord(id);
     return toView(record, await this.contextOf([record]));
+  }
+
+  /** Planilha do checklist do álbum sugerido (CCD103, R11). */
+  async checklist(id: string): Promise<ChecklistFile> {
+    const { type, data } = await this.find(id);
+    const items = Array.isArray(data.checklist) ? data.checklist : [];
+    if (type !== 'ALBUM' || items.length === 0) throw new ChecklistNotFoundError();
+    return { fileName: checklistFileName(id), content: toChecklistCsv(items) };
   }
 
   async approve(id: string, adminId: string): Promise<ApprovedCatalogRequest> {
