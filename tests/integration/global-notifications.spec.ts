@@ -47,10 +47,21 @@ const asAdmin = (token = adminToken) => ({
 
 const bodyOf = (res: request.Response) => (res.body as { data: DispatchBody }).data;
 const errorOf = (res: request.Response) => res.body as ErrorBody;
-const receivers = async (globalNotificationId: string) =>
-  (await prisma.notification.findMany({ where: { globalNotificationId } })).map(
+/**
+ * Quem recebeu o disparo. Logo depois, apaga as notificações de usuários que não são deste teste:
+ * o público "toda a base" alcança os usuários temporários dos outros testes, que rodam em paralelo
+ * e precisam conseguir apagá-los no fim.
+ */
+async function receivers(globalNotificationId: string) {
+  const received = (await prisma.notification.findMany({ where: { globalNotificationId } })).map(
     ({ userId }) => userId,
   );
+  const ours = [adminId, ...Object.values(users)];
+  await prisma.notification.deleteMany({
+    where: { globalNotificationId, userId: { notIn: ours } },
+  });
+  return received;
+}
 
 async function createUser(key: string, data: Omit<Prisma.UserCreateInput, 'name' | 'email'>) {
   const user = await prisma.user.create({
