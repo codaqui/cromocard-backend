@@ -33,6 +33,16 @@ export const REPORT_DEFINITIONS: Record<ReportType, ReportDefinition> = {
       { key: 'createdAt', label: 'Cadastro' },
     ],
   },
+  'seller-audit': {
+    title: 'Auditoria de Lojistas',
+    columns: [
+      { key: 'legalName', label: 'Loja' },
+      { key: 'cnpj', label: 'CNPJ' },
+      { key: 'email', label: 'E-mail' },
+      { key: 'status', label: 'Status' },
+      { key: 'createdAt', label: 'Cadastro' },
+    ],
+  },
 };
 
 const VALUE_LABELS: Record<string, string> = {
@@ -41,6 +51,10 @@ const VALUE_LABELS: Record<string, string> = {
   ADMIN: 'Administrador',
   CARD: 'Carta',
   ALBUM: 'Álbum',
+  UNDER_REVIEW: 'Em análise',
+  PENDING: 'Pendente',
+  APPROVED: 'Aprovado',
+  REJECTED: 'Reprovado',
 };
 
 const dateFormatter = new Intl.DateTimeFormat('pt-BR', {

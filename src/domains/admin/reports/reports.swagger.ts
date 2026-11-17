@@ -2,7 +2,12 @@ import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openap
 
 import { z } from '@/lib/zod';
 
-import { exportQuerySchema, previewQuerySchema, reportTypeParamSchema } from './reports.validator';
+import {
+  exportQuerySchema,
+  previewQuerySchema,
+  REPORT_TYPES,
+  reportTypeParamSchema,
+} from './reports.validator';
 
 const tags = ['Administração - Relatórios'];
 const security = [{ bearerAuth: [] }];
@@ -14,13 +19,13 @@ const accessErrors = {
 
 const previewResponse = z.object({
   data: z.object({
-    type: z.enum(['signups', 'catalog']),
+    type: z.enum(REPORT_TYPES),
     title: z.string().openapi({ example: 'Novos cadastros' }),
     period: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }),
     columns: z.array(z.object({ key: z.string(), label: z.string() })),
     rows: z.array(z.record(z.string(), z.unknown())).openapi({
       description:
-        'Primeiras linhas. signups: name, email, role, createdAt. catalog: kind (CARD ou ALBUM), name, number, album, franchise, createdAt',
+        'Primeiras linhas. signups: name, email, role, createdAt. catalog: kind (CARD ou ALBUM), name, number, album, franchise, createdAt. seller-audit: legalName, cnpj, email, status, createdAt',
     }),
   }),
   meta: z.object({ total: z.number().int().min(0) }),
