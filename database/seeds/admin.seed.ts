@@ -9,7 +9,15 @@ import {
   votingGoalSchema,
 } from '@/domains/admin/settings/setting-schemas';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import { CatalogRequestType, RequestStatus } from '@/generated/prisma/enums';
+import {
+  NOTIFICATION_AUDIENCES,
+  NOTIFICATION_CHANNELS,
+} from '@/domains/notifications/global-notifications.validator';
+import {
+  CatalogRequestType,
+  NotificationDispatchStatus,
+  RequestStatus,
+} from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import type { StorageProvider } from '@/providers/storage/storage.provider';
 
@@ -60,9 +68,28 @@ const auditLogsSchema = z.array(
   }),
 );
 
+const globalNotificationsSchema = z.array(
+  z.object({
+    key: seedKey,
+    admin: seedKey,
+    title: z.string().max(120),
+    content: z.string().max(500),
+    link: z.string().startsWith('/').optional(),
+    audience: z.enum(NOTIFICATION_AUDIENCES),
+    channels: z.array(z.enum(NOTIFICATION_CHANNELS)).min(1),
+    status: z.enum(NotificationDispatchStatus),
+    recipientCount: z.number().int().min(0).default(0),
+    /** Data do disparo (ou do agendamento) relativa a hoje: negativa no passado. */
+    daysFromNow: z.number().int(),
+  }),
+);
+
 const catalogRequests = loadSeedData('catalog-requests.json', catalogRequestsSchema);
 const globalSettings = loadSeedData('global-settings.json', globalSettingsSchema);
 const auditLogs = loadSeedData('audit-logs.json', auditLogsSchema);
+const globalNotifications = loadSeedData('global-notifications.json', globalNotificationsSchema);
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const catalogRequestIdOf = keyResolver(
   SeedNamespace.catalogRequests,
@@ -162,6 +189,28 @@ const toAuditLogData = ({
   createdAt: new Date(createdAt),
 });
 
+function toGlobalNotificationData({
+  key,
+  admin,
+  link,
+  channels,
+  daysFromNow,
+  ...dispatch
+}: (typeof globalNotifications)[number]) {
+  const date = new Date(Date.now() + daysFromNow * DAY_IN_MS);
+  const isScheduled = dispatch.status === 'SCHEDULED';
+  return {
+    ...dispatch,
+    id: seedId(SeedNamespace.globalNotifications, key),
+    adminId: userIdOf(admin),
+    referenceLink: link ?? null,
+    channels: channels.join(','),
+    scheduledAt: isScheduled ? date : null,
+    sentAt: dispatch.status === 'SENT' ? date : null,
+    createdAt: isScheduled ? new Date() : date,
+  };
+}
+
 export async function uploadSampleBanner(storage: StorageProvider): Promise<string> {
   const banner = await storage.upload(sampleBanner);
   return banner.url;
@@ -173,6 +222,9 @@ export async function seedAdmin(prisma: PrismaClient, bannerImageUrl?: string): 
   }
   for (const setting of buildGlobalSettings(bannerImageUrl)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
+  }
+  for (const data of globalNotifications.map(toGlobalNotificationData)) {
+    await prisma.globalNotification.upsert({ where: { id: data.id }, create: data, update: data });
   }
   for (const data of auditLogs.map(toAuditLogData)) {
     await prisma.auditLog.upsert({ where: { id: data.id }, create: data, update: data });
