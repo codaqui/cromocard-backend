@@ -5,6 +5,7 @@ import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
+import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
 import { catalogRequestsModule } from '@/domains/catalog/requests/catalog-requests.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
@@ -23,6 +24,7 @@ const sharedModules: DomainModule[] = [
   dashboardModule,
   catalogModule,
   catalogRequestsModule,
+  catalogRequestVotesModule,
   reportsModule,
   settingsModule,
   auditLogsModule,
