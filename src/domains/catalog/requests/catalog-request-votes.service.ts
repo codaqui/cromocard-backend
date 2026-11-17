@@ -10,14 +10,7 @@ import {
 } from './catalog-request-votes.repository';
 import type { CastVoteInput, ListVotingQuery } from './catalog-request-votes.validator';
 import { CatalogRequestNotFoundError } from './catalog-requests.errors';
-import { codeOf } from './catalog-requests.service';
-
-export interface VoteTally {
-  for: number;
-  neutral: number;
-  against: number;
-  total: number;
-}
+import { codeOf, tallyOf, type VoteTally } from './catalog-requests.view';
 
 export interface VotingSuggestion {
   id: string;
@@ -39,10 +32,6 @@ const textOf = (data: unknown, key: string): string | null => {
   const value = (data as Record<string, unknown> | null)?.[key];
   return typeof value === 'string' ? value : null;
 };
-
-export function tallyOf({ FOR, NEUTRAL, AGAINST }: VoteCounts): VoteTally {
-  return { for: FOR, neutral: NEUTRAL, against: AGAINST, total: FOR + NEUTRAL + AGAINST };
-}
 
 function toSuggestion(
   record: VotingSuggestionRecord,

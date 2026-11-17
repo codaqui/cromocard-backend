@@ -1,103 +1,66 @@
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
-import type { CatalogRequestType } from '@/generated/prisma/enums';
-import type { z } from '@/lib/zod';
 import { buildPaginationMeta, type PaginationMeta } from '@/shared/utils/pagination';
 
+import type { VoteCounts } from './catalog-request-votes.repository';
+import { DEFAULT_VOTING_GOAL } from './catalog-request-votes.validator';
 import {
-  type CreateAlbumInput,
-  type CreateCardInput,
-  type CreateCategoryInput,
-  createAlbumSchema,
-  createCardSchema,
-  createCategorySchema,
-} from '@/domains/catalog/catalog.validator';
+  type Approval,
+  APPROVALS,
+  type CatalogRequestsCatalog,
+  type CreatedItem,
+} from './catalog-requests.approvals';
 import {
   CatalogRequestAlreadyReviewedError,
-  CatalogRequestDataIncompleteError,
   CatalogRequestNotFoundError,
 } from './catalog-requests.errors';
 import type {
   CatalogRequestRecord,
   CatalogRequestsRepository,
-  CreatedItemLink,
   PendingByType,
-  ReferenceNames,
   ReviewInput,
 } from './catalog-requests.repository';
 import type {
   ListCatalogRequestsQuery,
   RejectCatalogRequestInput,
 } from './catalog-requests.validator';
+import {
+  asData,
+  type CatalogRequestView,
+  itemNameOf,
+  referenceIdsOf,
+  toView,
+  type ViewContext,
+} from './catalog-requests.view';
 
-export interface CatalogRequestsCatalog {
-  createCard(adminId: string, input: CreateCardInput): Promise<{ id: string; name: string }>;
-  createAlbum(adminId: string, input: CreateAlbumInput): Promise<{ id: string; title: string }>;
-  createCategory(
-    adminId: string,
-    input: CreateCategoryInput,
-  ): Promise<{ id: string; name: string }>;
-}
+export type { CatalogRequestsCatalog, CreatedItem } from './catalog-requests.approvals';
+export { codeOf, itemNameOf } from './catalog-requests.view';
+export type { CatalogRequestView } from './catalog-requests.view';
 
 export interface CatalogRequestsAuditLog {
   record(input: RecordAuditLogInput): Promise<unknown>;
+}
+
+/** Votos das sugestões de categoria, para o quórum de cada cartão (CCD103). */
+export interface CatalogRequestsVotes {
+  countByRequest(ids: string[]): Promise<Map<string, VoteCounts>>;
+  findVotingGoal(): Promise<number>;
 }
 
 export interface CatalogRequestsServiceDeps {
   repository: CatalogRequestsRepository;
   catalog: CatalogRequestsCatalog;
   auditLog: CatalogRequestsAuditLog;
+  votes: CatalogRequestsVotes;
 }
-
-type SuggestedData = Record<string, unknown>;
-
-export interface SuggestedReferences {
-  album?: string;
-  category?: string;
-  rarity?: string;
-  language?: string;
-}
-
-export type CatalogRequestView = Omit<CatalogRequestRecord, 'data'> & {
-  code: string;
-  data: SuggestedData;
-  references: SuggestedReferences;
-};
 
 export interface CatalogRequestsList {
   items: CatalogRequestView[];
   meta: PaginationMeta & { pendingByType: PendingByType & { ALL: number } };
 }
 
-export interface CreatedItem {
-  type: CatalogRequestType;
-  id: string;
-  name: string;
-}
-
 export type ApprovedCatalogRequest = CatalogRequestView & { createdItem: CreatedItem };
 
-interface Approval {
-  create(adminId: string): Promise<CreatedItem>;
-  link(created: CreatedItem): CreatedItemLink;
-}
-
-const CODE_PREFIX = '#SOL-';
-const CODE_LENGTH = 4;
 const AUDIT_ENTITY = 'catalog_request';
-type ReferenceKey = 'albumId' | 'categoryId' | 'rarityId' | 'languageId';
-
-const asData = (data: unknown): SuggestedData =>
-  typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as SuggestedData) : {};
-
-const textOf = (value: unknown): string | undefined =>
-  typeof value === 'string' ? value : undefined;
-
-/** O início do UUID v7 é o horário e se repete; o fim distingue as solicitações. */
-export const codeOf = (id: string): string =>
-  `${CODE_PREFIX}${id.slice(-CODE_LENGTH).toUpperCase()}`;
-
-export const itemNameOf = (type: CatalogRequestType, data: SuggestedData): string =>
-  textOf(type === 'ALBUM' ? data.title : data.name) ?? '';
 
 export const approvedNotice = (itemName: string) => ({
   title: 'Sua sugestão foi aprovada',
@@ -109,81 +72,8 @@ export const rejectedNotice = (itemName: string, reason: string) => ({
   message: `${itemName} não foi aprovada. Motivo: ${reason}`,
 });
 
-function parseSuggestion<T>(schema: z.ZodType<T>, data: SuggestedData): T {
-  const parsed = schema.safeParse(data);
-  if (parsed.success) return parsed.data;
-  throw new CatalogRequestDataIncompleteError(
-    parsed.error.issues.map(({ path, message }) => ({ field: path.join('.'), message })),
-  );
-}
-
-type ApprovalFactory = (data: SuggestedData, catalog: CatalogRequestsCatalog) => Approval;
-
-/** Como cada tipo de sugestão vira item do catálogo (Strategy). */
-const APPROVALS: Record<CatalogRequestType, ApprovalFactory> = {
-  CARD: (data, catalog) => {
-    const input = parseSuggestion(createCardSchema, data);
-    return {
-      create: async (adminId) => {
-        const { id, name } = await catalog.createCard(adminId, input);
-        return { type: 'CARD', id, name };
-      },
-      link: ({ id }) => ({ cardId: id }),
-    };
-  },
-  ALBUM: (data, catalog) => {
-    const input = parseSuggestion(createAlbumSchema, data);
-    return {
-      create: async (adminId) => {
-        const { id, title } = await catalog.createAlbum(adminId, input);
-        return { type: 'ALBUM', id, name: title };
-      },
-      link: ({ id }) => ({ albumId: id }),
-    };
-  },
-  CATEGORY: (data, catalog) => {
-    const input = parseSuggestion(createCategorySchema, data);
-    return {
-      create: async (adminId) => {
-        const { id, name } = await catalog.createCategory(adminId, input);
-        return { type: 'CATEGORY', id, name };
-      },
-      link: ({ id }) => ({ data: { ...data, createdCategoryId: id } }),
-    };
-  },
-};
-
-function referenceIdsOf(items: CatalogRequestRecord[]) {
-  const idsOf = (key: ReferenceKey) =>
-    items.map(({ data }) => textOf(asData(data)[key])).filter((id): id is string => Boolean(id));
-
-  return {
-    albumIds: idsOf('albumId'),
-    categoryIds: idsOf('categoryId'),
-    rarityIds: idsOf('rarityId'),
-    languageIds: idsOf('languageId'),
-  };
-}
-
-function toView(record: CatalogRequestRecord, names: ReferenceNames): CatalogRequestView {
-  const data = asData(record.data);
-  const nameOf = (key: ReferenceKey) => {
-    const id = textOf(data[key]);
-    return id ? names.get(id) : undefined;
-  };
-
-  return {
-    ...record,
-    code: codeOf(record.id),
-    data,
-    references: {
-      album: nameOf('albumId'),
-      category: nameOf('categoryId'),
-      rarity: nameOf('rarityId'),
-      language: nameOf('languageId'),
-    },
-  };
-}
+const categoryIdsOf = (items: CatalogRequestRecord[]) =>
+  items.filter(({ type }) => type === 'CATEGORY').map(({ id }) => id);
 
 export class CatalogRequestsService {
   constructor(private readonly deps: CatalogRequestsServiceDeps) {}
@@ -194,19 +84,18 @@ export class CatalogRequestsService {
       repository.findPage(query),
       repository.countPendingByType(),
     ]);
-    const names = await repository.findReferenceNames(referenceIdsOf(items));
+    const context = await this.contextOf(items);
     const all = pending.CARD + pending.ALBUM + pending.CATEGORY;
 
     return {
-      items: items.map((item) => toView(item, names)),
+      items: items.map((item) => toView(item, context)),
       meta: { ...buildPaginationMeta(query, total), pendingByType: { ...pending, ALL: all } },
     };
   }
 
   async find(id: string): Promise<CatalogRequestView> {
     const record = await this.findRecord(id);
-    const names = await this.deps.repository.findReferenceNames(referenceIdsOf([record]));
-    return toView(record, names);
+    return toView(record, await this.contextOf([record]));
   }
 
   async approve(id: string, adminId: string): Promise<ApprovedCatalogRequest> {
@@ -221,7 +110,11 @@ export class CatalogRequestsService {
       action: 'CATALOG_REQUEST_APPROVED',
       entityType: AUDIT_ENTITY,
       entityId: id,
-      details: { type: request.type, createdItemId: createdItem.id },
+      details: {
+        type: request.type,
+        createdItemId: createdItem.id,
+        ...(createdItem.subcategoryIds && { subcategoryIds: createdItem.subcategoryIds }),
+      },
     });
     await this.notify(request, approvedNotice(createdItem.name));
 
@@ -248,6 +141,20 @@ export class CatalogRequestsService {
     await this.notify(request, rejectedNotice(itemNameOf(request.type, data), reason));
 
     return this.find(id);
+  }
+
+  /** Nomes, raridades, votos e meta de todos os cartões da página, numa leitura só. */
+  private async contextOf(items: CatalogRequestRecord[]): Promise<ViewContext> {
+    const { repository, votes } = this.deps;
+    const ids = referenceIdsOf(items);
+    const categoryIds = categoryIdsOf(items);
+    const [names, rarityRanks, counts, goal] = await Promise.all([
+      repository.findReferenceNames(ids),
+      repository.findRarityRanks(ids.rarityIds),
+      votes.countByRequest(categoryIds),
+      categoryIds.length > 0 ? votes.findVotingGoal() : DEFAULT_VOTING_GOAL,
+    ]);
+    return { names, rarityRanks, votes: counts, goal };
   }
 
   private async findRecord(id: string): Promise<CatalogRequestRecord> {

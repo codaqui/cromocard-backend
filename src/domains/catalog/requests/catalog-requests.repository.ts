@@ -53,6 +53,9 @@ export interface ReferenceIds {
 /** Nome de cada referência sugerida, pelo id (álbum, franquia, raridade e idioma). */
 export type ReferenceNames = Map<string, string>;
 
+/** Ordem de cada raridade (`sort_order`), pelo id: quanto maior, mais rara. */
+export type RarityRanks = Map<string, number>;
+
 export interface RequesterNotice {
   userId: string;
   title: string;
@@ -64,6 +67,7 @@ export interface CatalogRequestsRepository {
   countPendingByType(): Promise<PendingByType>;
   findById(id: string): Promise<CatalogRequestRecord | null>;
   findReferenceNames(ids: ReferenceIds): Promise<ReferenceNames>;
+  findRarityRanks(rarityIds: string[]): Promise<RarityRanks>;
   /** Marca a análise só se a solicitação ainda estiver pendente; devolve se conseguiu. */
   markReviewed(id: string, input: ReviewInput): Promise<boolean>;
   revertToPending(id: string): Promise<void>;
@@ -144,6 +148,14 @@ export class PrismaCatalogRequestsRepository implements CatalogRequestsRepositor
     ];
 
     return new Map(entries);
+  }
+
+  async findRarityRanks(rarityIds: string[]): Promise<RarityRanks> {
+    const rarities = await this.prisma.rarity.findMany({
+      where: { id: { in: rarityIds } },
+      select: { id: true, sortOrder: true },
+    });
+    return new Map(rarities.map(({ id, sortOrder }) => [id, sortOrder]));
   }
 
   async markReviewed(id: string, { status, reviewedById, data }: ReviewInput): Promise<boolean> {
