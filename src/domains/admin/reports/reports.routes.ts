@@ -9,6 +9,8 @@ export function createReportsRoutes(controller: ReportsController): Router {
   const router = Router();
 
   router.use(authenticate, authorize('ADMIN'));
+  router.get('/exports', controller.listExports);
+  router.get('/exports/:id/file', controller.downloadExport);
   router.get('/:type', controller.preview);
   router.get('/:type/export', controller.export);
 
