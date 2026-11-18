@@ -27,7 +27,6 @@ function franchise(n: number, name: string, extra: Partial<DefaultCategory>): De
   return {
     id: id(n),
     name,
-    type: 'CARD',
     slug: name.toLowerCase(),
     badge: null,
     displayOrder: 0,

@@ -120,18 +120,10 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-enum CategoryType {
-  ALBUM
-  CARD
-
-  @@map("category_type")
-}
-
 model Category {
   id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
   parentCategoryId String?      @map("parent_category_id") @db.Uuid
   name             String       @db.VarChar(90)
-  type             CategoryType
   description      String?      @db.VarChar(255)
   isDefault        Boolean      @default(false) @map("is_default")
   slug             String?      @db.VarChar(100)

@@ -87,12 +87,9 @@ export class CategoryParentInvalidError extends BusinessRuleError {
   }
 }
 
-export class CategoryTypeMismatchError extends BusinessRuleError {
+export class CardCategoryMismatchError extends BusinessRuleError {
   constructor() {
-    super(
-      'A categoria precisa ser do tipo do item: álbum com categoria de álbum, carta com categoria de carta e subcategoria do mesmo tipo da categoria pai',
-      'CATEGORY_TYPE_MISMATCH',
-    );
+    super('A franquia da carta precisa ser a mesma do álbum dela', 'CARD_CATEGORY_MISMATCH');
   }
 }
 
