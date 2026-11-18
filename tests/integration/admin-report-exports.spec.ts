@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '@/app';
 import { signAccessToken } from '@/lib/jwt';
+import { reportExportsService } from '@/domains/admin/reports/reports.module';
 import { prisma } from '@/lib/prisma';
 
 interface ExportItem {
@@ -139,6 +140,23 @@ describe('GET /api/v1/admin/reports/exports/:id/file', () => {
     const res = await request(createApp({ withUploads: true })).get(`/uploads/${exported.fileUrl}`);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('limpeza dos relatórios vencidos', () => {
+  it('CA4: apaga o arquivo vencido do storage e mantém a linha no histórico', async () => {
+    const expired = await prisma.reportExport.findFirstOrThrow({
+      where: { adminId: { in: userIds }, expiresAt: { lte: new Date() } },
+    });
+    const before = await ourExports();
+
+    const deleted = await reportExportsService.deleteExpiredFiles();
+
+    expect(deleted).toBeGreaterThanOrEqual(1);
+    const res = await getAs(tokens.admin, `/api/v1/admin/reports/exports/${expired.id}/file`);
+    expect(res.status).toBe(410);
+    expect(await ourExports()).toHaveLength(before.length);
+    expect(await prisma.reportExport.count({ where: { id: expired.id, deletedAt: null } })).toBe(1);
   });
 });
 

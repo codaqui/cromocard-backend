@@ -52,6 +52,16 @@ describe('LocalStorageProvider', () => {
     await expect(provider.read('reports/sumiu.csv')).resolves.toBeNull();
   });
 
+  it('repassa outros erros de leitura', async () => {
+    await provider.upload({
+      key: 'reports/d/e.csv',
+      content: Buffer.from('x'),
+      contentType: 'text/csv',
+    });
+
+    await expect(provider.read('reports/d')).rejects.toThrow();
+  });
+
   it('recusa chave que sai da pasta do storage', async () => {
     await expect(provider.delete('../fora.png')).rejects.toThrow(InvalidStorageKeyError);
     await expect(provider.read('../fora.png')).rejects.toThrow(InvalidStorageKeyError);
