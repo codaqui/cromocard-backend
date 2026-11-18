@@ -439,4 +439,21 @@ describe('permissão', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('CCD104 CA7: CUSTOMER e visitante nas rotas de categorias do catálogo respondem 403 e 401', async () => {
+    const customer = {
+      Authorization: `Bearer ${signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' })}`,
+    };
+    const id = crypto.randomUUID();
+
+    const asCustomer = await Promise.all([
+      request(app).get(`${BASE}/categories`).set(customer),
+      request(app).post(`${BASE}/categories`).set(customer).send({ name: 'X', type: 'CARD' }),
+      request(app).patch(`${BASE}/categories/${id}`).set(customer).send({ name: 'Y' }),
+    ]);
+    const anonymous = await request(app).get(`${BASE}/categories`);
+
+    expect(asCustomer.map(({ status }) => status)).toEqual([403, 403, 403]);
+    expect(anonymous.status).toBe(401);
+  });
 });

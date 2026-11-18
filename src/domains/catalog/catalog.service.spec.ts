@@ -640,6 +640,16 @@ describe('CatalogService', () => {
       expect(edited.slug).toBe('yu-gi-oh');
     });
 
+    it('R9: editar só o selo muda o selo e não refaz o slug', async () => {
+      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+      const findBySlug = vi.spyOn(categories, 'findActiveBySlug');
+
+      const edited = await service.updateCategory(ADMIN_ID, category.id, { badge: 'TRENDING' });
+
+      expect([edited.slug, edited.badge]).toEqual(['yu-gi-oh', 'TRENDING']);
+      expect(findBySlug).not.toHaveBeenCalled();
+    });
+
     it('CA12: renomear só a pontuação não conflita com o próprio slug', async () => {
       const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
 
