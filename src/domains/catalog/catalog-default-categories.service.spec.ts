@@ -141,6 +141,14 @@ describe('DefaultCategoriesService', () => {
     expect(await service.replaceDefaults([], tx)).toEqual([]);
   });
 
+  it('CCD104 CA1: a categoria que a contagem não devolve aparece com 0 cartas', async () => {
+    const silent: CategoryCardCounts = { countByCategory: () => Promise.resolve(new Map()) };
+
+    const defaults = await new DefaultCategoriesService(repository, silent).listDefaults();
+
+    expect(defaults.map(({ cardsCount }) => cardsCount)).toEqual([0]);
+  });
+
   it('CCD104 CA2: grava a posição de cada categoria na ordem da lista', async () => {
     const saved = await service.replaceDefaults(place(id(3), id(2), id(1)), tx);
 

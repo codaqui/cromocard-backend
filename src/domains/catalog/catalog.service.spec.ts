@@ -679,6 +679,13 @@ describe('CatalogService', () => {
       await expect(service.findCategory(deleted.id)).rejects.toThrow(CategoryNotFoundError);
     });
 
+    it('um erro que não é de slug repetido sobe como veio', async () => {
+      const failure = new Error('banco fora do ar');
+      vi.spyOn(categories, 'create').mockRejectedValueOnce(failure);
+
+      await expect(newCategory({ name: 'Pokémon', type: 'CARD' })).rejects.toBe(failure);
+    });
+
     it('CA13: traduz a violação do índice único, quando duas criações disputam o slug', async () => {
       const raced = new Prisma.PrismaClientKnownRequestError('Unique', {
         code: 'P2002',
