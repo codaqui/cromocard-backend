@@ -74,11 +74,14 @@ export const createCardSchema = z.object({
 
 export const updateCardSchema = createCardSchema.partial();
 
+export const CATEGORY_BADGES = ['STANDARD', 'TRENDING'] as const;
+
 export const createCategorySchema = z.object({
   name: requiredText(CATEGORY_NAME_MAX_LENGTH),
   type: categoryTypeSchema,
   parentCategoryId: optionalReference,
   description: optionalText(CATEGORY_DESCRIPTION_MAX_LENGTH),
+  badge: z.enum(CATEGORY_BADGES).nullable().optional(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
