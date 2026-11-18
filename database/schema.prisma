@@ -1,7 +1,7 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
   previewFeatures = ["partialIndexes"]
 }
 
@@ -61,6 +61,11 @@ model User {
   sellerVerification      SellerVerification?  @relation("SellerVerificationSeller")
   reviewedVerifications   SellerVerification[] @relation("SellerVerificationReviewer")
   addresses               Address[]
+  listings                Listing[]
+  purchases               Order[]              @relation("OrderBuyer")
+  sales                   Order[]              @relation("OrderSeller")
+  reviewsWritten          Review[]             @relation("ReviewAuthor")
+  reviewsReceived         Review[]             @relation("ReviewSeller")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -84,6 +89,7 @@ model Address {
 
   user                User                 @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_addresses_user_id")
   sellerVerifications SellerVerification[]
+  orders              Order[]
 
   @@map("addresses")
 }
@@ -227,6 +233,8 @@ model Card {
   photos          CardPhoto[]
   groupMessages   GroupMessage[]
   catalogRequests CatalogRequest[]
+  listings        Listing[]
+  priceHistory    PriceHistory[]
 
   @@unique([albumId, number])
   @@map("cards")
@@ -333,6 +341,7 @@ model GroupMessage {
   replyTo GroupMessage?  @relation("GroupMessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_reply_to_id")
   replies GroupMessage[] @relation("GroupMessageReplies")
   card    Card?          @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_card_id")
+  listing Listing?       @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_listing_id")
   reports Report[]
 
   @@map("group_messages")
@@ -526,4 +535,141 @@ model SellerVerification {
   address  Address? @relation(fields: [addressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_address_id")
 
   @@map("seller_verifications")
+}
+
+enum ListingStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+
+  @@map("listing_status")
+}
+
+enum OrderStatus {
+  AWAITING_PAYMENT
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELED
+
+  @@map("order_status")
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  PIX
+  BOLETO
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
+enum PriceSource {
+  SALE
+  LISTING
+
+  @@map("price_source")
+}
+
+model Listing {
+  id                String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  sellerId          String        @map("seller_id") @db.Uuid
+  cardId            String        @map("card_id") @db.Uuid
+  price             Decimal       @db.Decimal(10, 2)
+  availableQuantity Int           @default(1) @map("available_quantity")
+  description       String?
+  status            ListingStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  seller        User           @relation(fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_seller_id")
+  card          Card           @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_card_id")
+  orders        Order[]
+  groupMessages GroupMessage[]
+
+  @@map("listings")
+}
+
+model Order {
+  id                String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  listingId         String      @map("listing_id") @db.Uuid
+  buyerId           String      @map("buyer_id") @db.Uuid
+  sellerId          String      @map("seller_id") @db.Uuid
+  shippingAddressId String      @map("shipping_address_id") @db.Uuid
+  quantity          Int         @default(1)
+  itemsAmount       Decimal     @map("items_amount") @db.Decimal(10, 2)
+  shippingAmount    Decimal     @default(0) @map("shipping_amount") @db.Decimal(10, 2)
+  totalAmount       Decimal     @map("total_amount") @db.Decimal(10, 2)
+  shippingMethod    String      @map("shipping_method") @db.VarChar(60)
+  status            OrderStatus @default(AWAITING_PAYMENT)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  listing         Listing  @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_listing_id")
+  buyer           User     @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_buyer_id")
+  seller          User     @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_seller_id")
+  shippingAddress Address  @relation(fields: [shippingAddressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_shipping_address_id")
+  payment         Payment?
+  review          Review?
+
+  @@map("orders")
+}
+
+model Payment {
+  id               String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId          String        @unique @map("order_id") @db.Uuid
+  method           PaymentMethod
+  value            Decimal       @db.Decimal(10, 2)
+  status           PaymentStatus @default(PENDING)
+  gatewayReference String?       @map("gateway_reference") @db.VarChar(120)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_payments_order_id")
+
+  @@map("payments")
+}
+
+model Review {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId   String    @unique @map("order_id") @db.Uuid
+  authorId  String    @map("author_id") @db.Uuid
+  sellerId  String    @map("seller_id") @db.Uuid
+  rating    Int       @db.SmallInt
+  comment   String?   @db.VarChar(500)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews_order_id")
+  author User  @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews_author_id")
+  seller User  @relation("ReviewSeller", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews_seller_id")
+
+  @@map("reviews")
+}
+
+model PriceHistory {
+  id            String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  cardId        String      @map("card_id") @db.Uuid
+  price         Decimal     @db.Decimal(10, 2)
+  referenceDate DateTime    @map("reference_date") @db.Date
+  source        PriceSource
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_price_history_card_id")
+
+  @@map("price_history")
 }

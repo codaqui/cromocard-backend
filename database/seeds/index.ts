@@ -6,6 +6,7 @@ import { createStorageProvider } from '@/providers/storage/storage.factory';
 import { seedAdmin, uploadSampleBanner } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
 import { seedCommunity } from './community.seed';
+import { seedMarketplace } from './marketplace.seed';
 import { seedOptionsFrom } from './seed-options';
 import { assertSeedEmailsAvailable, seedUsers } from './users.seed';
 
@@ -23,6 +24,7 @@ async function seed(): Promise<void> {
   await seedUsers(prisma, options.userPassword);
   await seedCatalog(prisma);
   await seedCommunity(prisma);
+  await seedMarketplace(prisma);
   const bannerImageUrl = options.isLocalDatabase
     ? await uploadSampleBanner(createStorageProvider())
     : undefined;
