@@ -1,10 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { PrismaCategoryCardCounts } from '@/domains/catalog/catalog-category-counts';
+import { cardCounts as counts } from '@/domains/catalog/catalog.module';
 import { prisma } from '@/lib/prisma';
 
 const MARKER = `contagem-${crypto.randomUUID().slice(0, 8)}`;
-const counts = new PrismaCategoryCardCounts(prisma);
 
 let root: string;
 let child: string;

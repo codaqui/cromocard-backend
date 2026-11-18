@@ -37,7 +37,7 @@ export const defaultCategoriesBodySchema = z.object({
       z.object({
         id: z.uuid(),
         backImageUrl: imageUrlSchema.nullable(),
-        isPinned: z.boolean().optional(),
+        isPinned: z.boolean().default(false),
       }),
     )
     .max(DEFAULT_CATEGORIES_MAX)

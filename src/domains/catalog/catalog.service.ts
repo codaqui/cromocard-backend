@@ -38,7 +38,7 @@ import type {
 import type { CategoryType } from '@/generated/prisma/enums';
 import { slugify } from '@/lib/slug';
 import type { CategoriesRepository, Category } from './catalog-categories.repository';
-import type { CategoryCardCounts } from './catalog-category-counts';
+import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
 export interface CatalogAuditLog {

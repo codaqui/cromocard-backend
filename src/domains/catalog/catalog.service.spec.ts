@@ -42,7 +42,7 @@ import type {
   CreateCategoryRecord,
   UpdateCategoryRecord,
 } from './catalog-categories.repository';
-import type { CategoryCardCounts } from './catalog-category-counts';
+import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
 type Stored<T> = T & { deletedAt: Date | null };

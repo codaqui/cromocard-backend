@@ -112,6 +112,8 @@ afterAll(async () => {
       data: { isDefault: true, displayOrder, isPinned },
     });
   }
+  await prisma.card.deleteMany({ where: { name: { startsWith: MARKER } } });
+  await prisma.album.deleteMany({ where: { title: { startsWith: MARKER } } });
   await prisma.category.deleteMany({
     where: { name: { startsWith: MARKER }, parentCategoryId: { not: null } },
   });
@@ -366,6 +368,28 @@ describe('ordem das categorias padrão', () => {
       details: [{ field: 'categories', message: 'Só uma categoria pode ser fixada no topo' }],
     });
     expect([after.isPinned, after.displayOrder]).toEqual([before.isPinned, before.displayOrder]);
+  });
+
+  it('CCD104 CA1: o GET soma as cartas da categoria, as dos álbuns e as das subcategorias', async () => {
+    const album = await prisma.album.create({
+      data: { title: `${MARKER} álbum`, categoryId: categories.child },
+    });
+    await prisma.card.createMany({
+      data: [
+        { name: `${MARKER} do álbum`, albumId: album.id },
+        { name: `${MARKER} excluída`, albumId: album.id, deletedAt: new Date() },
+        { name: `${MARKER} direta`, categoryId: categories.pokemon },
+      ],
+    });
+    await asAdmin().patch('/default-categories', {
+      categories: [{ id: categories.pokemon, backImageUrl: null }],
+    });
+
+    const list = await asAdmin().get('/default-categories');
+
+    expect((list.body as { data: { id: string; cardsCount: number }[] }).data).toEqual([
+      expect.objectContaining({ id: categories.pokemon, cardsCount: 2 }),
+    ]);
   });
 
   it('CCD104 CA1: o GET devolve slug, selo e a quantidade de cartas', async () => {

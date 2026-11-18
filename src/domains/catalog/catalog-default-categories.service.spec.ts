@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { Transaction } from '@/lib/transaction';
 
-import type { CategoryCardCounts } from './catalog-category-counts';
+import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type {
   DefaultCategoriesRepository,
   DefaultCategory,
@@ -199,5 +199,34 @@ describe('DefaultCategoriesService', () => {
     await service.replaceDefaults(place(id(2)), tx);
 
     expect(repository.rows.find(({ id: rowId }) => rowId === id(1))?.isPinned).toBe(false);
+  });
+
+  it('CCD104 CA8: o serviço também recusa duas categorias fixadas, sem gravar nada', async () => {
+    const twoPinned = [
+      { id: id(1), isPinned: true },
+      { id: id(2), isPinned: true },
+    ];
+
+    await expect(service.replaceDefaults(twoPinned, tx)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'VALIDATION_ERROR',
+      details: [{ field: 'categories' }],
+    });
+    expect(repository.rows.find(({ id: rowId }) => rowId === id(1))?.isPinned).toBe(false);
+  });
+
+  it('CCD104 R4: a fixada vai para a posição 0, mesmo que o chamador a mande fora do topo', async () => {
+    const saved = await service.replaceDefaults(
+      [
+        { id: id(2), isPinned: false },
+        { id: id(1), isPinned: true },
+      ],
+      tx,
+    );
+
+    expect(saved.map(({ name, displayOrder }) => [name, displayOrder])).toEqual([
+      ['Pokémon', 0],
+      ['Magic: The Gathering', 1],
+    ]);
   });
 });

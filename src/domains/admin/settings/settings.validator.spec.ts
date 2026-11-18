@@ -156,7 +156,7 @@ describe('settings.validator', () => {
     expect(() => pinned(CATEGORY_ID, otherId)).toThrow('Só uma categoria pode ser fixada no topo');
   });
 
-  it('CCD104 R5: o isPinned é opcional e uma lista sem nenhum fixado vale', () => {
-    expect(backsUpdate(null).categories[0]).not.toHaveProperty('isPinned');
+  it('CCD104 R5: o isPinned começa em false e uma lista sem nenhum fixado vale', () => {
+    expect(backsUpdate(null).categories[0]).toHaveProperty('isPinned', false);
   });
 });

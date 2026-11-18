@@ -37,6 +37,14 @@ function franchise(n: number, name: string, extra: Partial<DefaultCategory>): De
   };
 }
 
+const audited = ({
+  cardsCount: _cardsCount,
+  ...category
+}: DefaultCategory & { backImageUrl?: string | null }) => ({
+  ...category,
+  backImageUrl: category.backImageUrl ?? null,
+});
+
 const pokemon = franchise(101, 'Pokémon', { slug: 'pokemon', cardsCount: 18240 });
 const magic = franchise(102, 'Magic: The Gathering', {
   slug: 'magic-the-gathering',
@@ -82,6 +90,10 @@ class FakeDefaultCategories implements SettingsDefaultCategories {
 
   listDefaults(): Promise<DefaultCategory[]> {
     return Promise.resolve(this.defaults);
+  }
+
+  listDefaultsUncounted(): Promise<Omit<DefaultCategory, 'cardsCount'>[]> {
+    return Promise.resolve(this.defaults.map(({ cardsCount: _count, ...rest }) => rest));
   }
 
   replaceDefaults(placements: DefaultCategoryPlacement[]): Promise<DefaultCategory[]> {
@@ -145,8 +157,8 @@ describe('DefaultCategoriesSettingsService', () => {
     const saved = await service.update(
       {
         categories: [
-          { id: pokemon.id, backImageUrl: BACK_URL },
-          { id: magic.id, backImageUrl: null },
+          { id: pokemon.id, backImageUrl: BACK_URL, isPinned: false },
+          { id: magic.id, backImageUrl: null, isPinned: false },
         ],
       },
       ADMIN_ID,
@@ -163,7 +175,7 @@ describe('DefaultCategoriesSettingsService', () => {
         action: 'DEFAULT_CATEGORIES_UPDATED',
         entityType: 'SETTING',
         entityId: BACKS_SETTING_ID,
-        details: { before: [{ ...pokemon, backImageUrl: null }], after: saved },
+        details: { before: [audited(pokemon)], after: saved.map(audited) },
       },
     ]);
   });
@@ -172,7 +184,10 @@ describe('DefaultCategoriesSettingsService', () => {
     backs.row = null;
 
     await expect(
-      service.update({ categories: [{ id: magic.id, backImageUrl: null }] }, ADMIN_ID),
+      service.update(
+        { categories: [{ id: magic.id, backImageUrl: null, isPinned: false }] },
+        ADMIN_ID,
+      ),
     ).rejects.toThrow(SettingNotFoundError);
     expect(defaultCategories.defaults).toEqual([pokemon]);
     expect(audits).toEqual([]);
@@ -180,7 +195,10 @@ describe('DefaultCategoriesSettingsService', () => {
 
   it('CA4: categoria inexistente não muda o conjunto nem os versos', async () => {
     await expect(
-      service.update({ categories: [{ id: id(999), backImageUrl: BACK_URL }] }, ADMIN_ID),
+      service.update(
+        { categories: [{ id: id(999), backImageUrl: BACK_URL, isPinned: false }] },
+        ADMIN_ID,
+      ),
     ).rejects.toThrow(CategoryNotFoundError);
     expect(defaultCategories.defaults).toEqual([pokemon]);
     expect(backs.value()).toEqual({});
@@ -191,8 +209,8 @@ describe('DefaultCategoriesSettingsService', () => {
     const saved = await service.update(
       {
         categories: [
-          { id: magic.id, backImageUrl: null },
-          { id: pokemon.id, backImageUrl: null },
+          { id: magic.id, backImageUrl: null, isPinned: false },
+          { id: pokemon.id, backImageUrl: null, isPinned: false },
         ],
       },
       ADMIN_ID,
@@ -203,8 +221,8 @@ describe('DefaultCategoriesSettingsService', () => {
       ['Pokémon', 1],
     ]);
     expect(audits[0]?.details).toEqual({
-      before: [{ ...pokemon, backImageUrl: null }],
-      after: saved,
+      before: [audited(pokemon)],
+      after: saved.map(audited),
     });
   });
 
@@ -212,7 +230,7 @@ describe('DefaultCategoriesSettingsService', () => {
     const saved = await service.update(
       {
         categories: [
-          { id: pokemon.id, backImageUrl: null },
+          { id: pokemon.id, backImageUrl: null, isPinned: false },
           { id: magic.id, backImageUrl: null, isPinned: true },
         ],
       },

@@ -60,13 +60,11 @@ export class PrismaDefaultCategoriesRepository implements DefaultCategoriesRepos
       where: { isDefault: true, id: { notIn: ids } },
       data: { isDefault: false, isPinned: false },
     });
-    await Promise.all(
-      placements.map(({ id, isPinned }, position) =>
-        tx.category.update({
-          where: { id },
-          data: { isDefault: true, isPinned, displayOrder: position },
-        }),
-      ),
-    );
+    for (const [position, { id, isPinned }] of placements.entries()) {
+      await tx.category.update({
+        where: { id, ...notDeleted },
+        data: { isDefault: true, isPinned, displayOrder: position },
+      });
+    }
   }
 }
