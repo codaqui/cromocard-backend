@@ -6,6 +6,7 @@ import { buildOpenApiDocument } from '@/config/swagger';
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
+import { financeModule } from '@/domains/admin/finance/finance.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/settings.module';
 import { communityAdminModule } from '@/domains/community/community.module';
@@ -20,6 +21,7 @@ const sharedModules: DomainModule[] = [
   authModule,
   createUsersModule(authService),
   dashboardModule,
+  financeModule,
   catalogModule,
   reportsModule,
   settingsModule,
