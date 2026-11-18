@@ -300,7 +300,6 @@ export class CatalogService {
     if (await this.deps.categories.findActiveBySlug(slug, exceptId)) throw new SlugTakenError();
   }
 
-  /** O slug acompanha o nome (L14): só é refeito, e conferido, quando o nome muda. */
   private async slugAfterRename(current: Category, name: string | undefined) {
     if (name === undefined || name === current.name) return undefined;
     const slug = slugify(name);

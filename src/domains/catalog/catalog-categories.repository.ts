@@ -28,14 +28,12 @@ export interface CategoriesPage {
   total: number;
 }
 
-/** O slug não vem do corpo da requisição: a service o gera a partir do nome. */
 export type CreateCategoryRecord = CreateCategoryInput & { slug: string };
 export type UpdateCategoryRecord = UpdateCategoryInput & { slug?: string };
 
 export interface CategoriesRepository {
   findPage(query: ListCategoriesQuery): Promise<CategoriesPage>;
   findById(id: string): Promise<Category | null>;
-  /** Categoria não excluída com este slug, ignorando `exceptId` (a que está sendo renomeada). */
   findActiveBySlug(slug: string, exceptId?: string): Promise<Category | null>;
   create(input: CreateCategoryRecord): Promise<Category>;
   update(id: string, input: UpdateCategoryRecord): Promise<Category>;

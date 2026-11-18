@@ -38,10 +38,6 @@ function countsQuery(categoryIds: string[]) {
 export class PrismaCategoryCardCounts implements CategoryCardCounts {
   constructor(private readonly prisma: PrismaClient) {}
 
-  /**
-   * Cartas não excluídas de cada categoria e das subcategorias dela, ligadas direto à categoria ou
-   * pelos álbuns dela (CCD104, R2). Categoria sem cartas fica fora da consulta e volta com 0.
-   */
   async countByCategory(categoryIds: string[], tx?: Transaction): Promise<Map<string, number>> {
     const counts = new Map(categoryIds.map((id) => [id, 0]));
     if (categoryIds.length === 0) return counts;

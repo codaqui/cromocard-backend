@@ -73,7 +73,6 @@ async function seedReferenceData(prisma: PrismaClient) {
   }
 }
 
-/** Posição de cada categoria padrão na ordem alfabética inicial, como a migration da CCD104 deixa. */
 function defaultDisplayOrders(): Map<string, number> {
   const names = categories
     .filter(({ isDefault }) => isDefault)

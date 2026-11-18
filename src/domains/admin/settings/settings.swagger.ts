@@ -1,6 +1,6 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
-import { CATEGORY_BADGES } from '@/domains/catalog/catalog.validator';
+import { CATEGORY_BADGES } from '@/domains/catalog/catalog-default-categories.service';
 import { CategoryType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 

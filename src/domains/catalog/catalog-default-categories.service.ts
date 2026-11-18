@@ -10,6 +10,7 @@ import { CategoryNotFoundError, DefaultCategoryNotRootError } from './catalog.er
 
 export type DefaultCategory = StoredDefaultCategory & { cardsCount: number };
 export type { DefaultCategoryPlacement } from './catalog-default-categories.repository';
+export { CATEGORY_BADGES } from './catalog.validator';
 
 export class DefaultCategoriesService {
   constructor(
