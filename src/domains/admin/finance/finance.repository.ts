@@ -98,28 +98,28 @@ export class PrismaFinanceRepository implements FinanceRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async custodyCents(): Promise<number> {
-    const [row] = await this.prisma.$queryRaw<CentsRow[]>`
+    const [{ cents }] = await this.prisma.$queryRaw<[CentsRow]>`
       SELECT (COALESCE(SUM(p.value), 0) * 100)::bigint AS cents
       ${approvedPaymentOf} AND o.status IN ('PAID', 'SHIPPED')`;
-    return Number(row?.cents ?? 0);
+    return Number(cents);
   }
 
   async deliveredTotals({ from, to }: DateRange): Promise<DeliveredTotals> {
-    const [row] = await this.prisma.$queryRaw<DeliveredRow[]>`
+    const [{ cents, orders }] = await this.prisma.$queryRaw<[DeliveredRow]>`
       SELECT (COALESCE(SUM(p.value), 0) * 100)::bigint AS cents, COUNT(*)::int AS orders
       ${approvedPaymentOf} AND o.status = 'DELIVERED' AND o.updated_at >= ${from} AND o.updated_at <= ${to}`;
-    return { cents: Number(row?.cents ?? 0), orders: row?.orders ?? 0 };
+    return { cents: Number(cents), orders };
   }
 
   async ledger(day: DateRange, pagination: PaginationQuery): Promise<LedgerPage> {
     const { skip, take } = toSkipTake(pagination);
-    const [rows, [totals]] = await Promise.all([
+    const [rows, [{ total, received, released }]] = await Promise.all([
       this.prisma.$queryRaw<LedgerRow[]>`${movementsOf(day)}
         SELECT m.at, m.type, m.order_id AS "orderId", COALESCE(b.username, b.name) AS buyer,
                s.name AS seller, (m.value * 100)::bigint AS cents
         FROM movements m JOIN users b ON b.id = m.buyer_id JOIN users s ON s.id = m.seller_id
         ORDER BY m.at DESC, m.order_id DESC, m.type LIMIT ${take} OFFSET ${skip}`,
-      this.prisma.$queryRaw<LedgerTotalsRow[]>`${movementsOf(day)}
+      this.prisma.$queryRaw<[LedgerTotalsRow]>`${movementsOf(day)}
         SELECT COUNT(*)::int AS total,
           (COALESCE(SUM(value) FILTER (WHERE type = 'PAYMENT'), 0) * 100)::bigint AS received,
           (COALESCE(SUM(value) FILTER (WHERE type = 'RELEASE'), 0) * 100)::bigint AS released
@@ -127,9 +127,9 @@ export class PrismaFinanceRepository implements FinanceRepository {
     ]);
     return {
       entries: rows.map(toLedgerEntry),
-      total: totals?.total ?? 0,
-      receivedCents: Number(totals?.received ?? 0),
-      releasedCents: Number(totals?.released ?? 0),
+      total,
+      receivedCents: Number(received),
+      releasedCents: Number(released),
     };
   }
 

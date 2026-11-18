@@ -270,10 +270,12 @@ describe('estatísticas por vendedor, carta e grupo', () => {
       ],
     });
 
-    const res = await getAsAdmin('/cards', { ids: ids.card });
+    const unknownId = crypto.randomUUID();
+    const res = await getAsAdmin('/cards', { ids: `${ids.card},${unknownId}` });
 
     expect(dataOf(res)).toEqual([
       { id: ids.card, population: 0, averagePriceCents: 15000, prices: 2 },
+      { id: unknownId, population: 0, averagePriceCents: null, prices: 0 },
     ]);
   });
 
