@@ -23,6 +23,10 @@ class FakeStorageProvider implements StorageProvider {
     return Promise.resolve({ key: file.key, url: this.getUrl(file.key) });
   }
 
+  read(key: string): Promise<Buffer | null> {
+    return Promise.resolve(this.files.find((file) => file.key === key)?.content ?? null);
+  }
+
   delete(key: string): Promise<void> {
     this.files = this.files.filter((file) => file.key !== key);
     return Promise.resolve();

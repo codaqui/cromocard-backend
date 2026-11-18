@@ -44,8 +44,17 @@ describe('LocalStorageProvider', () => {
     await expect(readFile(path.join(rootDir, 'cards/b.png'))).rejects.toThrow();
   });
 
+  it('lê o arquivo da chave e devolve null quando ele não existe mais', async () => {
+    const content = Buffer.from('relatorio');
+    await provider.upload({ key: 'reports/c.csv', content, contentType: 'text/csv' });
+
+    await expect(provider.read('reports/c.csv')).resolves.toEqual(content);
+    await expect(provider.read('reports/sumiu.csv')).resolves.toBeNull();
+  });
+
   it('recusa chave que sai da pasta do storage', async () => {
     await expect(provider.delete('../fora.png')).rejects.toThrow(InvalidStorageKeyError);
+    await expect(provider.read('../fora.png')).rejects.toThrow(InvalidStorageKeyError);
     await expect(
       provider.upload({
         key: 'cards/../../fora.png',

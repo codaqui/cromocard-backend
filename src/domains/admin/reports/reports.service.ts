@@ -4,6 +4,7 @@ import type { PeriodQuery } from '@/domains/admin/dashboard/dashboard.validator'
 import type { DateRange } from '@/shared/utils/time-zone';
 
 import type { ReportExporter, ReportTable } from './exporters/report-table';
+import type { ReportArchiveEntry } from './report-exports.service';
 import {
   type CellValue,
   type ReportColumn,
@@ -28,9 +29,14 @@ export interface ReportsAuditLog {
   }): Promise<unknown>;
 }
 
+export interface ReportsArchive {
+  archive(entry: ReportArchiveEntry): Promise<unknown>;
+}
+
 export interface ReportsServiceDeps {
   repository: ReportsRepository;
   auditLogService: ReportsAuditLog;
+  archive: ReportsArchive;
   exporters: Record<ExportFormat, ReportExporter>;
   now: () => Date;
 }
@@ -74,19 +80,21 @@ export class ReportsService {
     return { type, title, period, columns, rows, total };
   }
 
-  async export({ type, query, adminId }: ExportRequest): Promise<ReportFile> {
+  async export(request: ExportRequest): Promise<ReportFile> {
+    const { type, query } = request;
     const period = this.resolve(query);
     const { rows, total } = await this.findRows(type, period);
     if (total === 0) throw new ReportEmptyError();
 
     const exporter = this.deps.exporters[query.format];
-    const content = await exporter.render(this.toTable(type, period, rows));
-    await this.recordExport({ type, query, adminId }, period, total);
-    return {
+    const file = {
       fileName: fileNameOf(type, period, exporter.extension),
       contentType: exporter.contentType,
-      content,
+      content: await exporter.render(this.toTable(type, period, rows)),
     };
+    await this.archiveExport(request, period, file);
+    await this.recordExport(request, period, total);
+    return file;
   }
 
   private resolve(query: PeriodQuery): DateRange {
@@ -115,6 +123,19 @@ export class ReportsService {
       headers: columns.map(({ label }) => label),
       rows: rows.map((row) => columns.map(({ key }) => formatCell(row[key]))),
     };
+  }
+
+  private archiveExport(
+    { type, query, adminId }: ExportRequest,
+    period: DateRange,
+    file: ReportFile,
+  ) {
+    const filters = {
+      period: query.period ?? null,
+      from: period.from.toISOString(),
+      to: period.to.toISOString(),
+    };
+    return this.deps.archive.archive({ adminId, type, format: query.format, filters, file });
   }
 
   private recordExport({ type, query, adminId }: ExportRequest, period: DateRange, total: number) {
