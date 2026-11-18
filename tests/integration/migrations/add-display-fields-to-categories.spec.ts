@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '@/lib/prisma';
+import { slugify } from '@/lib/slug';
 
 const MIGRATION = path.resolve(
   import.meta.dirname,
@@ -54,7 +55,11 @@ async function migrateCategories(): Promise<MigratedCategory[]> {
         ('Combo',                false, '2026-01-07', NULL),
         ('Combo',                false, '2026-01-08', NULL),
         ('Combo 2',              false, '2026-01-09', NULL),
-        ('Apagada',              true,  '2026-01-10', '2026-02-01')`);
+        ('Apagada',              true,  '2026-01-10', '2026-02-01'),
+        ('Zebra',                true,  '2026-01-11', NULL),
+        ('Épico',                true,  '2026-01-12', NULL),
+        ('Ýoga Śnack Žeta',      false, '2026-01-13', NULL),
+        ('Ñandú Çá Ǻrvore',      false, '2026-01-14', NULL)`);
 
     for (const statement of migrationStatements()) {
       await tx.$executeRawUnsafe(statement);
@@ -120,5 +125,23 @@ describe('migration add_display_fields_to_categories_table', () => {
 
   it('as categorias começam sem selo', () => {
     expect(migrated.every(({ badge }) => badge === null)).toBe(true);
+  });
+
+  it('CA16: a ordem alfabética ignora o acento, então "Épico" vem antes de "Zebra"', () => {
+    const defaults = migrated
+      .filter(({ name, deleted }) => !deleted && ['Zebra', 'Épico', 'Futebol'].includes(name))
+      .sort((a, b) => a.displayOrder - b.displayOrder)
+      .map(({ name }) => name);
+
+    expect(defaults).toEqual(['Épico', 'Futebol', 'Zebra']);
+  });
+
+  it('CA16: o slug de letras acentuadas fora do português é o mesmo que o slugify gera', () => {
+    const names = ['Ýoga Śnack Žeta', 'Ñandú Çá Ǻrvore', 'Épico', 'Zebra'];
+
+    const slugs = names.map((name) => migrated.find((row) => row.name === name)?.slug);
+
+    expect(slugs).toEqual(names.map(slugify));
+    expect(slugs[0]).toBe('yoga-snack-zeta');
   });
 });

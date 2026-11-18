@@ -4,16 +4,14 @@ ADD COLUMN     "display_order" INTEGER NOT NULL DEFAULT 0,
 ADD COLUMN     "is_pinned" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN     "badge" VARCHAR(20);
 
--- Slug das categorias existentes (CCD104, R13): mesma regra do slugify de src/lib/slug.ts
--- (sem acentos, minúsculas, só a-z0-9 e hífens únicos, até 100 caracteres, "categoria" se sobrar nada).
+-- Texto sem acento e em minúsculas, a mesma regra do slugify de src/lib/slug.ts (normalize NFD).
+CREATE FUNCTION pg_temp.plain_text(value text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT lower(translate(value, 'ÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝàáâãäåçèéêëìíîïñòóôõöùúûüýÿĀāĂăĄąĆćĈĉĊċČčĎďĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĨĩĪīĬĭĮįİĴĵĶķĹĺĻļĽľŃńŅņŇňŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽžƠơƯưǍǎǏǐǑǒǓǔǕǖǗǘǙǚǛǜǞǟǠǡǦǧǨǩǪǫǬǭǰǴǵǸǹǺǻȀȁȂȃȄȅȆȇȈȉȊȋȌȍȎȏȐȑȒȓȔȕȖȗȘșȚțȞȟȦȧȨȩȪȫȬȭȮȯȰȱȲȳḀḁḂḃḄḅḆḇḈḉḊḋḌḍḎḏḐḑḒḓḔḕḖḗḘḙḚḛḜḝḞḟḠḡḢḣḤḥḦḧḨḩḪḫḬḭḮḯḰḱḲḳḴḵḶḷḸḹḺḻḼḽḾḿṀṁṂṃṄṅṆṇṈṉṊṋṌṍṎṏṐṑṒṓṔṕṖṗṘṙṚṛṜṝṞṟṠṡṢṣṤṥṦṧṨṩṪṫṬṭṮṯṰṱṲṳṴṵṶṷṸṹṺṻṼṽṾṿẀẁẂẃẄẅẆẇẈẉẊẋẌẍẎẏẐẑẒẓẔẕẖẗẘẙẠạẢảẤấẦầẨẩẪẫẬậẮắẰằẲẳẴẵẶặẸẹẺẻẼẽẾếỀềỂểỄễỆệỈỉỊịỌọỎỏỐốỒồỔổỖỗỘộỚớỜờỞởỠỡỢợỤụỦủỨứỪừỬửỮữỰựỲỳỴỵỶỷỸỹ', 'AAAAAACEEEEIIIINOOOOOUUUUYaaaaaaceeeeiiiinooooouuuuyyAaAaAaCcCcCcCcDdEeEeEeEeEeGgGgGgGgHhIiIiIiIiIJjKkLlLlLlNnNnNnOoOoOoRrRrRrSsSsSsSsTtTtUuUuUuUuUuUuWwYyYZzZzZzOoUuAaIiOoUuUuUuUuUuAaAaGgKkOoOojGgNnAaAaAaEeEeIiIiOoOoRrRrUuUuSsTtHhAaEeOoOoOoOoYyAaBbBbBbCcDdDdDdDdDdEeEeEeEeEeFfGgHhHhHhHhHhIiIiKkKkKkLlLlLlLlMmMmMmNnNnNnNnOoOoOoOoPpPpRrRrRrRrSsSsSsSsSsTtTtTtTtUuUuUuUuUuVvVvWwWwWwWwWwXxXxYyZzZzZzhtwyAaAaAaAaAaAaAaAaAaAaAaAaEeEeEeEeEeEeEeEeIiIiOoOoOoOoOoOoOoOoOoOoOoOoUuUuUuUuUuUuUuYyYyYyYy')) $$;
+
+-- Slug das categorias existentes (CCD104, R13): sem acentos, só a-z0-9 e hífens únicos, até 100 caracteres.
 UPDATE "categories"
 SET "slug" = COALESCE(
   NULLIF(
-    trim(both '-' from left(trim(both '-' from regexp_replace(
-      lower(translate("name",
-        'ÁÀÂÃÄÅáàâãäåÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
-        'AAAAAAaaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')),
-      '[^a-z0-9]+', '-', 'g')), 100)),
+    trim(both '-' from left(trim(both '-' from regexp_replace(pg_temp.plain_text("name"), '[^a-z0-9]+', '-', 'g')), 100)),
     ''),
   'categoria');
 
@@ -51,7 +49,7 @@ END $$;
 UPDATE "categories" c
 SET "display_order" = ranked.position
 FROM (
-  SELECT "id", row_number() OVER (ORDER BY lower("name"), "id") - 1 AS position
+  SELECT "id", row_number() OVER (ORDER BY pg_temp.plain_text("name") COLLATE "C", "id") - 1 AS position
   FROM "categories"
   WHERE "is_default" = true AND "deleted_at" IS NULL
 ) ranked

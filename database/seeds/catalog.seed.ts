@@ -73,27 +73,40 @@ async function seedReferenceData(prisma: PrismaClient) {
   }
 }
 
-function defaultDisplayOrders(): Map<string, number> {
-  const names = categories
-    .filter(({ isDefault }) => isDefault)
-    .map(({ key, name }) => ({ key, name }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+function alphabeticKey(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
 
-  return new Map(names.map(({ key }, position) => [key, position]));
+function byAlphabeticKey(a: { key: string; name: string }, b: { key: string; name: string }) {
+  const [first, second] = [alphabeticKey(a.name), alphabeticKey(b.name)];
+  if (first !== second) return first < second ? -1 : 1;
+  return a.key < b.key ? -1 : 1;
+}
+
+function defaultDisplayOrders(): Map<string, number> {
+  const defaults = categories.filter(({ isDefault }) => isDefault).sort(byAlphabeticKey);
+
+  return new Map(defaults.map(({ key }, position) => [key, position]));
 }
 
 async function seedCategories(prisma: PrismaClient) {
   const orders = defaultDisplayOrders();
 
   for (const { key, parent, ...category } of categories) {
-    const data = {
+    const fields = {
       ...category,
       id: categoryIdOf(key),
       parentCategoryId: optional(categoryIdOf)(parent),
-      slug: slugify(category.name),
-      displayOrder: orders.get(key) ?? 0,
     };
-    await prisma.category.upsert({ where: { id: data.id }, create: data, update: data });
+    const initial = { slug: slugify(category.name), displayOrder: orders.get(key) ?? 0 };
+    await prisma.category.upsert({
+      where: { id: fields.id },
+      create: { ...fields, ...initial },
+      update: fields,
+    });
   }
 }
 
