@@ -55,7 +55,8 @@ model User {
   performedAuditLogs      AuditLog[]
   updatedSettings         GlobalSetting[]
   sentGlobalNotifications GlobalNotification[]
-  notifications           Notification[]
+  reportExports           ReportExport[]
+  notifications          Notification[]
   refreshTokens           RefreshToken[]
   passwordResetTokens     PasswordResetToken[]
   sellerVerification      SellerVerification?  @relation("SellerVerificationSeller")
@@ -464,6 +465,24 @@ model GlobalNotification {
   notifications Notification[]
 
   @@map("global_notifications")
+}
+
+model ReportExport {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  adminId    String    @map("admin_id") @db.Uuid
+  reportType String    @map("report_type") @db.VarChar(60)
+  filters    Json?     @db.JsonB
+  format     String    @db.VarChar(10)
+  fileUrl    String    @map("file_url") @db.VarChar(255)
+  fileSize   Int?      @map("file_size")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_report_exports_admin_id")
+
+  @@map("report_exports")
 }
 
 model Notification {

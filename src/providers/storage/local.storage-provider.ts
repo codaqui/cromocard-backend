@@ -1,9 +1,17 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { LOCAL_UPLOADS_PATH } from './local-uploads.static';
 import { InvalidStorageKeyError } from './storage.errors';
 import type { FileToStore, StorageProvider, StoredFile } from './storage.provider';
+
+const isMissingFile = (error: unknown) =>
+  error instanceof Error && 'code' in error && error.code === 'ENOENT';
+
+function nullWhenMissing(error: unknown): null {
+  if (isMissingFile(error)) return null;
+  throw error;
+}
 
 export class LocalStorageProvider implements StorageProvider {
   private readonly rootDir: string;
@@ -20,6 +28,10 @@ export class LocalStorageProvider implements StorageProvider {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, content);
     return { key, url: this.getUrl(key) };
+  }
+
+  async read(key: string): Promise<Buffer | null> {
+    return await readFile(this.resolvePath(key)).catch(nullWhenMissing);
   }
 
   async delete(key: string): Promise<void> {

@@ -11,6 +11,7 @@ export interface StoredFile {
 
 export interface StorageProvider {
   upload(file: FileToStore): Promise<StoredFile>;
+  read(key: string): Promise<Buffer | null>;
   delete(key: string): Promise<void>;
   getUrl(key: string): string;
 }

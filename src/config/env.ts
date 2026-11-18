@@ -35,6 +35,7 @@ const envSchema = z.object({
   INVITE_TTL: z.coerce.number().int().positive().default(86400),
   STORAGE_DRIVER: z.enum(['local']).default('local'),
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
+  STORAGE_LOCAL_PRIVATE_DIR: z.string().min(1).default('storage-private'),
   SEED_USER_PASSWORD: optionalText,
 });
 
