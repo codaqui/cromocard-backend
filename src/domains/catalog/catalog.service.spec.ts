@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { Prisma } from '@/generated/prisma/client';
+import { slugify } from '@/lib/slug';
 
 import type { Album, AlbumsPage, AlbumsRepository } from './catalog-albums.repository';
 import type {
@@ -24,6 +25,7 @@ import {
   CategoryTypeMismatchError,
   LanguageNotFoundError,
   RarityNotFoundError,
+  SlugTakenError,
 } from './catalog.errors';
 import { CatalogService, type CardUsage } from './catalog.service';
 import type {
@@ -32,13 +34,15 @@ import type {
   CreateCategoryInput,
   UpdateAlbumInput,
   UpdateCardInput,
-  UpdateCategoryInput,
 } from './catalog.validator';
 import type {
   CategoriesPage,
   CategoriesRepository,
   Category,
+  CreateCategoryRecord,
+  UpdateCategoryRecord,
 } from './catalog-categories.repository';
+import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
 type Stored<T> = T & { deletedAt: Date | null };
@@ -87,11 +91,13 @@ function buildCard(input: CreateCardInput): Stored<Card> {
   };
 }
 
-function buildCategory(input: CreateCategoryInput): Stored<Category> {
+function buildCategory(input: CreateCategoryInput & { slug?: string }): Stored<Category> {
   return {
     id: crypto.randomUUID(),
     name: input.name,
     type: input.type,
+    slug: input.slug ?? slugify(input.name),
+    badge: input.badge ?? null,
     description: input.description ?? null,
     parentCategoryId: input.parentCategoryId ?? null,
     parentCategory: null,
@@ -200,13 +206,20 @@ class InMemoryCategoriesRepository implements CategoriesRepository {
     return Promise.resolve(category ?? null);
   }
 
-  create(input: CreateCategoryInput): Promise<Category> {
+  findActiveBySlug(slug: string, exceptId?: string): Promise<Category | null> {
+    const category = this.categories.find(
+      (stored) => stored.slug === slug && stored.id !== exceptId && !stored.deletedAt,
+    );
+    return Promise.resolve(category ?? null);
+  }
+
+  create(input: CreateCategoryRecord): Promise<Category> {
     const category = buildCategory(input);
     this.categories.push(category);
     return Promise.resolve(category);
   }
 
-  update(id: string, input: UpdateCategoryInput): Promise<Category> {
+  update(id: string, input: UpdateCategoryRecord): Promise<Category> {
     return Promise.resolve(Object.assign(findStored(this.categories, id), input));
   }
 
@@ -217,6 +230,14 @@ class InMemoryCategoriesRepository implements CategoriesRepository {
 
   isInUse(id: string): Promise<boolean> {
     return Promise.resolve(this.inUse.has(id));
+  }
+}
+
+class InMemoryCardCounts implements CategoryCardCounts {
+  totals = new Map<string, number>();
+
+  countByCategory(ids: string[]): Promise<Map<string, number>> {
+    return Promise.resolve(new Map(ids.map((id) => [id, this.totals.get(id) ?? 0])));
   }
 }
 
@@ -269,6 +290,7 @@ describe('CatalogService', () => {
   let references: InMemoryReferencesRepository;
   let auditLog: InMemoryAuditLog;
   let cardUsage: InMemoryCardUsage;
+  let cardCounts: InMemoryCardCounts;
   let service: CatalogService;
   let franchise: Stored<Category>;
 
@@ -279,7 +301,16 @@ describe('CatalogService', () => {
     references = new InMemoryReferencesRepository();
     auditLog = new InMemoryAuditLog();
     cardUsage = new InMemoryCardUsage();
-    service = new CatalogService({ albums, cards, categories, references, auditLog, cardUsage });
+    cardCounts = new InMemoryCardCounts();
+    service = new CatalogService({
+      albums,
+      cards,
+      categories,
+      cardCounts,
+      references,
+      auditLog,
+      cardUsage,
+    });
     franchise = buildCategory({ name: 'Pokémon', type: 'CARD' });
   });
 
@@ -523,7 +554,14 @@ describe('CatalogService', () => {
     });
 
     it('R11: sem a checagem de coleções ligada, a carta é excluída', async () => {
-      const withoutUsage = new CatalogService({ albums, cards, categories, references, auditLog });
+      const withoutUsage = new CatalogService({
+        albums,
+        cards,
+        categories,
+        cardCounts,
+        references,
+        auditLog,
+      });
       const card = await newCard();
 
       await withoutUsage.deleteCard(ADMIN_ID, card.id);
@@ -545,6 +583,127 @@ describe('CatalogService', () => {
         items: [{ name: 'Esportes' }],
       });
       expect(auditLog.actions()).toEqual(['CATEGORY_CREATED', 'CATEGORY_UPDATED']);
+    });
+
+    it('CA1: lista as categorias com a quantidade de cartas de cada uma', async () => {
+      const football = await newCategory();
+      const empty = await newCategory({ name: 'Magic', type: 'CARD' });
+      cardCounts.totals.set(football.id, 7300);
+
+      const page = await service.listCategories(PAGE);
+
+      expect(page.items.map(({ id, cardsCount }) => [id, cardsCount])).toEqual([
+        [football.id, 7300],
+        [empty.id, 0],
+      ]);
+    });
+
+    it('CA1: devolve a quantidade de cartas ao buscar, cadastrar e editar a categoria', async () => {
+      const created = await newCategory();
+      cardCounts.totals.set(created.id, 12);
+
+      const found = await service.findCategory(created.id);
+      const edited = await service.updateCategory(ADMIN_ID, created.id, { description: 'Álbuns' });
+
+      expect([created.cardsCount, found.cardsCount, edited.cardsCount]).toEqual([0, 12, 12]);
+    });
+
+    it('CA6: gera o slug one-piece ao cadastrar "One Piece"', async () => {
+      const category = await newCategory({ name: 'One Piece', type: 'CARD' });
+
+      expect(category.slug).toBe('one-piece');
+    });
+
+    it('R10: grava o selo escolhido e começa sem selo', async () => {
+      const trending = await newCategory({ name: 'Pokémon', badge: 'TRENDING' });
+      const plain = await newCategory({ name: 'Magic' });
+
+      expect([trending.badge, plain.badge]).toEqual(['TRENDING', null]);
+    });
+
+    it('CA12: refaz o slug quando o nome muda', async () => {
+      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+      const before = category.slug;
+
+      const renamed = await service.updateCategory(ADMIN_ID, category.id, {
+        name: 'Yu-Gi-Oh! TCG',
+      });
+
+      expect([before, renamed.slug]).toEqual(['yu-gi-oh', 'yu-gi-oh-tcg']);
+    });
+
+    it('CA12: mantém o slug quando a edição não muda o nome', async () => {
+      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+
+      const edited = await service.updateCategory(ADMIN_ID, category.id, { description: 'Cartas' });
+
+      expect(edited.slug).toBe('yu-gi-oh');
+    });
+
+    it('R9: editar só o selo muda o selo e não refaz o slug', async () => {
+      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+      const findBySlug = vi.spyOn(categories, 'findActiveBySlug');
+
+      const edited = await service.updateCategory(ADMIN_ID, category.id, { badge: 'TRENDING' });
+
+      expect([edited.slug, edited.badge]).toEqual(['yu-gi-oh', 'TRENDING']);
+      expect(findBySlug).not.toHaveBeenCalled();
+    });
+
+    it('CA12: renomear só a pontuação não conflita com o próprio slug', async () => {
+      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+
+      const renamed = await service.updateCategory(ADMIN_ID, category.id, { name: 'Yu Gi Oh' });
+
+      expect(renamed.slug).toBe('yu-gi-oh');
+    });
+
+    it('CA13: recusa com SLUG_TAKEN o nome que gera o slug de uma categoria ativa', async () => {
+      await newCategory({ name: 'Pokémon', type: 'CARD' });
+
+      const error = await newCategory({ name: 'Pokemon', type: 'CARD' }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(SlugTakenError);
+      expect(error).toMatchObject({ statusCode: 409, code: 'SLUG_TAKEN' });
+      expect((error as SlugTakenError).details).toEqual([
+        expect.objectContaining({ field: 'name' }),
+      ]);
+    });
+
+    it('CA13: recusa renomear para o slug de outra categoria ativa', async () => {
+      await newCategory({ name: 'Pokémon', type: 'CARD' });
+      const other = await newCategory({ name: 'Magic', type: 'CARD' });
+
+      await expect(service.updateCategory(ADMIN_ID, other.id, { name: 'Pokemon' })).rejects.toThrow(
+        SlugTakenError,
+      );
+    });
+
+    it('CA13: cria "One Piece" com uma excluída de mesmo slug, sem restaurá-la', async () => {
+      const deleted = await newCategory({ name: 'One Piece', type: 'CARD' });
+      await service.deleteCategory(ADMIN_ID, deleted.id);
+
+      const created = await newCategory({ name: 'One Piece', type: 'CARD' });
+
+      expect(created.id).not.toBe(deleted.id);
+      await expect(service.findCategory(deleted.id)).rejects.toThrow(CategoryNotFoundError);
+    });
+
+    it('um erro que não é de slug repetido sobe como veio', async () => {
+      const failure = new Error('banco fora do ar');
+      vi.spyOn(categories, 'create').mockRejectedValueOnce(failure);
+
+      await expect(newCategory({ name: 'Pokémon', type: 'CARD' })).rejects.toBe(failure);
+    });
+
+    it('CA13: traduz a violação do índice único, quando duas criações disputam o slug', async () => {
+      const raced = new Prisma.PrismaClientKnownRequestError('Unique', {
+        code: 'P2002',
+        clientVersion: 'x',
+      });
+      vi.spyOn(categories, 'create').mockRejectedValueOnce(raced);
+
+      await expect(newCategory({ name: 'Pokémon', type: 'CARD' })).rejects.toThrow(SlugTakenError);
     });
 
     it('R15: recusa a categoria como pai dela mesma', async () => {

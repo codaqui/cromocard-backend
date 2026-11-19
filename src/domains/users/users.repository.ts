@@ -14,6 +14,7 @@ const userProfileSelect = {
   email: true,
   role: true,
   status: true,
+  suspendedUntil: true,
   emailVerified: true,
   createdAt: true,
   username: true,
@@ -148,6 +149,18 @@ export interface SignupsQuery {
   timeZone: string;
 }
 
+export interface StatusUpdate {
+  status: UserStatus;
+  suspendedUntil?: Date | null;
+}
+
+export interface NewUserWarning {
+  userId: string;
+  adminId: string;
+  reportId?: string;
+  reason: string;
+}
+
 export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserProfile | null>;
@@ -155,8 +168,11 @@ export interface UsersRepository {
   findAddressesByUserId(userId: string): Promise<Address[]>;
   create(input: Omit<CreateUserInput, 'sendActivation'>, tx?: Transaction): Promise<UserSummary>;
   update(id: string, changes: UserChanges, tx?: Transaction): Promise<UserSummary>;
-  updateStatus(id: string, status: UserStatus, tx?: Transaction): Promise<UserSummary>;
+  updateStatus(id: string, update: StatusUpdate, tx?: Transaction): Promise<UserSummary>;
   softDelete(id: string, tx?: Transaction): Promise<void>;
+  createWarning(warning: NewUserWarning, tx?: Transaction): Promise<void>;
+  countWarningsByUserId(userId: string): Promise<number>;
+  reactivateExpiredSuspensions(now: Date): Promise<number>;
   countMembers(): Promise<number>;
   countSignupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   findSellersCreatedWithin(range: DateRange, pagination: PaginationQuery): Promise<SellersPage>;
@@ -299,12 +315,12 @@ export class PrismaUsersRepository implements UsersRepository {
 
   async updateStatus(
     id: string,
-    status: UserStatus,
+    { status, suspendedUntil }: StatusUpdate,
     tx: Transaction = this.prisma,
   ): Promise<UserSummary> {
     const user = await tx.user.update({
       where: { id },
-      data: { status },
+      data: { status, suspendedUntil: suspendedUntil ?? null },
       select: userSummarySelect,
     });
     return withVerificationStatus(user);
@@ -312,6 +328,25 @@ export class PrismaUsersRepository implements UsersRepository {
 
   async softDelete(id: string, tx: Transaction = this.prisma): Promise<void> {
     await tx.user.update({ where: { id }, data: softDeleteData() });
+  }
+
+  async createWarning(
+    { reportId, ...warning }: NewUserWarning,
+    tx: Transaction = this.prisma,
+  ): Promise<void> {
+    await tx.userWarning.create({ data: { ...warning, reportId: reportId ?? null } });
+  }
+
+  countWarningsByUserId(userId: string): Promise<number> {
+    return this.prisma.userWarning.count({ where: { userId, ...notDeleted } });
+  }
+
+  async reactivateExpiredSuspensions(now: Date): Promise<number> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { ...notDeleted, status: 'SUSPENDED', suspendedUntil: { lte: now } },
+      data: { status: 'ACTIVE', suspendedUntil: null },
+    });
+    return count;
   }
 
   countMembers(): Promise<number> {

@@ -1,13 +1,16 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { GroupStatus, ReportStatus, ReportTargetType } from '@/generated/prisma/enums';
+import type { Transaction } from '@/lib/transaction';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
+import { DAY_IN_MS } from '@/shared/utils/time-zone';
 
 import {
   isOpenReportStatus,
   type ListGroupMessageReportsQuery,
   type ListGroupsQuery,
   OPEN_REPORT_STATUSES,
+  SEVERITY_CATEGORIES,
 } from './community-admin.validator';
 
 const groupSummarySelect = {
@@ -36,7 +39,7 @@ const groupMessageReportSelect = {
       id: true,
       content: true,
       createdAt: true,
-      author: { select: { name: true } },
+      author: { select: { id: true, name: true, createdAt: true } },
       group: { select: { name: true } },
     },
   },
@@ -46,6 +49,7 @@ const reportStateSelect = {
   id: true,
   status: true,
   groupMessageId: true,
+  groupMessage: { select: { authorId: true } },
 } satisfies Prisma.ReportSelect;
 
 type GroupSummaryRow = Prisma.GroupGetPayload<{ select: typeof groupSummarySelect }>;
@@ -57,15 +61,47 @@ function flattenGroup<T extends GroupSummaryRow>({ creator, _count, ...group }: 
   return { ...group, membersCount: _count.members, creatorName: creator.name };
 }
 
-function toReportedMessage({ author, group, ...message }: ReportedMessageRow) {
-  return { ...message, authorName: author.name, groupName: group.name };
+interface MessageStats {
+  authorWarnings: number;
+  reportersCount: number;
 }
 
-function toGroupMessageReport({ reporter, groupMessage, ...report }: GroupMessageReportRow) {
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function countIn(counts: Map<string | null, number>, key: string): number {
+  return counts.get(key) ?? 0;
+}
+
+function toReportedMessage(
+  { author, group, ...message }: ReportedMessageRow,
+  now: Date,
+  { authorWarnings, reportersCount }: MessageStats,
+) {
+  const authorAccountAgeDays = Math.floor((now.getTime() - author.createdAt.getTime()) / DAY_IN_MS);
+  return {
+    ...message,
+    authorId: author.id,
+    authorName: author.name,
+    groupName: group.name,
+    authorAccountAgeDays,
+    authorWarnings,
+    reportersCount,
+  };
+}
+
+function toGroupMessageReport(
+  { reporter, groupMessage, ...report }: GroupMessageReportRow,
+  now: Date,
+  statsOf: (authorId: string, messageId: string) => MessageStats,
+) {
   return {
     ...report,
     reporterName: reporter.name,
-    message: groupMessage && toReportedMessage(groupMessage),
+    message:
+      groupMessage &&
+      toReportedMessage(groupMessage, now, statsOf(groupMessage.author.id, groupMessage.id)),
   };
 }
 
@@ -87,7 +123,7 @@ export interface CommunitySummary {
 
 export interface GroupStatusChange {
   id: string;
-  from: GroupStatus;
+  from: GroupStatus[];
   to: GroupStatus;
 }
 
@@ -105,9 +141,10 @@ export interface CommunityAdminRepository {
   softDeleteGroup(id: string): Promise<boolean>;
   findGroupMessageReportsPage(
     query: ListGroupMessageReportsQuery,
+    now: Date,
   ): Promise<Page<GroupMessageReport>>;
   findGroupMessageReportState(id: string): Promise<ReportState | null>;
-  removeReportedMessage(removal: MessageRemoval): Promise<string[]>;
+  removeReportedMessage(removal: MessageRemoval, tx: Transaction): Promise<string[]>;
   dismissReport(reportId: string, moderatorId: string): Promise<boolean>;
 }
 
@@ -138,9 +175,13 @@ function openReport(id: string): Prisma.ReportWhereInput {
   };
 }
 
-function reportsQueueFilter({ status }: ListGroupMessageReportsQuery): Prisma.ReportWhereInput {
+function reportsQueueFilter({
+  status,
+  severity,
+}: ListGroupMessageReportsQuery): Prisma.ReportWhereInput {
   const visibility = isOpenReportStatus(status) ? reportedMessageStillVisible : {};
-  return { ...groupMessageReports, ...visibility, status };
+  const severityFilter = severity ? { reason: { in: SEVERITY_CATEGORIES[severity] } } : {};
+  return { ...groupMessageReports, ...visibility, ...severityFilter, status };
 }
 
 function resolution(status: ReportStatus, moderatorId: string) {
@@ -215,7 +256,7 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
 
   async changeGroupStatus({ id, from, to }: GroupStatusChange): Promise<boolean> {
     const { count } = await this.prisma.group.updateMany({
-      where: { id, ...notDeleted, status: from },
+      where: { id, ...notDeleted, status: { in: from } },
       data: { status: to },
     });
     return count > 0;
@@ -231,6 +272,7 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
 
   async findGroupMessageReportsPage(
     query: ListGroupMessageReportsQuery,
+    now: Date,
   ): Promise<Page<GroupMessageReport>> {
     const where = reportsQueueFilter(query);
 
@@ -244,7 +286,45 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
       this.prisma.report.count({ where }),
     ]);
 
-    return { items: rows.map(toGroupMessageReport), total };
+    const statsOf = await this.messageStatsOf(rows);
+    return { items: rows.map((row) => toGroupMessageReport(row, now, statsOf)), total };
+  }
+
+  private countWarningsByAuthor(authorIds: string[]) {
+    return this.prisma.userWarning.groupBy({
+      by: ['userId'],
+      where: { userId: { in: authorIds }, ...notDeleted },
+      _count: true,
+    });
+  }
+
+  private countReportsByMessage(messageIds: string[]) {
+    return this.prisma.report.groupBy({
+      by: ['groupMessageId'],
+      where: { ...groupMessageReports, groupMessageId: { in: messageIds } },
+      _count: true,
+    });
+  }
+
+  private async messageStatsOf(
+    rows: GroupMessageReportRow[],
+  ): Promise<(authorId: string, messageId: string) => MessageStats> {
+    const messages = rows.map((row) => row.groupMessage).filter((message) => message !== null);
+    const authorIds = unique(messages.map((message) => message.author.id));
+    const messageIds = unique(messages.map((message) => message.id));
+
+    const [warningsByAuthor, reportsByMessage] = await Promise.all([
+      this.countWarningsByAuthor(authorIds),
+      this.countReportsByMessage(messageIds),
+    ]);
+
+    const warningsMap = new Map(warningsByAuthor.map((row) => [row.userId, row._count]));
+    const reportersMap = new Map(reportsByMessage.map((row) => [row.groupMessageId, row._count]));
+
+    return (authorId, messageId) => ({
+      authorWarnings: countIn(warningsMap, authorId),
+      reportersCount: countIn(reportersMap, messageId),
+    });
   }
 
   findGroupMessageReportState(id: string): Promise<ReportState | null> {
@@ -254,21 +334,19 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
     });
   }
 
-  removeReportedMessage(removal: MessageRemoval): Promise<string[]> {
-    return this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.report.updateMany({
-        where: openReport(removal.reportId),
-        data: resolution(ReportStatus.RESOLVED, removal.moderatorId),
-      });
-      if (count === 0) return [];
-
-      const others = await resolveOtherOpenReports(tx, removal);
-      await tx.groupMessage.updateMany({
-        where: { id: removal.messageId, ...notDeleted },
-        data: softDeleteData(),
-      });
-      return [removal.reportId, ...others];
+  async removeReportedMessage(removal: MessageRemoval, tx: Transaction): Promise<string[]> {
+    const { count } = await tx.report.updateMany({
+      where: openReport(removal.reportId),
+      data: resolution(ReportStatus.RESOLVED, removal.moderatorId),
     });
+    if (count === 0) return [];
+
+    const others = await resolveOtherOpenReports(tx, removal);
+    await tx.groupMessage.updateMany({
+      where: { id: removal.messageId, ...notDeleted },
+      data: softDeleteData(),
+    });
+    return [removal.reportId, ...others];
   }
 
   async dismissReport(reportId: string, moderatorId: string): Promise<boolean> {

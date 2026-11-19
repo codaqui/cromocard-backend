@@ -1,7 +1,8 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -19,29 +20,31 @@ enum UserRole {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+  BLOCKED
 
   @@map("user_status")
 }
 
 model User {
-  id            String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  name          String     @db.VarChar(120)
-  email         String     @unique @db.VarChar(160)
-  passwordHash  String?    @map("password_hash") @db.VarChar(255)
-  role          UserRole
-  status        UserStatus @default(ACTIVE)
-  emailVerified Boolean    @default(false) @map("email_verified")
-  termsAccepted Boolean    @default(false) @map("terms_accepted")
-  oauthProvider String?    @map("oauth_provider") @db.VarChar(30)
-  oauthId       String?    @map("oauth_id") @db.VarChar(120)
-  username      String?    @unique @db.VarChar(30)
-  phone         String?    @db.VarChar(20)
-  cpf           String?    @unique @db.VarChar(14)
-  lastLoginAt   DateTime?  @map("last_login_at") @db.Timestamptz(6)
-  lastLoginIp   String?    @map("last_login_ip") @db.VarChar(45)
-  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  id             String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name           String     @db.VarChar(120)
+  email          String     @unique @db.VarChar(160)
+  passwordHash   String?    @map("password_hash") @db.VarChar(255)
+  role           UserRole
+  status         UserStatus @default(ACTIVE)
+  emailVerified  Boolean    @default(false) @map("email_verified")
+  termsAccepted  Boolean    @default(false) @map("terms_accepted")
+  oauthProvider  String?    @map("oauth_provider") @db.VarChar(30)
+  oauthId        String?    @map("oauth_id") @db.VarChar(120)
+  username       String?    @unique @db.VarChar(30)
+  phone          String?    @db.VarChar(20)
+  cpf            String?    @unique @db.VarChar(14)
+  lastLoginAt    DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  lastLoginIp    String?    @map("last_login_ip") @db.VarChar(45)
+  suspendedUntil DateTime?  @map("suspended_until") @db.Timestamptz(6)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
   createdGroups                   Group[]
   groupMemberships                GroupMember[]
@@ -62,6 +65,8 @@ model User {
   validatedSellerDocuments        SellerDocument[]         @relation("SellerDocumentValidator")
   authoredSellerVerificationNotes SellerVerificationNote[] @relation("SellerVerificationNoteAuthor")
   addresses                       Address[]
+  warningsReceived                UserWarning[]            @relation("UserWarningTarget")
+  warningsGiven                   UserWarning[]            @relation("UserWarningAdmin")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -135,6 +140,10 @@ model Category {
   type             CategoryType
   description      String?      @db.VarChar(255)
   isDefault        Boolean      @default(false) @map("is_default")
+  slug             String?      @db.VarChar(100)
+  displayOrder     Int          @default(0) @map("display_order")
+  isPinned         Boolean      @default(false) @map("is_pinned")
+  badge            String?      @db.VarChar(20)
   createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
@@ -144,6 +153,7 @@ model Category {
   albums         Album[]
   cards          Card[]
 
+  @@unique([slug], map: "categories_slug_key", where: raw("deleted_at IS NULL"))
   @@map("categories")
 }
 
@@ -251,6 +261,7 @@ enum GroupAccessType {
 
 enum GroupStatus {
   ACTIVE
+  WARNED
   SUSPENDED
 
   @@map("group_status")
@@ -373,8 +384,26 @@ model Report {
   moderator    User?         @relation("ReportModerator", fields: [moderatorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_moderator_id")
   targetUser   User?         @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_target_user_id")
   groupMessage GroupMessage? @relation(fields: [groupMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_group_message_id")
+  warnings     UserWarning[]
 
   @@map("reports")
+}
+
+model UserWarning {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  adminId   String    @map("admin_id") @db.Uuid
+  reportId  String?   @map("report_id") @db.Uuid
+  reason    String    @db.VarChar(255)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user   User    @relation("UserWarningTarget", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_warnings_user_id")
+  admin  User    @relation("UserWarningAdmin", fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_warnings_admin_id")
+  report Report? @relation(fields: [reportId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_warnings_report_id")
+
+  @@map("user_warnings")
 }
 
 enum CatalogRequestType {

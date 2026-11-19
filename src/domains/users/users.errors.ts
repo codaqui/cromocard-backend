@@ -32,6 +32,12 @@ export class AlreadySuspendedError extends ConflictError {
   }
 }
 
+export class AlreadyBlockedError extends ConflictError {
+  constructor() {
+    super('Usuário já está bloqueado', 'ALREADY_BLOCKED');
+  }
+}
+
 export class AlreadyActivatedError extends ConflictError {
   constructor() {
     super('Este usuário já definiu a senha', 'ALREADY_ACTIVATED');
@@ -40,7 +46,7 @@ export class AlreadyActivatedError extends ConflictError {
 
 export class NotSuspendedError extends ConflictError {
   constructor() {
-    super('Usuário não está suspenso', 'NOT_SUSPENDED');
+    super('Usuário não está suspenso nem bloqueado', 'NOT_SUSPENDED');
   }
 }
 
@@ -50,9 +56,9 @@ export class CannotChangeOwnRoleError extends BusinessRuleError {
   }
 }
 
-export class CannotSuspendSelfError extends BusinessRuleError {
+export class CannotSanctionSelfError extends BusinessRuleError {
   constructor() {
-    super('Você não pode suspender a própria conta', 'CANNOT_SUSPEND_SELF');
+    super('Você não pode aplicar sanção à própria conta', 'CANNOT_SANCTION_SELF');
   }
 }
 

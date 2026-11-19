@@ -65,6 +65,19 @@ export class CategoryInUseError extends BusinessRuleError {
   }
 }
 
+export class SlugTakenError extends ConflictError {
+  constructor() {
+    super('Já existe uma categoria com um nome que gera o mesmo slug', 'SLUG_TAKEN', [
+      { field: 'name', message: 'Já existe uma categoria com este nome' },
+    ]);
+  }
+}
+
+export function rejectDuplicateSlug(error: unknown): never {
+  if (isUniqueConstraintError(error)) throw new SlugTakenError();
+  throw error;
+}
+
 export class CategoryParentInvalidError extends BusinessRuleError {
   constructor() {
     super(
