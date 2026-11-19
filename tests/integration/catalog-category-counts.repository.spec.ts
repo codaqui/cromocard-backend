@@ -12,7 +12,7 @@ let both: string;
 
 async function category(name: string, parentCategoryId?: string) {
   const row = await prisma.category.create({
-    data: { name: `${MARKER} ${name}`, type: 'ALBUM', parentCategoryId },
+    data: { name: `${MARKER} ${name}`, parentCategoryId },
   });
   return row.id;
 }

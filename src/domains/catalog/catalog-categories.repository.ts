@@ -11,7 +11,6 @@ import type {
 const categorySelect = {
   id: true,
   name: true,
-  type: true,
   description: true,
   slug: true,
   badge: true,
@@ -41,7 +40,7 @@ export interface CategoriesRepository {
   isInUse(id: string): Promise<boolean>;
 }
 
-function buildCategoriesFilter({ q, type }: ListCategoriesQuery): Prisma.CategoryWhereInput {
+function buildCategoriesFilter({ q }: ListCategoriesQuery): Prisma.CategoryWhereInput {
   return {
     ...notDeleted,
     ...(q && {
@@ -50,7 +49,6 @@ function buildCategoriesFilter({ q, type }: ListCategoriesQuery): Prisma.Categor
         { slug: { contains: q, mode: 'insensitive' } },
       ],
     }),
-    ...(type && { type }),
   };
 }
 

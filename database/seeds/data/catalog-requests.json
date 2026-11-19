@@ -10,7 +10,7 @@
     "requester": "bruno",
     "type": "ALBUM",
     "data": {
-      "category": "pokemon-tcg",
+      "category": "pokemon",
       "title": "Pokémon Jungle",
       "publisher": "Wizards of the Coast",
       "year": 1999
@@ -20,7 +20,7 @@
     "key": "formula-1",
     "requester": "carla",
     "type": "CATEGORY",
-    "data": { "name": "Fórmula 1", "type": "ALBUM" }
+    "data": { "name": "Fórmula 1" }
   },
   {
     "key": "neymar-repetida",

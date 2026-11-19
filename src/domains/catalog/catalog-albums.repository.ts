@@ -71,7 +71,15 @@ export class PrismaAlbumsRepository implements AlbumsRepository {
   }
 
   update(id: string, input: UpdateAlbumInput): Promise<Album> {
-    return this.prisma.album.update({ where: { id }, data: input, select: albumSelect });
+    const { categoryId } = input;
+    const cards = categoryId
+      ? { updateMany: { where: notDeleted, data: { categoryId } } }
+      : undefined;
+    return this.prisma.album.update({
+      where: { id },
+      data: { ...input, cards },
+      select: albumSelect,
+    });
   }
 
   async softDelete(id: string): Promise<void> {
