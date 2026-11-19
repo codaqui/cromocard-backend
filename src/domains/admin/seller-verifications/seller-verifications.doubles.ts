@@ -104,9 +104,10 @@ export class InMemorySellerVerificationsRepository implements SellerVerification
   }
 
   findDocumentById(sellerVerificationId: string, documentId: string) {
-    const owner = this.documentOwners.get(documentId);
-    if (owner !== sellerVerificationId) return Promise.resolve(null);
-    const found = this.documents.find((doc) => doc.id === documentId);
+    const found = this.documents.find(
+      (doc) =>
+        doc.id === documentId && this.documentOwners.get(documentId) === sellerVerificationId,
+    );
     return Promise.resolve(found ? { id: found.id, status: found.status } : null);
   }
 
@@ -120,57 +121,39 @@ export class InMemorySellerVerificationsRepository implements SellerVerification
   }
 
   addNote(sellerVerificationId: string, authorId: string, content: string): Promise<void> {
-    this.verifications = this.verifications.map((item) =>
-      item.id === sellerVerificationId
-        ? {
-            ...item,
-            notes: [
-              {
-                id: crypto.randomUUID(),
-                content,
-                createdAt: new Date(),
-                author: { id: authorId, name: 'Admin' },
-              },
-              ...item.notes,
-            ],
-          }
-        : item,
-    );
+    const target = this.verifications.find((item) => item.id === sellerVerificationId);
+    const note = { id: crypto.randomUUID(), content, createdAt: new Date() };
+    target?.notes.unshift({ ...note, author: { id: authorId, name: 'Admin' } });
     return Promise.resolve();
   }
 
   updateDecisionIfUndecided(id: string, update: DecisionUpdate): Promise<boolean> {
-    const target = this.verifications.find((item) => item.id === id);
-    if (!target || !DECIDABLE_STATUSES.has(target.status)) return Promise.resolve(false);
-    this.verifications = this.verifications.map((item) =>
-      item.id === id
-        ? {
-            ...item,
-            status: update.status,
-            rejectionReason: update.rejectionReason ?? null,
-            reviewedAt: new Date(),
-          }
-        : item,
-    );
+    const target = this.findUndecided(id);
+    if (!target) return Promise.resolve(false);
+    Object.assign(target, {
+      status: update.status,
+      rejectionReason: update.rejectionReason ?? null,
+      reviewedAt: new Date(),
+    });
     return Promise.resolve(true);
   }
 
   markPendingIfUndecided(id: string, regularizationDeadline: Date): Promise<boolean> {
-    const target = this.verifications.find((item) => item.id === id);
-    if (!target || !DECIDABLE_STATUSES.has(target.status)) return Promise.resolve(false);
+    const target = this.findUndecided(id);
+    if (!target) return Promise.resolve(false);
+    target.status = 'PENDING';
     this.pendingDeadlines.set(id, regularizationDeadline);
-    this.verifications = this.verifications.map((item) =>
-      item.id === id ? { ...item, status: 'PENDING' } : item,
-    );
     return Promise.resolve(true);
+  }
+
+  private findUndecided(id: string): StoredVerification | undefined {
+    return this.verifications.find((item) => item.id === id && DECIDABLE_STATUSES.has(item.status));
   }
 }
 
 export class StaleReadRepository extends InMemorySellerVerificationsRepository {
   override findById(id: string) {
-    return super
-      .findById(id)
-      .then((found) => (found ? { ...found, status: 'UNDER_REVIEW' as const } : null));
+    return super.findById(id).then((found) => ({ ...found!, status: 'UNDER_REVIEW' as const }));
   }
 }
 
