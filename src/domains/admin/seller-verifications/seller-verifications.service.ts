@@ -1,6 +1,7 @@
 import type { PeriodQuery } from '@/domains/admin/dashboard/dashboard.validator';
 import { resolvePeriod } from '@/domains/admin/dashboard/dashboard.period';
 import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
+import type { JsonValue } from '@/domains/admin/settings/setting-schemas';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import type { Paginated } from '@/shared/utils/pagination';
 import { buildPaginationMeta } from '@/shared/utils/pagination';
@@ -30,6 +31,7 @@ export interface AdminAuditLog {
       entityType: string;
       entityId?: string;
       reason?: string;
+      details?: Record<string, JsonValue>;
     },
     tx?: Transaction,
   ): Promise<unknown>;
