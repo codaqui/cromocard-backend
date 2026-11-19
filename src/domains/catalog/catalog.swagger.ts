@@ -52,6 +52,8 @@ const cardResponse = z.object({
   id: z.uuid(),
   name: z.string(),
   number: z.string().nullable(),
+  code: z.string().nullable(),
+  variants: z.string().nullable(),
   description: z.string().nullable(),
   frontImageUrl: z.url().nullable(),
   backImageUrl: z.url().nullable(),

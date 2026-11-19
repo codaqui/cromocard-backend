@@ -10,6 +10,7 @@ import type { Card, CardsRepository } from './catalog-cards.repository';
 import {
   AlbumHasCardsError,
   AlbumNotFoundError,
+  CardCodeTakenError,
   CardInUseError,
   CardNotFoundError,
   CardNumberOfDeletedCardError,
@@ -22,7 +23,7 @@ import {
   RarityNotFoundError,
   rejectDuplicateSlug,
   SlugTakenError,
-  rejectDuplicateNumber,
+  rejectDuplicateCard,
 } from './catalog.errors';
 import type {
   CreateAlbumInput,
@@ -146,7 +147,8 @@ export class CatalogService {
 
   async createCard(adminId: string, input: CreateCardInput): Promise<Card> {
     await this.ensureCardReferences(input);
-    const card = await this.saveNewCard(input).catch(rejectDuplicateNumber);
+    await this.ensureCodeAvailable(input.code);
+    const card = await this.saveNewCard(input).catch(rejectDuplicateCard);
     await this.audit(adminId, { action: 'CARD_CREATED', entityType: 'card', entityId: card.id });
     return card;
   }
@@ -158,7 +160,8 @@ export class CatalogService {
       albumId: keepOrReplace(input.albumId, previousAlbumId),
       number: keepOrReplace(input.number, previousNumber),
     });
-    const card = await this.deps.cards.update(id, input).catch(rejectDuplicateNumber);
+    await this.ensureCodeAvailable(input.code, id);
+    const card = await this.deps.cards.update(id, input).catch(rejectDuplicateCard);
     await this.audit(adminId, { action: 'CARD_UPDATED', entityType: 'card', entityId: id });
     return card;
   }
@@ -253,6 +256,12 @@ export class CatalogService {
     const owner = await this.findNumberOwner(slot);
     if (!owner || owner.id === cardId) return;
     throw owner.deletedAt ? new CardNumberOfDeletedCardError() : new CardNumberTakenError();
+  }
+
+  private async ensureCodeAvailable(code: string | null | undefined, cardId?: string) {
+    if (!code) return;
+    const owner = await this.deps.cards.findActiveByCode(code);
+    if (owner && owner.id !== cardId) throw new CardCodeTakenError(owner.name);
   }
 
   private findNumberOwner({ albumId, number }: CardNumberSlot) {

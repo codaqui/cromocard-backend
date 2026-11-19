@@ -8,6 +8,7 @@ import type { Album, AlbumsPage, AlbumsRepository } from './catalog-albums.repos
 import type {
   AlbumCardNumber,
   Card,
+  CardCodeOwner,
   CardNumberOwner,
   CardsPage,
   CardsRepository,
@@ -15,6 +16,7 @@ import type {
 import {
   AlbumHasCardsError,
   AlbumNotFoundError,
+  CardCodeTakenError,
   CardInUseError,
   CardNotFoundError,
   CardNumberOfDeletedCardError,
@@ -76,6 +78,8 @@ function buildCard(input: CreateCardInput): Stored<Card> {
     id: crypto.randomUUID(),
     name: input.name,
     number: input.number ?? null,
+    code: input.code ?? null,
+    variants: input.variants ?? null,
     description: input.description ?? null,
     frontImageUrl: input.frontImageUrl,
     backImageUrl: input.backImageUrl ?? null,
@@ -159,6 +163,11 @@ class InMemoryCardsRepository implements CardsRepository {
   }: AlbumCardNumber): Promise<CardNumberOwner | null> {
     const owner = this.cards.find((card) => card.albumId === albumId && card.number === number);
     return Promise.resolve(owner ? { id: owner.id, deletedAt: owner.deletedAt } : null);
+  }
+
+  findActiveByCode(code: string): Promise<CardCodeOwner | null> {
+    const owner = this.cards.find((card) => card.code === code && !card.deletedAt);
+    return Promise.resolve(owner ? { id: owner.id, name: owner.name } : null);
   }
 
   create(input: CreateCardInput): Promise<Card> {
@@ -482,6 +491,72 @@ describe('CatalogService', () => {
       vi.spyOn(cards, 'create').mockRejectedValueOnce(duplicate);
 
       await expect(newCard({ number: '1' })).rejects.toThrow(CardNumberTakenError);
+    });
+
+    it('CA2: cadastra a carta duplicada com código e variantes', async () => {
+      const album = await newAlbum();
+      const source = await newCard({ albumId: album.id, number: '4', code: 'CRD-POK-0004' });
+
+      const copy = await newCard({
+        albumId: source.albumId,
+        number: '5',
+        code: 'CRD-POK-0005',
+        variants: 'Shadowless, Holofoil',
+      });
+
+      expect(copy).toMatchObject({ code: 'CRD-POK-0005', variants: 'Shadowless, Holofoil' });
+      expect(auditLog.entries.at(-1)).toMatchObject({ action: 'CARD_CREATED', entityId: copy.id });
+    });
+
+    it('CA5: recusa outro cadastro com um código em uso e diz de qual carta ele é', async () => {
+      await newCard({ name: 'Charizard', code: 'CRD-POK-0004' });
+
+      const error = await newCard({ code: 'CRD-POK-0004' }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CardCodeTakenError);
+      expect(error).toMatchObject({
+        code: 'CARD_CODE_TAKEN',
+        details: [{ field: 'code', message: 'Este código já está em uso por Charizard.' }],
+      });
+      expect(cards.cards).toHaveLength(1);
+    });
+
+    it('CA5: na edição recusa o código de outra carta e aceita manter o próprio', async () => {
+      const card = await newCard({ code: 'CRD-POK-0001' });
+      await newCard({ name: 'Blastoise', code: 'CRD-POK-0002' });
+
+      await expect(
+        service.updateCard(ADMIN_ID, card.id, { code: 'CRD-POK-0002' }),
+      ).rejects.toMatchObject({
+        details: [{ field: 'code', message: 'Este código já está em uso por Blastoise.' }],
+      });
+      await expect(
+        service.updateCard(ADMIN_ID, card.id, { code: 'CRD-POK-0001', name: 'Raichu' }),
+      ).resolves.toMatchObject({ code: 'CRD-POK-0001', name: 'Raichu' });
+    });
+
+    it('L7: o código de uma carta excluída pode ser usado de novo', async () => {
+      const removed = await newCard({ name: 'Antiga', code: 'CRD-POK-0009' });
+      await service.deleteCard(ADMIN_ID, removed.id);
+
+      const card = await newCard({ name: 'Nova', code: 'CRD-POK-0009' });
+
+      expect(card).toMatchObject({ name: 'Nova', code: 'CRD-POK-0009' });
+      expect(card.id).not.toBe(removed.id);
+    });
+
+    it('CA5: cadastro simultâneo barrado pelo índice do código responde CARD_CODE_TAKEN', async () => {
+      const duplicate = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'teste',
+        meta: { target: ['code'] },
+      });
+      vi.spyOn(cards, 'create').mockRejectedValueOnce(duplicate);
+
+      await expect(newCard({ code: 'CRD-POK-0001' })).rejects.toMatchObject({
+        code: 'CARD_CODE_TAKEN',
+        details: [{ field: 'code', message: 'Este código já está em uso por outra carta.' }],
+      });
     });
 
     it('R7: erro do banco que não é de valor único continua subindo', async () => {

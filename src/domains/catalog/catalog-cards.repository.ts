@@ -9,6 +9,8 @@ const cardSelect = {
   id: true,
   name: true,
   number: true,
+  code: true,
+  variants: true,
   description: true,
   frontImageUrl: true,
   backImageUrl: true,
@@ -28,6 +30,8 @@ export type Card = Prisma.CardGetPayload<{ select: typeof cardSelect }>;
 
 export const emptyOptionalCardFields = {
   number: null,
+  code: null,
+  variants: null,
   description: null,
   backImageUrl: null,
   albumId: null,
@@ -51,6 +55,11 @@ export interface CardNumberOwner {
   deletedAt: Date | null;
 }
 
+export interface CardCodeOwner {
+  id: string;
+  name: string;
+}
+
 export async function refreshAlbumTotals(
   tx: Transaction,
   albumIds: (string | null)[],
@@ -66,6 +75,7 @@ export interface CardsRepository {
   findPage(query: ListCardsQuery): Promise<CardsPage>;
   findById(id: string): Promise<Card | null>;
   findByAlbumNumberIncludingDeleted(key: AlbumCardNumber): Promise<CardNumberOwner | null>;
+  findActiveByCode(code: string): Promise<CardCodeOwner | null>;
   create(input: CreateCardInput): Promise<Card>;
   restore(id: string, input: CreateCardInput): Promise<Card>;
   update(id: string, input: UpdateCardInput): Promise<Card>;
@@ -81,6 +91,7 @@ function buildSearchFilter(q?: string): Prisma.CardWhereInput {
     OR: [
       { name: { contains: q, mode: 'insensitive' } },
       { number: { contains: q, mode: 'insensitive' } },
+      { code: { contains: q, mode: 'insensitive' } },
     ],
   };
 }
@@ -122,6 +133,13 @@ export class PrismaCardsRepository implements CardsRepository {
     return this.prisma.card.findUnique({
       where: { albumId_number: key },
       select: { id: true, deletedAt: true },
+    });
+  }
+
+  findActiveByCode(code: string): Promise<CardCodeOwner | null> {
+    return this.prisma.card.findFirst({
+      where: { code, ...notDeleted },
+      select: { id: true, name: true },
     });
   }
 

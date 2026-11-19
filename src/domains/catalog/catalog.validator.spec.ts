@@ -117,6 +117,42 @@ describe('createCardSchema', () => {
   });
 });
 
+describe('código e variantes da carta', () => {
+  it('R8: aceita código até 30 caracteres, sem os espaços das pontas, e recusa acima disso', () => {
+    expect(createCardSchema.parse({ ...validCard, code: ' CRD-POK-0004 ' }).code).toBe(
+      'CRD-POK-0004',
+    );
+    expect(
+      failedFields(createCardSchema.safeParse({ ...validCard, code: 'C'.repeat(31) })),
+    ).toEqual(['code']);
+  });
+
+  it('R8: na edição limpa o código com null', () => {
+    expect(updateCardSchema.parse({ code: null })).toEqual({ code: null });
+  });
+
+  it('R8: guarda as variantes separadas por vírgula, sem vazias nem repetidas', () => {
+    const parsed = createCardSchema.parse({
+      ...validCard,
+      variants: ' Shadowless ,, Holofoil, shadowless , ',
+    });
+
+    expect(parsed.variants).toBe('Shadowless, Holofoil');
+  });
+
+  it('R8: variantes só com vírgulas e espaços viram null', () => {
+    expect(createCardSchema.parse({ ...validCard, variants: ' , ' }).variants).toBeNull();
+  });
+
+  it('R8: recusa variantes acima de 120 caracteres depois de arrumadas', () => {
+    const tooLong = Array.from({ length: 13 }, (_, index) => `Variante${index}`).join(',');
+
+    expect(failedFields(createCardSchema.safeParse({ ...validCard, variants: tooLong }))).toEqual([
+      'variants',
+    ]);
+  });
+});
+
 describe('createCategorySchema', () => {
   it('R15: aceita categoria com nome e tipo', () => {
     expect(createCategorySchema.safeParse({ name: 'Futebol', type: 'ALBUM' }).success).toBe(true);
