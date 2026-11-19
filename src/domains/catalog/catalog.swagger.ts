@@ -4,6 +4,7 @@ import { MAX_UPLOAD_SIZE_IN_MEGABYTES } from '@/domains/uploads/uploads.module';
 import { z } from '@/lib/zod';
 
 import {
+  bulkDeleteCardsSchema,
   catalogItemIdParamSchema,
   CATEGORY_BADGES,
   categoryTypeSchema,
@@ -225,7 +226,7 @@ const resources: CatalogResource[] = [
       },
       409: {
         description:
-          'CARD_NUMBER_TAKEN: número já usado no álbum, por uma carta ativa ou excluída (a mensagem diz qual)',
+          'CARD_NUMBER_TAKEN: número já usado no álbum, por uma carta ativa ou excluída (a mensagem diz qual); CARD_CODE_TAKEN: código já usado por uma carta não excluída (campo code, com o nome dela)',
       },
       422: { description: `${CATEGORY_TYPE_MISMATCH}: a carta só aceita categoria de carta` },
     },
@@ -313,8 +314,49 @@ const importPaths: RouteConfig[] = [
   },
 ];
 
+const summaryResponse = z.object({
+  albums: count,
+  licensedAlbums: count,
+  pendingAlbumRequests: count,
+});
+
+const bulkDeleteResponse = z.object({
+  deleted: z.array(z.uuid()),
+  skipped: z.array(z.object({ id: z.uuid(), name: z.string(), number: z.string().nullable() })),
+});
+
+const cardsMaintenancePaths: RouteConfig[] = [
+  {
+    method: 'get',
+    path: `${BASE_PATH}/summary`,
+    tags,
+    security,
+    summary:
+      'Indicadores do catálogo: álbuns não excluídos, licenciados (ACTIVE) e solicitações de álbum pendentes (CCD105)',
+    responses: {
+      200: { description: 'Indicadores', ...single(summaryResponse) },
+      ...accessErrors,
+    },
+  },
+  {
+    method: 'post',
+    path: `${BASE_PATH}/cards/bulk-delete`,
+    tags,
+    security,
+    summary:
+      'Exclui várias cartas com motivo; as usadas em coleções ficam e voltam em skipped (CCD105)',
+    request: { body: { content: { 'application/json': { schema: bulkDeleteCardsSchema } } } },
+    responses: {
+      200: { description: 'Cartas excluídas e puladas', ...single(bulkDeleteResponse) },
+      ...validationError,
+      ...accessErrors,
+    },
+  },
+];
+
 const catalogPaths: RouteConfig[] = [
   ...resources.flatMap(resourcePaths),
+  ...cardsMaintenancePaths,
   ...importPaths,
   referencePath('/rarities', 'Lista as raridades do seed, na ordem de exibição (CCD061)'),
   referencePath('/languages', 'Lista os idiomas do seed (CCD061)'),
