@@ -128,6 +128,11 @@ export interface SellerVerificationsRepository {
   validateDocument(documentId: string, validatedById: string, tx: Transaction): Promise<void>;
   addNote(sellerVerificationId: string, authorId: string, content: string): Promise<void>;
   updateDecisionIfUndecided(id: string, update: DecisionUpdate, tx: Transaction): Promise<boolean>;
+  markPendingIfUndecided(
+    id: string,
+    regularizationDeadline: Date,
+    tx: Transaction,
+  ): Promise<boolean>;
 }
 
 function buildWhere(status?: SellerVerificationStatus): Prisma.SellerVerificationWhereInput {
@@ -219,6 +224,18 @@ export class PrismaSellerVerificationsRepository implements SellerVerificationsR
     const { count } = await tx.sellerVerification.updateMany({
       where: { id, ...notDeleted, status: { in: DECIDABLE_STATUSES } },
       data: { status, reviewedById, reviewedAt: new Date(), rejectionReason },
+    });
+    return count > 0;
+  }
+
+  async markPendingIfUndecided(
+    id: string,
+    regularizationDeadline: Date,
+    tx: Transaction,
+  ): Promise<boolean> {
+    const { count } = await tx.sellerVerification.updateMany({
+      where: { id, ...notDeleted, status: { in: DECIDABLE_STATUSES } },
+      data: { status: 'PENDING', regularizationDeadline },
     });
     return count > 0;
   }
