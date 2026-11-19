@@ -1,6 +1,7 @@
 import { AlbumStatus, CategoryType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
+import { reasonSchema } from '@/shared/validators/reason';
 
 const SMALLINT_MAX = 32767;
 const URL_MAX_LENGTH = 255;
@@ -62,6 +63,18 @@ export const listCardsQuerySchema = searchQuerySchema.extend({
   albumId: z.uuid().optional(),
   categoryId: z.uuid().optional(),
   rarityId: z.uuid().optional(),
+  year: z.coerce.number().pipe(year).optional(),
+});
+
+export const BULK_DELETE_MAX_CARDS = 100;
+
+export const bulkDeleteCardsSchema = z.object({
+  ids: z
+    .array(z.uuid())
+    .min(1)
+    .max(BULK_DELETE_MAX_CARDS)
+    .transform((ids) => [...new Set(ids)]),
+  reason: reasonSchema,
 });
 
 export const categoryTypeSchema = z.enum(CategoryType);
@@ -118,5 +131,6 @@ export type CreateAlbumInput = z.infer<typeof createAlbumSchema>;
 export type UpdateAlbumInput = z.infer<typeof updateAlbumSchema>;
 export type CreateCardInput = z.infer<typeof createCardSchema>;
 export type UpdateCardInput = z.infer<typeof updateCardSchema>;
+export type BulkDeleteCardsInput = z.infer<typeof bulkDeleteCardsSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;

@@ -60,6 +60,12 @@ export interface CardCodeOwner {
   name: string;
 }
 
+export interface CardIdentity {
+  id: string;
+  name: string;
+  number: string | null;
+}
+
 export async function refreshAlbumTotals(
   tx: Transaction,
   albumIds: (string | null)[],
@@ -80,6 +86,8 @@ export interface CardsRepository {
   restore(id: string, input: CreateCardInput): Promise<Card>;
   update(id: string, input: UpdateCardInput): Promise<Card>;
   softDelete(id: string): Promise<void>;
+  findActiveIdentities(ids: string[]): Promise<CardIdentity[]>;
+  softDeleteMany(ids: string[]): Promise<void>;
   countByAlbum(albumId: string): Promise<number>;
   count(): Promise<number>;
 }
@@ -96,13 +104,14 @@ function buildSearchFilter(q?: string): Prisma.CardWhereInput {
   };
 }
 
-function buildCardsFilter({ q, albumId, categoryId, rarityId }: ListCardsQuery) {
+function buildCardsFilter({ q, albumId, categoryId, rarityId, year }: ListCardsQuery) {
   return {
     ...notDeleted,
     ...buildSearchFilter(q),
     ...(albumId && { albumId }),
     ...(categoryId && { categoryId }),
     ...(rarityId && { rarityId }),
+    ...(year && { album: { year } }),
   } satisfies Prisma.CardWhereInput;
 }
 
@@ -183,6 +192,25 @@ export class PrismaCardsRepository implements CardsRepository {
         select: { albumId: true },
       });
       await refreshAlbumTotals(tx, [albumId]);
+    });
+  }
+
+  findActiveIdentities(ids: string[]): Promise<CardIdentity[]> {
+    return this.prisma.card.findMany({
+      where: { id: { in: ids }, ...notDeleted },
+      select: { id: true, name: true, number: true },
+    });
+  }
+
+  async softDeleteMany(ids: string[]): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const where = { id: { in: ids }, ...notDeleted };
+      const affected = await tx.card.findMany({ where, select: { albumId: true } });
+      await tx.card.updateMany({ where, data: softDeleteData() });
+      await refreshAlbumTotals(
+        tx,
+        affected.map(({ albumId }) => albumId),
+      );
     });
   }
 

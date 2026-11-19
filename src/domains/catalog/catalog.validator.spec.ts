@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  bulkDeleteCardsSchema,
   catalogItemIdParamSchema,
   createAlbumSchema,
   createCardSchema,
@@ -149,6 +150,42 @@ describe('código e variantes da carta', () => {
 
     expect(failedFields(createCardSchema.safeParse({ ...validCard, variants: tooLong }))).toEqual([
       'variants',
+    ]);
+  });
+});
+
+describe('filtro por ano e exclusão em lote', () => {
+  it('R9: converte o ano da lista de cartas e recusa ano inválido', () => {
+    expect(listCardsQuerySchema.parse({ year: '1999' }).year).toBe(1999);
+    expect(listCardsQuerySchema.safeParse({ year: '0' }).success).toBe(false);
+  });
+
+  it('R10: aceita os ids com o motivo e tira os ids repetidos', () => {
+    const id = crypto.randomUUID();
+
+    expect(bulkDeleteCardsSchema.parse({ ids: [id, id], reason: ' Duplicadas ' })).toEqual({
+      ids: [id],
+      reason: 'Duplicadas',
+    });
+  });
+
+  it('R10: recusa a lista vazia, id que não é UUID e o lote sem motivo', () => {
+    expect(
+      failedFields(bulkDeleteCardsSchema.safeParse({ ids: [], reason: 'Duplicadas' })),
+    ).toEqual(['ids']);
+    expect(
+      failedFields(bulkDeleteCardsSchema.safeParse({ ids: ['x'], reason: 'Duplicadas' })),
+    ).toEqual(['ids.0']);
+    expect(failedFields(bulkDeleteCardsSchema.safeParse({ ids: [crypto.randomUUID()] }))).toEqual([
+      'reason',
+    ]);
+  });
+
+  it('R10: recusa mais de 100 cartas num lote', () => {
+    const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
+
+    expect(failedFields(bulkDeleteCardsSchema.safeParse({ ids, reason: 'Duplicadas' }))).toEqual([
+      'ids',
     ]);
   });
 });

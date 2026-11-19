@@ -41,6 +41,7 @@ import { slugify } from '@/lib/slug';
 import type { CategoriesRepository, Category } from './catalog-categories.repository';
 import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
+import type { CatalogSummary, CatalogSummaryRepository } from './catalog-summary.repository';
 
 export interface CatalogAuditLog {
   record(input: RecordAuditLogInput): Promise<unknown>;
@@ -59,6 +60,7 @@ export interface CatalogServiceDeps {
   cardCounts: CategoryCardCounts;
   references: ReferencesRepository;
   auditLog: CatalogAuditLog;
+  summary: CatalogSummaryRepository;
   cardUsage?: CardUsage;
 }
 
@@ -96,6 +98,10 @@ function keepOrReplace<T>(replacement: T | undefined, current: T): T {
 
 export class CatalogService {
   constructor(private readonly deps: CatalogServiceDeps) {}
+
+  getSummary(): Promise<CatalogSummary> {
+    return this.deps.summary.summarize();
+  }
 
   async listAlbums(query: ListAlbumsQuery): Promise<Paginated<Album>> {
     const { items, total } = await this.deps.albums.findPage(query);

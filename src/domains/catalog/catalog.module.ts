@@ -15,17 +15,23 @@ import { PrismaCategoryCardCounts } from './catalog-category-counts.repository';
 import { PrismaDefaultCategoriesRepository } from './catalog-default-categories.repository';
 import { DefaultCategoriesService } from './catalog-default-categories.service';
 import { PrismaReferencesRepository } from './catalog-references.repository';
+import { CardsBulkDeleteService } from './catalog-bulk-delete.service';
+import { PrismaCatalogSummaryRepository } from './catalog-summary.repository';
 
 const cardCounts = new PrismaCategoryCardCounts(prisma);
+const cards = new PrismaCardsRepository(prisma);
 
 const catalogService = new CatalogService({
   albums: new PrismaAlbumsRepository(prisma),
-  cards: new PrismaCardsRepository(prisma),
+  cards,
   categories: new PrismaCategoriesRepository(prisma),
   cardCounts,
   references: new PrismaReferencesRepository(prisma),
   auditLog: auditLogService,
+  summary: new PrismaCatalogSummaryRepository(prisma),
 });
+
+const bulkDeleteService = new CardsBulkDeleteService({ cards, auditLog: auditLogService });
 
 const catalogImportService = new CatalogImportService(
   new PrismaCatalogImportRepository(prisma),
@@ -34,7 +40,9 @@ const catalogImportService = new CatalogImportService(
 
 export const catalogModule: DomainModule = {
   basePath: '/admin/catalog',
-  router: createCatalogRoutes(new CatalogController(catalogService, catalogImportService)),
+  router: createCatalogRoutes(
+    new CatalogController(catalogService, catalogImportService, bulkDeleteService),
+  ),
   registerDocs: registerCatalogDocs,
 };
 
