@@ -23,9 +23,8 @@ interface CardsRemoval {
 }
 
 function inRequestOrder(cards: CardIdentity[], ids: string[]): CardIdentity[] {
-  const positions = new Map(ids.map((id, index) => [id, index]));
-  const positionOf = ({ id }: CardIdentity) => positions.get(id) ?? ids.length;
-  return [...cards].sort((first, second) => positionOf(first) - positionOf(second));
+  const byId = new Map(cards.map((card) => [card.id, card]));
+  return ids.flatMap((id) => byId.get(id) ?? []);
 }
 
 export class CardsBulkDeleteService {
