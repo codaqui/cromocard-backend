@@ -13,11 +13,15 @@ export interface CardsBulkDeleteDeps {
   cardUsage?: CardUsage;
 }
 
+function inRequestOrder(cards: CardIdentity[], ids: string[]): CardIdentity[] {
+  return [...cards].sort((first, second) => ids.indexOf(first.id) - ids.indexOf(second.id));
+}
+
 export class CardsBulkDeleteService {
   constructor(private readonly deps: CardsBulkDeleteDeps) {}
 
   async deleteCards(adminId: string, { ids, reason }: BulkDeleteCardsInput) {
-    const found = await this.deps.cards.findActiveIdentities(ids);
+    const found = inRequestOrder(await this.deps.cards.findActiveIdentities(ids), ids);
     const usage = await Promise.all(found.map((card) => this.isInCollections(card)));
     const skipped = found.filter((_, index) => usage[index]);
     const deleted = found.filter((_, index) => !usage[index]).map(({ id }) => id);

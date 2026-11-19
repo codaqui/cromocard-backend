@@ -733,6 +733,15 @@ describe('CatalogService', () => {
       expect(auditLog.actions()).not.toContain('CARD_DELETED');
     });
 
+    it('R10: devolve as cartas na ordem em que foram pedidas', async () => {
+      const selected = await fiveCards();
+      const ids = selected.map(({ id }) => id).reverse();
+
+      const result = await bulkDelete.deleteCards(ADMIN_ID, { ids, reason: REASON });
+
+      expect(result.deleted).toEqual(ids);
+    });
+
     it('R10: ignora cartas inexistentes ou já excluídas', async () => {
       const removed = await newCard();
       await service.deleteCard(ADMIN_ID, removed.id);

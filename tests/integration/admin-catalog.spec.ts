@@ -488,6 +488,23 @@ describe('CCD105: código, variantes, resumo e exclusão em lote', () => {
     expect((res.body as ListBody).data.map(({ id }) => id)).toEqual([inYear.data.id]);
   });
 
+  it('R9: os filtros de franquia e raridade se somam ao de ano', async () => {
+    const otherFranchise = await createCategory(`${MARKER} outra franquia`, 'CARD');
+    const kept = (await createCardWith({ code: codeOf('r9') })).body as Created;
+    await createCardWith({ categoryId: otherFranchise.id });
+    const { categoryId, rarityId } = publishable;
+
+    const res = await asAdmin().get(
+      `/cards?categoryId=${categoryId}&rarityId=${rarityId}&q=${encodeURIComponent(codeOf('r9'))}`,
+    );
+    const otherRes = await asAdmin().get(
+      `/cards?categoryId=${otherFranchise.id}&q=${encodeURIComponent(MARKER)}`,
+    );
+
+    expect((res.body as ListBody).data.map(({ id }) => id)).toEqual([kept.data.id]);
+    expect((otherRes.body as ListBody).meta.total).toBe(1);
+  });
+
   it('CA4: o resumo conta os álbuns não excluídos, os ACTIVE e as solicitações de álbum pendentes', async () => {
     const summaryNow = async () =>
       ((await asAdmin().get('/summary')).body as { data: Record<string, number> }).data;
