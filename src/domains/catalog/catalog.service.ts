@@ -1,7 +1,4 @@
-import type {
-  AuditAction,
-  RecordAuditLogInput,
-} from '@/domains/admin/audit-logs/audit-logs.validator';
+import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { AppError } from '@/shared/errors/app-error';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
@@ -42,16 +39,9 @@ import type { CategoriesRepository, Category } from './catalog-categories.reposi
 import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 import type { CatalogSummary, CatalogSummaryRepository } from './catalog-summary.repository';
-
-export interface CatalogAuditLog {
-  record(input: RecordAuditLogInput): Promise<unknown>;
-}
+import type { CardUsage, CatalogAuditLog } from './catalog.ports';
 
 export type CategoryWithCount = Category & { cardsCount: number };
-
-export interface CardUsage {
-  isCardInCollections(cardId: string): Promise<boolean>;
-}
 
 export interface CatalogServiceDeps {
   albums: AlbumsRepository;
@@ -61,7 +51,7 @@ export interface CatalogServiceDeps {
   references: ReferencesRepository;
   auditLog: CatalogAuditLog;
   summary: CatalogSummaryRepository;
-  cardUsage?: CardUsage;
+  cardUsage: CardUsage;
 }
 
 interface AuditedChange {
@@ -174,7 +164,8 @@ export class CatalogService {
 
   async deleteCard(adminId: string, id: string): Promise<void> {
     await this.findCard(id);
-    if (await this.deps.cardUsage?.isCardInCollections(id)) throw new CardInUseError();
+    const inCollections = await this.deps.cardUsage.cardIdsInCollections([id]);
+    if (inCollections.includes(id)) throw new CardInUseError();
     await this.deps.cards.softDelete(id);
     await this.audit(adminId, { action: 'CARD_DELETED', entityType: 'card', entityId: id });
   }

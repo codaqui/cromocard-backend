@@ -1,5 +1,7 @@
+import type { Transaction, TransactionRunner } from '@/lib/transaction';
+
 import type { CardIdentity, CardsRepository } from './catalog-cards.repository';
-import type { CardUsage, CatalogAuditLog } from './catalog.service';
+import type { CardUsage, CatalogAuditLog } from './catalog.ports';
 import type { BulkDeleteCardsInput } from './catalog.validator';
 
 export interface BulkDeleteResult {
@@ -10,11 +12,20 @@ export interface BulkDeleteResult {
 export interface CardsBulkDeleteDeps {
   cards: CardsRepository;
   auditLog: CatalogAuditLog;
-  cardUsage?: CardUsage;
+  cardUsage: CardUsage;
+  runInTransaction: TransactionRunner;
+}
+
+interface CardsRemoval {
+  adminId: string;
+  cardIds: string[];
+  reason: string;
 }
 
 function inRequestOrder(cards: CardIdentity[], ids: string[]): CardIdentity[] {
-  return [...cards].sort((first, second) => ids.indexOf(first.id) - ids.indexOf(second.id));
+  const positions = new Map(ids.map((id, index) => [id, index]));
+  const positionOf = ({ id }: CardIdentity) => positions.get(id) ?? ids.length;
+  return [...cards].sort((first, second) => positionOf(first) - positionOf(second));
 }
 
 export class CardsBulkDeleteService {
@@ -22,27 +33,32 @@ export class CardsBulkDeleteService {
 
   async deleteCards(adminId: string, { ids, reason }: BulkDeleteCardsInput) {
     const found = inRequestOrder(await this.deps.cards.findActiveIdentities(ids), ids);
-    const usage = await Promise.all(found.map((card) => this.isInCollections(card)));
-    const skipped = found.filter((_, index) => usage[index]);
-    const deleted = found.filter((_, index) => !usage[index]).map(({ id }) => id);
-    if (deleted.length > 0) await this.deps.cards.softDeleteMany(deleted);
-    await this.audit(adminId, deleted, reason);
+    const inUse = new Set(
+      await this.deps.cardUsage.cardIdsInCollections(found.map(({ id }) => id)),
+    );
+    const skipped = found.filter(({ id }) => inUse.has(id));
+    const deleted = found.filter(({ id }) => !inUse.has(id)).map(({ id }) => id);
+    if (deleted.length > 0) await this.removeAndAudit({ adminId, cardIds: deleted, reason });
     return { deleted, skipped } satisfies BulkDeleteResult;
   }
 
-  private async isInCollections({ id }: CardIdentity): Promise<boolean> {
-    return (await this.deps.cardUsage?.isCardInCollections(id)) ?? false;
+  private removeAndAudit(removal: CardsRemoval): Promise<void> {
+    return this.deps.runInTransaction(async (tx) => {
+      await this.deps.cards.softDeleteMany(removal.cardIds, tx);
+      await this.audit(removal, tx);
+    });
   }
 
-  private async audit(adminId: string, cardIds: string[], reason: string) {
+  private async audit({ adminId, cardIds, reason }: CardsRemoval, tx: Transaction) {
     for (const entityId of cardIds) {
-      await this.deps.auditLog.record({
+      const entry = {
         adminId,
-        action: 'CARD_DELETED',
+        action: 'CARD_DELETED' as const,
         entityType: 'card',
         entityId,
         reason,
-      });
+      };
+      await this.deps.auditLog.record(entry, tx);
     }
   }
 }

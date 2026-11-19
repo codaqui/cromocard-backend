@@ -553,6 +553,25 @@ describe('CCD105: código, variantes, resumo e exclusão em lote', () => {
     await expect(totalCardsOf(album.id)).resolves.toBe(0);
   });
 
+  it('R10: se a auditoria falha, nenhuma carta do lote é excluída', async () => {
+    const album = await createAlbum();
+    const created = await Promise.all(
+      ['1', '2'].map(async (number) => (await createCard(album.id, number)).body as Created),
+    );
+    const ids = created.map(({ data }) => data.id);
+    const unknownAdmin = signAccessToken({ id: crypto.randomUUID(), role: 'ADMIN' });
+
+    const res = await request(app)
+      .post(`${BASE}/cards/bulk-delete`)
+      .set('Authorization', `Bearer ${unknownAdmin}`)
+      .send({ ids, reason: 'Teste de transação' });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    const stored = await prisma.card.findMany({ where: { id: { in: ids } } });
+    expect(stored.map(({ deletedAt }) => deletedAt)).toEqual([null, null]);
+    await expect(totalCardsOf(album.id)).resolves.toBe(2);
+  });
+
   it('CA8: CUSTOMER no resumo e na exclusão em lote responde 403', async () => {
     const customer = {
       Authorization: `Bearer ${signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' })}`,

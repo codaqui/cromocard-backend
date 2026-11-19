@@ -87,7 +87,7 @@ export interface CardsRepository {
   update(id: string, input: UpdateCardInput): Promise<Card>;
   softDelete(id: string): Promise<void>;
   findActiveIdentities(ids: string[]): Promise<CardIdentity[]>;
-  softDeleteMany(ids: string[]): Promise<void>;
+  softDeleteMany(ids: string[], tx: Transaction): Promise<void>;
   countByAlbum(albumId: string): Promise<number>;
   count(): Promise<number>;
 }
@@ -202,16 +202,14 @@ export class PrismaCardsRepository implements CardsRepository {
     });
   }
 
-  async softDeleteMany(ids: string[]): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const where = { id: { in: ids }, ...notDeleted };
-      const affected = await tx.card.findMany({ where, select: { albumId: true } });
-      await tx.card.updateMany({ where, data: softDeleteData() });
-      await refreshAlbumTotals(
-        tx,
-        affected.map(({ albumId }) => albumId),
-      );
-    });
+  async softDeleteMany(ids: string[], tx: Transaction): Promise<void> {
+    const where = { id: { in: ids }, ...notDeleted };
+    const affected = await tx.card.findMany({ where, select: { albumId: true } });
+    await tx.card.updateMany({ where, data: softDeleteData() });
+    await refreshAlbumTotals(
+      tx,
+      affected.map(({ albumId }) => albumId),
+    );
   }
 
   countByAlbum(albumId: string): Promise<number> {

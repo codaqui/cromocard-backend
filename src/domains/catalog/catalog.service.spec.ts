@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { Prisma } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 import { slugify } from '@/lib/slug';
 
 import type { Album, AlbumsPage, AlbumsRepository } from './catalog-albums.repository';
@@ -32,7 +33,8 @@ import {
 } from './catalog.errors';
 import { CardsBulkDeleteService } from './catalog-bulk-delete.service';
 import type { CatalogSummary, CatalogSummaryRepository } from './catalog-summary.repository';
-import { CatalogService, type CardUsage } from './catalog.service';
+import { type CardUsage, noCollectionsYet } from './catalog.ports';
+import { CatalogService } from './catalog.service';
 import type {
   CreateAlbumInput,
   CreateCardInput,
@@ -150,6 +152,7 @@ class InMemoryAlbumsRepository implements AlbumsRepository {
 
 class InMemoryCardsRepository implements CardsRepository {
   cards: Stored<Card>[] = [];
+  transactions: Transaction[] = [];
 
   findPage(): Promise<CardsPage> {
     const active = this.cards.filter((card) => !card.deletedAt);
@@ -199,7 +202,8 @@ class InMemoryCardsRepository implements CardsRepository {
     return Promise.resolve(found.map(({ id, name, number }) => ({ id, name, number })));
   }
 
-  softDeleteMany(ids: string[]): Promise<void> {
+  softDeleteMany(ids: string[], tx: Transaction): Promise<void> {
+    this.transactions.push(tx);
     this.cards
       .filter((card) => ids.includes(card.id) && !card.deletedAt)
       .forEach((card) => (card.deletedAt = new Date()));
@@ -288,9 +292,11 @@ class InMemoryReferencesRepository implements ReferencesRepository {
 
 class InMemoryAuditLog {
   entries: RecordAuditLogInput[] = [];
+  transactions: (Transaction | undefined)[] = [];
 
-  record(input: RecordAuditLogInput): Promise<void> {
+  record(input: RecordAuditLogInput, tx?: Transaction): Promise<void> {
     this.entries.push(input);
+    this.transactions.push(tx);
     return Promise.resolve();
   }
 
@@ -301,11 +307,15 @@ class InMemoryAuditLog {
 
 class InMemoryCardUsage implements CardUsage {
   usedCardIds = new Set<string>();
+  calls: string[][] = [];
 
-  isCardInCollections(cardId: string): Promise<boolean> {
-    return Promise.resolve(this.usedCardIds.has(cardId));
+  cardIdsInCollections(cardIds: string[]): Promise<string[]> {
+    this.calls.push(cardIds);
+    return Promise.resolve(cardIds.filter((id) => this.usedCardIds.has(id)));
   }
 }
+
+const TRANSACTION = { id: 'tx' } as unknown as Transaction;
 
 class FixedCatalogSummary implements CatalogSummaryRepository {
   constructor(private readonly summary: CatalogSummary) {}
@@ -347,7 +357,12 @@ describe('CatalogService', () => {
       summary: new FixedCatalogSummary(SUMMARY),
       cardUsage,
     });
-    bulkDelete = new CardsBulkDeleteService({ cards, auditLog, cardUsage });
+    bulkDelete = new CardsBulkDeleteService({
+      cards,
+      auditLog,
+      cardUsage,
+      runInTransaction: (work) => work(TRANSACTION),
+    });
     franchise = buildCategory({ name: 'Pokémon', type: 'CARD' });
   });
 
@@ -656,7 +671,7 @@ describe('CatalogService', () => {
       expect(auditLog.actions()).toContain('CARD_DELETED');
     });
 
-    it('R11: sem a checagem de coleções ligada, a carta é excluída', async () => {
+    it('L14: antes da CCD014, sem coleções, a carta é excluída', async () => {
       const withoutUsage = new CatalogService({
         albums,
         cards,
@@ -665,6 +680,7 @@ describe('CatalogService', () => {
         references,
         auditLog,
         summary: new FixedCatalogSummary(SUMMARY),
+        cardUsage: noCollectionsYet,
       });
       const card = await newCard();
 
@@ -733,6 +749,20 @@ describe('CatalogService', () => {
       expect(auditLog.actions()).not.toContain('CARD_DELETED');
     });
 
+    it('R10: pergunta pelas coleções numa consulta só e grava exclusão e log na mesma transação', async () => {
+      const selected = await fiveCards();
+      const ids = selected.map(({ id }) => id);
+
+      await bulkDelete.deleteCards(ADMIN_ID, { ids, reason: REASON });
+
+      expect(cardUsage.calls).toEqual([ids]);
+      expect(cards.transactions).toEqual([TRANSACTION]);
+      const logged = auditLog.entries.flatMap((entry, index) =>
+        entry.action === 'CARD_DELETED' ? [auditLog.transactions[index]] : [],
+      );
+      expect(logged).toEqual(ids.map(() => TRANSACTION));
+    });
+
     it('R10: devolve as cartas na ordem em que foram pedidas', async () => {
       const selected = await fiveCards();
       const ids = selected.map(({ id }) => id).reverse();
@@ -756,8 +786,13 @@ describe('CatalogService', () => {
       expect(auditLog.entries).toHaveLength(entriesBefore);
     });
 
-    it('R10: sem a checagem de coleções ligada, exclui todas as selecionadas', async () => {
-      const withoutUsage = new CardsBulkDeleteService({ cards, auditLog });
+    it('L14: antes da CCD014, sem coleções, exclui todas as selecionadas', async () => {
+      const withoutUsage = new CardsBulkDeleteService({
+        cards,
+        auditLog,
+        cardUsage: noCollectionsYet,
+        runInTransaction: (work) => work(TRANSACTION),
+      });
       const card = await newCard();
 
       const result = await withoutUsage.deleteCards(ADMIN_ID, { ids: [card.id], reason: REASON });
