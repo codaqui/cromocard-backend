@@ -6,6 +6,7 @@ export const SETTING_KEYS = {
   monthlySignupGoal: 'dashboard.monthly_signup_goal',
   votingGoal: 'catalog.voting_goal',
   defaultBacks: 'catalog.default_backs',
+  sellerPendingTemplates: 'seller.pending_templates',
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
@@ -79,6 +80,20 @@ export const votingGoalSchema = goalSchema;
 export const defaultBacksSchema = z.record(z.uuid(), imageUrlSchema);
 
 export type DefaultBacks = z.infer<typeof defaultBacksSchema>;
+
+const PENDING_TEMPLATES_MAX = 20;
+
+export const pendingTemplatesSchema = z
+  .array(
+    z.object({
+      key: z.string().trim().min(1).max(60),
+      title: z.string().trim().min(1).max(120),
+      body: z.string().trim().min(1).max(2000),
+    }),
+  )
+  .max(PENDING_TEMPLATES_MAX);
+
+export type PendingTemplate = z.infer<typeof pendingTemplatesSchema>[number];
 
 export const EDITABLE_SETTING_KEYS = [
   SETTING_KEYS.homeBanner,
