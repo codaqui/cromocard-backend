@@ -1,14 +1,14 @@
 import { periodShape, withPeriodRules } from '@/domains/admin/dashboard/dashboard.validator';
 import { z } from '@/lib/zod';
 
-export const REPORT_TYPES = ['signups', 'catalog'] as const;
+export const REPORT_TYPES = ['signups', 'catalog', 'seller-audit'] as const;
 export const EXPORT_FORMATS = ['csv', 'pdf'] as const;
 
 export const DEFAULT_PREVIEW_SIZE = 10;
 export const MAX_PREVIEW_SIZE = 50;
 
 export const reportTypeParamSchema = z.object({
-  type: z.enum(REPORT_TYPES, { error: 'Escolha um relatório: signups ou catalog' }),
+  type: z.enum(REPORT_TYPES, { error: 'Escolha um relatório: signups, catalog ou seller-audit' }),
 });
 
 export const previewQuerySchema = withPeriodRules(

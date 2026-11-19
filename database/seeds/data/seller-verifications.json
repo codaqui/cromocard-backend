@@ -1,0 +1,113 @@
+[
+  {
+    "key": "fabio-tcg-store",
+    "seller": "fabio",
+    "status": "UNDER_REVIEW",
+    "legalName": "Fábio TCG Store Comércio de Colecionáveis Ltda",
+    "tradeName": "Fábio TCG Store",
+    "cnpj": "45.291.802/0001-93",
+    "stateRegistration": "062.307.904.0081",
+    "openingDate": "2023-02-15",
+    "companySize": "Microempresa (ME)",
+    "cnae": "4761-0/03 - Comércio varejista de artigos de papelaria",
+    "responsibleName": "Fábio Augusto Ribeiro",
+    "responsibleCpf": "529.982.247-25",
+    "responsiblePhone": "(31) 97654-3210",
+    "bankName": "Banco do Brasil",
+    "bankBranch": "1234-5",
+    "bankAccount": "98765-4",
+    "pixKey": "financeiro@fabiotcg.com.br",
+    "createdDaysAgo": 3,
+    "address": {
+      "zipCode": "30130-010",
+      "street": "Av. Afonso Pena",
+      "number": "1500",
+      "complement": "Loja 3",
+      "neighborhood": "Centro",
+      "city": "Belo Horizonte",
+      "state": "MG"
+    },
+    "documents": [{ "type": "CNPJ_CARD" }, { "type": "ADDRESS_PROOF" }]
+  },
+  {
+    "key": "helena-card-shop",
+    "seller": "helena",
+    "status": "PENDING",
+    "legalName": "Helena Card Shop Ltda",
+    "tradeName": "Helena Card Shop",
+    "cnpj": "12.345.678/0001-95",
+    "openingDate": "2024-06-01",
+    "companySize": "Microempreendedor Individual (MEI)",
+    "responsibleName": "Helena Martins Souza",
+    "responsibleCpf": "111.444.777-35",
+    "responsiblePhone": "(41) 99876-5432",
+    "pixKey": "41998765432",
+    "createdDaysAgo": 8,
+    "address": {
+      "zipCode": "80020-310",
+      "street": "Rua XV de Novembro",
+      "number": "700",
+      "neighborhood": "Centro",
+      "city": "Curitiba",
+      "state": "PR"
+    },
+    "documents": [{ "type": "CNPJ_CARD", "validated": true }, { "type": "ADDRESS_PROOF" }]
+  },
+  {
+    "key": "elisa-cartas-raras",
+    "seller": "elisa",
+    "reviewer": "admin",
+    "status": "APPROVED",
+    "legalName": "Elisa Cartas Raras Comércio Ltda",
+    "tradeName": "Elisa Cartas Raras",
+    "cnpj": "11.222.333/0001-81",
+    "stateRegistration": "110.042.490.114",
+    "openingDate": "2021-09-10",
+    "companySize": "Empresa de Pequeno Porte (EPP)",
+    "cnae": "4789-0/99 - Comércio varejista de outros produtos",
+    "responsibleName": "Elisa Fernandes Lima",
+    "responsibleCpf": "377.236.142-09",
+    "responsiblePhone": "(21) 98765-4321",
+    "bankName": "Itaú Unibanco",
+    "bankBranch": "0450",
+    "bankAccount": "12345-6",
+    "pixKey": "elisa@cartasraras.com.br",
+    "createdDaysAgo": 30,
+    "reviewedDaysAgo": 28,
+    "address": {
+      "zipCode": "20040-002",
+      "street": "Rua da Assembleia",
+      "number": "10",
+      "complement": "Sala 1201",
+      "neighborhood": "Centro",
+      "city": "Rio de Janeiro",
+      "state": "RJ"
+    },
+    "documents": [
+      { "type": "CNPJ_CARD", "validated": true },
+      { "type": "ADDRESS_PROOF", "validated": true }
+    ]
+  },
+  {
+    "key": "igor-colecionaveis",
+    "seller": "igor",
+    "reviewer": "admin",
+    "status": "REJECTED",
+    "legalName": "Igor Colecionáveis Ltda",
+    "cnpj": "98.765.432/0001-98",
+    "responsibleName": "Igor Santos Pereira",
+    "responsibleCpf": "123.456.789-09",
+    "rejectionReason": "O comprovante de endereço está ilegível. Envie uma cópia nítida e recente.",
+    "createdDaysAgo": 15,
+    "reviewedDaysAgo": 12,
+    "address": {
+      "zipCode": "01310-100",
+      "street": "Av. Paulista",
+      "number": "1000",
+      "neighborhood": "Bela Vista",
+      "city": "São Paulo",
+      "state": "SP"
+    },
+    "documents": [{ "type": "CNPJ_CARD", "validated": true }, { "type": "ADDRESS_PROOF" }]
+  }
+]

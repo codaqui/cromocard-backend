@@ -13,6 +13,7 @@ import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { createUsersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
 import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
+import { sellerVerificationsModule } from '@/domains/admin/seller-verifications/seller-verifications.module';
 
 const API_PREFIX = '/api/v1';
 
@@ -26,6 +27,7 @@ const sharedModules: DomainModule[] = [
   publicSettingsModule,
   auditLogsModule,
   communityAdminModule,
+  sellerVerificationsModule,
 ];
 
 export interface RoutesOptions {

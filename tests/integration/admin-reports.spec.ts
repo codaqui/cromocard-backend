@@ -20,6 +20,7 @@ const created = {
   userIds: [] as string[],
   cardIds: [] as string[],
   albumIds: [] as string[],
+  verificationIds: [] as string[],
   categoryId: '',
 };
 let adminToken = '';
@@ -77,6 +78,47 @@ async function createCatalog() {
   for (const data of cards) created.cardIds.push((await prisma.card.create({ data })).id);
 }
 
+async function createVerification(
+  key: string,
+  {
+    status,
+    createdAt,
+    deletedAt,
+  }: { status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED'; createdAt: Date; deletedAt?: Date },
+) {
+  const seller = await createUser(`loja-${key}`, { role: 'SELLER' });
+  const verification = await prisma.sellerVerification.create({
+    data: {
+      userId: seller.id,
+      legalName: `Loja ${key} ${RUN_ID}`,
+      cnpj: `${RUN_ID}-${key}`.slice(0, 18),
+      responsibleName: 'Responsável',
+      responsibleCpf: '52998224725',
+      status,
+      createdAt,
+      deletedAt,
+    },
+  });
+  created.verificationIds.push(verification.id);
+}
+
+async function createSellerAudit() {
+  await createVerification('aprovada', {
+    status: 'APPROVED',
+    createdAt: new Date('2002-03-08T12:00:00Z'),
+  });
+  await createVerification('em-analise', {
+    status: 'UNDER_REVIEW',
+    createdAt: new Date('2002-03-22T12:00:00Z'),
+  });
+  await createVerification('antiga', { status: 'REJECTED', createdAt: BEFORE_WINDOW });
+  await createVerification('excluida', {
+    status: 'REJECTED',
+    createdAt: new Date('2002-03-24T12:00:00Z'),
+    deletedAt: DELETED_AT,
+  });
+}
+
 function getAsAdmin(path: string, query: Record<string, string | number>) {
   return request(createApp()).get(path).query(query).set('Authorization', `Bearer ${adminToken}`);
 }
@@ -100,10 +142,12 @@ beforeAll(async () => {
     deletedAt: DELETED_AT,
   });
   await createCatalog();
+  await createSellerAudit();
 });
 
 afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { adminId } });
+  await prisma.sellerVerification.deleteMany({ where: { id: { in: created.verificationIds } } });
   await prisma.card.deleteMany({ where: { id: { in: created.cardIds } } });
   await prisma.album.deleteMany({ where: { id: { in: created.albumIds } } });
   await prisma.category.deleteMany({ where: { id: created.categoryId } });
@@ -185,6 +229,18 @@ describe('GET /api/v1/admin/reports/:type', () => {
     expect(full.meta.total).toBeGreaterThanOrEqual(4);
   });
 
+  it('L10 (CCD094): auditoria de lojistas lista os cadastros criados no período, com o status', async () => {
+    const res = await getAsAdmin('/api/v1/admin/reports/seller-audit', WINDOW);
+
+    expect(res.status).toBe(200);
+    const body = res.body as PreviewResponse;
+    expect(body.data.title).toBe('Auditoria de Lojistas');
+    expect(ourRows(body)).toEqual([
+      expect.objectContaining({ legalName: `Loja em-analise ${RUN_ID}`, status: 'UNDER_REVIEW' }),
+      expect.objectContaining({ legalName: `Loja aprovada ${RUN_ID}`, status: 'APPROVED' }),
+    ]);
+  });
+
   it('CA4: período sem dados devolve a prévia vazia', async () => {
     const res = await getAsAdmin('/api/v1/admin/reports/signups', EMPTY_WINDOW);
 
@@ -212,6 +268,25 @@ describe('GET /api/v1/admin/reports/:type/export', () => {
     const log = await prisma.auditLog.findFirst({ where: { adminId, action: 'EXPORT_REPORT' } });
     expect(log?.entityType).toBe('report');
     expect(log?.details).toMatchObject({ type: 'signups', format: 'csv' });
+  });
+
+  it('CA9 (CCD094): o CSV da auditoria de lojistas lista os cadastros com o status', async () => {
+    const res = await getAsAdmin('/api/v1/admin/reports/seller-audit/export', {
+      ...WINDOW,
+      format: 'csv',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toBe(
+      'attachment; filename="cromocard-seller-audit-2002-03-01-2002-03-31.csv"',
+    );
+    expect(res.text).toContain('Loja;CNPJ;E-mail;Status;Cadastro');
+    expect(res.text).toContain(
+      `Loja aprovada ${RUN_ID};${RUN_ID}-aprovada;relatorio-${RUN_ID}-loja-aprovada@cromocard.dev;Aprovado;08/03/2002`,
+    );
+    expect(res.text).toContain(`Loja em-analise ${RUN_ID}`);
+    expect(res.text).not.toContain(`Loja antiga ${RUN_ID}`);
+    expect(res.text).not.toContain(`Loja excluida ${RUN_ID}`);
   });
 
   it('CA3: baixa o PDF do catálogo', async () => {

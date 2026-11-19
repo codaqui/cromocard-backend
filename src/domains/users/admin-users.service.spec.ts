@@ -59,6 +59,7 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     suspendedUntil: null,
     oauthProvider: null,
     passwordHash: null,
+    verificationStatus: null,
     ...overrides,
   };
 }

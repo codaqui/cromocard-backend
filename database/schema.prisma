@@ -1,7 +1,7 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
   previewFeatures = ["partialIndexes"]
 }
 
@@ -46,25 +46,27 @@ model User {
   updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
-  createdGroups           Group[]
-  groupMemberships        GroupMember[]
-  authoredGroupMessages   GroupMessage[]
-  reportsFiled            Report[]             @relation("ReportReporter")
-  reportsModerated        Report[]             @relation("ReportModerator")
-  reportsReceived         Report[]             @relation("ReportTargetUser")
-  catalogRequests         CatalogRequest[]     @relation("CatalogRequestRequester")
-  reviewedCatalogRequests CatalogRequest[]     @relation("CatalogRequestReviewer")
-  performedAuditLogs      AuditLog[]
-  updatedSettings         GlobalSetting[]
-  sentGlobalNotifications GlobalNotification[]
-  notifications           Notification[]
-  refreshTokens           RefreshToken[]
-  passwordResetTokens     PasswordResetToken[]
-  sellerVerification      SellerVerification?  @relation("SellerVerificationSeller")
-  reviewedVerifications   SellerVerification[] @relation("SellerVerificationReviewer")
-  addresses               Address[]
-  warningsReceived        UserWarning[]        @relation("UserWarningTarget")
-  warningsGiven           UserWarning[]        @relation("UserWarningAdmin")
+  createdGroups                   Group[]
+  groupMemberships                GroupMember[]
+  authoredGroupMessages           GroupMessage[]
+  reportsFiled                    Report[]                 @relation("ReportReporter")
+  reportsModerated                Report[]                 @relation("ReportModerator")
+  reportsReceived                 Report[]                 @relation("ReportTargetUser")
+  catalogRequests                 CatalogRequest[]         @relation("CatalogRequestRequester")
+  reviewedCatalogRequests         CatalogRequest[]         @relation("CatalogRequestReviewer")
+  performedAuditLogs              AuditLog[]
+  updatedSettings                 GlobalSetting[]
+  sentGlobalNotifications         GlobalNotification[]
+  notifications                   Notification[]
+  refreshTokens                   RefreshToken[]
+  passwordResetTokens             PasswordResetToken[]
+  sellerVerification              SellerVerification?      @relation("SellerVerificationSeller")
+  reviewedVerifications           SellerVerification[]     @relation("SellerVerificationReviewer")
+  validatedSellerDocuments        SellerDocument[]         @relation("SellerDocumentValidator")
+  authoredSellerVerificationNotes SellerVerificationNote[] @relation("SellerVerificationNoteAuthor")
+  addresses                       Address[]
+  warningsReceived                UserWarning[]            @relation("UserWarningTarget")
+  warningsGiven                   UserWarning[]            @relation("UserWarningAdmin")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -544,9 +546,52 @@ model SellerVerification {
   updatedAt              DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt              DateTime?                @map("deleted_at") @db.Timestamptz(6)
 
-  seller   User     @relation("SellerVerificationSeller", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_user_id")
-  reviewer User?    @relation("SellerVerificationReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_reviewed_by_id")
-  address  Address? @relation(fields: [addressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_address_id")
+  seller    User                     @relation("SellerVerificationSeller", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_user_id")
+  reviewer  User?                    @relation("SellerVerificationReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_reviewed_by_id")
+  address   Address?                 @relation(fields: [addressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_address_id")
+  documents SellerDocument[]
+  notes     SellerVerificationNote[]
 
   @@map("seller_verifications")
+}
+
+enum SellerDocumentStatus {
+  SUBMITTED
+  VALIDATED
+
+  @@map("seller_document_status")
+}
+
+model SellerDocument {
+  id                   String               @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  sellerVerificationId String               @map("seller_verification_id") @db.Uuid
+  validatedById        String?              @map("validated_by_id") @db.Uuid
+  type                 String               @db.VarChar(60)
+  fileUrl              String               @map("file_url") @db.VarChar(255)
+  fileSize             Int?                 @map("file_size")
+  status               SellerDocumentStatus @default(SUBMITTED)
+  validatedAt          DateTime?            @map("validated_at") @db.Timestamptz(6)
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  sellerVerification SellerVerification @relation(fields: [sellerVerificationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_documents_seller_verification_id")
+  validatedBy        User?              @relation("SellerDocumentValidator", fields: [validatedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_documents_validated_by_id")
+
+  @@map("seller_documents")
+}
+
+model SellerVerificationNote {
+  id                   String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  sellerVerificationId String    @map("seller_verification_id") @db.Uuid
+  authorId             String    @map("author_id") @db.Uuid
+  content              String
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  sellerVerification SellerVerification @relation(fields: [sellerVerificationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verification_notes_seller_verification_id")
+  author             User               @relation("SellerVerificationNoteAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verification_notes_author_id")
+
+  @@map("seller_verification_notes")
 }
