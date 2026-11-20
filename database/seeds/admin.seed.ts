@@ -9,11 +9,19 @@ import {
   votingGoalSchema,
 } from '@/domains/admin/settings/setting-schemas';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import { CatalogRequestType, RequestStatus } from '@/generated/prisma/enums';
+import {
+  NOTIFICATION_AUDIENCES,
+  NOTIFICATION_CHANNELS,
+} from '@/domains/notifications/global-notifications.validator';
+import {
+  CatalogRequestType,
+  NotificationDispatchStatus,
+  RequestStatus,
+} from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import type { StorageProvider } from '@/providers/storage/storage.provider';
 
-import { albumIdOf, categoryIdOf } from './catalog.seed';
+import { albumIdOf, categoryIdOf, languageIdOf, rarityIdOf } from './catalog.seed';
 import { reportIdOf } from './community.seed';
 import { loadSeedData, seedKey } from './load-seed-data';
 import { solidColorPng } from './sample-image';
@@ -28,7 +36,12 @@ const catalogRequestsSchema = z.array(
     type: z.enum(CatalogRequestType),
     status: z.enum(RequestStatus).optional(),
     reviewedAt: z.iso.datetime().optional(),
-    data: z.looseObject({ album: seedKey.optional(), category: seedKey.optional() }),
+    data: z.looseObject({
+      album: seedKey.optional(),
+      category: seedKey.optional(),
+      rarity: seedKey.optional(),
+      language: seedKey.optional(),
+    }),
   }),
 );
 
@@ -60,9 +73,27 @@ const auditLogsSchema = z.array(
   }),
 );
 
+const globalNotificationsSchema = z.array(
+  z.object({
+    key: seedKey,
+    admin: seedKey,
+    title: z.string().max(120),
+    content: z.string().max(500),
+    link: z.string().startsWith('/').optional(),
+    audience: z.enum(NOTIFICATION_AUDIENCES),
+    channels: z.array(z.enum(NOTIFICATION_CHANNELS)).min(1),
+    status: z.enum(NotificationDispatchStatus),
+    recipientCount: z.number().int().min(0).default(0),
+    daysFromNow: z.number().int(),
+  }),
+);
+
 const catalogRequests = loadSeedData('catalog-requests.json', catalogRequestsSchema);
 const globalSettings = loadSeedData('global-settings.json', globalSettingsSchema);
 const auditLogs = loadSeedData('audit-logs.json', auditLogsSchema);
+const globalNotifications = loadSeedData('global-notifications.json', globalNotificationsSchema);
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const catalogRequestIdOf = keyResolver(
   SeedNamespace.catalogRequests,
@@ -86,11 +117,19 @@ const sampleBanner = {
   contentType: 'image/png',
 };
 
-function toRequestPayload({ album, category, ...data }: (typeof catalogRequests)[number]['data']) {
+function toRequestPayload({
+  album,
+  category,
+  rarity,
+  language,
+  ...data
+}: (typeof catalogRequests)[number]['data']) {
   return {
     ...data,
     ...(album && { albumId: albumIdOf(album) }),
     ...(category && { categoryId: categoryIdOf(category) }),
+    ...(rarity && { rarityId: rarityIdOf(rarity) }),
+    ...(language && { languageId: languageIdOf(language) }),
   };
 }
 
@@ -162,6 +201,28 @@ const toAuditLogData = ({
   createdAt: new Date(createdAt),
 });
 
+function toGlobalNotificationData({
+  key,
+  admin,
+  link,
+  channels,
+  daysFromNow,
+  ...dispatch
+}: (typeof globalNotifications)[number]) {
+  const date = new Date(Date.now() + daysFromNow * DAY_IN_MS);
+  const isScheduled = dispatch.status === 'SCHEDULED';
+  return {
+    ...dispatch,
+    id: seedId(SeedNamespace.globalNotifications, key),
+    adminId: userIdOf(admin),
+    referenceLink: link ?? null,
+    channels: channels.join(','),
+    scheduledAt: isScheduled ? date : null,
+    sentAt: dispatch.status === 'SENT' ? date : null,
+    createdAt: isScheduled ? new Date() : date,
+  };
+}
+
 export async function uploadSampleBanner(storage: StorageProvider): Promise<string> {
   const banner = await storage.upload(sampleBanner);
   return banner.url;
@@ -173,6 +234,9 @@ export async function seedAdmin(prisma: PrismaClient, bannerImageUrl?: string): 
   }
   for (const setting of buildGlobalSettings(bannerImageUrl)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
+  }
+  for (const data of globalNotifications.map(toGlobalNotificationData)) {
+    await prisma.globalNotification.upsert({ where: { id: data.id }, create: data, update: data });
   }
   for (const data of auditLogs.map(toAuditLogData)) {
     await prisma.auditLog.upsert({ where: { id: data.id }, create: data, update: data });
