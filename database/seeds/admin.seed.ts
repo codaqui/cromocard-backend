@@ -13,7 +13,7 @@ import { CatalogRequestType, RequestStatus } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import type { StorageProvider } from '@/providers/storage/storage.provider';
 
-import { albumIdOf, categoryIdOf } from './catalog.seed';
+import { albumIdOf, categoryIdOf, languageIdOf, rarityIdOf } from './catalog.seed';
 import { reportIdOf } from './community.seed';
 import { loadSeedData, seedKey } from './load-seed-data';
 import { solidColorPng } from './sample-image';
@@ -28,7 +28,12 @@ const catalogRequestsSchema = z.array(
     type: z.enum(CatalogRequestType),
     status: z.enum(RequestStatus).optional(),
     reviewedAt: z.iso.datetime().optional(),
-    data: z.looseObject({ album: seedKey.optional(), category: seedKey.optional() }),
+    data: z.looseObject({
+      album: seedKey.optional(),
+      category: seedKey.optional(),
+      rarity: seedKey.optional(),
+      language: seedKey.optional(),
+    }),
   }),
 );
 
@@ -86,11 +91,19 @@ const sampleBanner = {
   contentType: 'image/png',
 };
 
-function toRequestPayload({ album, category, ...data }: (typeof catalogRequests)[number]['data']) {
+function toRequestPayload({
+  album,
+  category,
+  rarity,
+  language,
+  ...data
+}: (typeof catalogRequests)[number]['data']) {
   return {
     ...data,
     ...(album && { albumId: albumIdOf(album) }),
     ...(category && { categoryId: categoryIdOf(category) }),
+    ...(rarity && { rarityId: rarityIdOf(rarity) }),
+    ...(language && { languageId: languageIdOf(language) }),
   };
 }
 
