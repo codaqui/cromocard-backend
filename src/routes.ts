@@ -8,12 +8,13 @@ import { catalogModule } from '@/domains/catalog/catalog.module';
 import { catalogRequestsModule } from '@/domains/catalog/requests/catalog-requests.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
-import { settingsModule } from '@/domains/admin/settings/settings.module';
+import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/settings.module';
 import { communityAdminModule } from '@/domains/community/community.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { createUsersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
 import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
+import { sellerVerificationsModule } from '@/domains/admin/seller-verifications/seller-verifications.module';
 
 const API_PREFIX = '/api/v1';
 
@@ -25,8 +26,10 @@ const sharedModules: DomainModule[] = [
   catalogRequestsModule,
   reportsModule,
   settingsModule,
+  publicSettingsModule,
   auditLogsModule,
   communityAdminModule,
+  sellerVerificationsModule,
 ];
 
 export interface RoutesOptions {

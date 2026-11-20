@@ -65,6 +65,19 @@ export class CategoryInUseError extends BusinessRuleError {
   }
 }
 
+export class SlugTakenError extends ConflictError {
+  constructor() {
+    super('Já existe uma categoria com um nome que gera o mesmo slug', 'SLUG_TAKEN', [
+      { field: 'name', message: 'Já existe uma categoria com este nome' },
+    ]);
+  }
+}
+
+export function rejectDuplicateSlug(error: unknown): never {
+  if (isUniqueConstraintError(error)) throw new SlugTakenError();
+  throw error;
+}
+
 export class CategoryParentInvalidError extends BusinessRuleError {
   constructor() {
     super(
@@ -96,5 +109,14 @@ export class CsvInvalidError extends AppError {
       message: 'O arquivo tem linhas com erro e nenhuma carta foi importada',
       details,
     });
+  }
+}
+
+export class DefaultCategoryNotRootError extends BusinessRuleError {
+  constructor() {
+    super(
+      'Só uma franquia, sem categoria pai, pode ser categoria padrão',
+      'DEFAULT_CATEGORY_NOT_ROOT',
+    );
   }
 }

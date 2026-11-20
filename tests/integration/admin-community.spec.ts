@@ -25,7 +25,9 @@ let adminId: string;
 let reporterId: string;
 let groupId: string;
 let suspendedGroupId: string;
+let warnableGroupId: string;
 let messageId: string;
+let messageAuthorId: string;
 let adminToken: string;
 
 async function createUser(label: string, role: 'CUSTOMER' | 'ADMIN' = 'CUSTOMER') {
@@ -86,7 +88,10 @@ beforeAll(async () => {
       status: 'SUSPENDED',
     },
   });
-  [groupId, suspendedGroupId] = [group.id, suspended.id];
+  const warnable = await prisma.group.create({
+    data: { name: `Advertido ${suffix}`, accessType: 'OPEN', creatorId: reporterId },
+  });
+  [groupId, suspendedGroupId, warnableGroupId] = [group.id, suspended.id, warnable.id];
   await prisma.groupMember.createMany({
     data: [
       { groupId, userId: reporterId, role: 'ADMIN' },
@@ -98,15 +103,19 @@ beforeAll(async () => {
     data: { groupId, authorId: memberId!, content: 'Vendo figurinha falsa' },
   });
   messageId = message.id;
+  messageAuthorId = memberId!;
 });
 
 afterAll(async () => {
-  const groups = { groupId: { in: [groupId, suspendedGroupId] } };
+  const allGroupIds = [groupId, suspendedGroupId, warnableGroupId];
+  const groups = { groupId: { in: allGroupIds } };
   await prisma.auditLog.deleteMany({ where: { adminId } });
+  await prisma.userWarning.deleteMany({ where: { adminId } });
+  await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.report.deleteMany({ where: { groupMessage: groups } });
   await prisma.groupMessage.deleteMany({ where: groups });
   await prisma.groupMember.deleteMany({ where: groups });
-  await prisma.group.deleteMany({ where: { id: { in: [groupId, suspendedGroupId] } } });
+  await prisma.group.deleteMany({ where: { id: { in: allGroupIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   userIds = [];
 });
@@ -165,6 +174,22 @@ describe('administração de grupos (PostgreSQL real)', () => {
     expect(errorOf(again)).toBe('GROUP_NOT_SUSPENDED');
     await expect(auditOf('GROUP_REACTIVATED', groupId)).resolves.not.toBeNull();
   });
+
+  it('CA8: adverte o grupo ativo, recusa advertir de novo, e aceita suspender e reativar a partir de advertido', async () => {
+    const warn = await asAdmin('post', `/groups/${warnableGroupId}/warn`).send(REASON);
+    const warnAgain = await asAdmin('post', `/groups/${warnableGroupId}/warn`).send(REASON);
+
+    expect(dataOf<GroupBody>(warn).status).toBe('WARNED');
+    expect(warnAgain.status).toBe(409);
+    expect(errorOf(warnAgain)).toBe('GROUP_ALREADY_WARNED');
+    await expect(auditOf('GROUP_WARNED', warnableGroupId)).resolves.not.toBeNull();
+
+    const suspend = await asAdmin('post', `/groups/${warnableGroupId}/suspend`).send(REASON);
+    expect(dataOf<GroupBody>(suspend).status).toBe('SUSPENDED');
+
+    const reactivate = await asAdmin('post', `/groups/${warnableGroupId}/reactivate`).send(REASON);
+    expect(dataOf<GroupBody>(reactivate).status).toBe('ACTIVE');
+  });
 });
 
 describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
@@ -192,10 +217,54 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
         id: messageId,
         content: 'Vendo figurinha falsa',
         createdAt: expect.any(String) as string,
+        authorId: messageAuthorId,
         authorName: `membro ${suffix}`,
         groupName: `Copa ${suffix}`,
+        authorAccountAgeDays: 0,
+        authorWarnings: 0,
+        reportersCount: expect.any(Number) as number,
       },
     });
+  });
+
+  it('R13/R14: filtra por gravidade e mostra idade da conta, advertências e quantos denunciaram', async () => {
+    const member = await createUser('autor-critico');
+    const message = await prisma.groupMessage.create({
+      data: {
+        groupId: warnableGroupId,
+        authorId: member,
+        content: 'Clique aqui e ganhe boosters grátis',
+      },
+    });
+    await prisma.report.create({
+      data: {
+        reporterId,
+        targetType: 'GROUP_MESSAGE',
+        groupMessageId: message.id,
+        reason: 'Spam/Golpe',
+      },
+    });
+    const secondReporter = await createUser('segundo-denunciante');
+    await prisma.report.create({
+      data: {
+        reporterId: secondReporter,
+        targetType: 'GROUP_MESSAGE',
+        groupMessageId: message.id,
+        reason: 'Spam/Golpe',
+      },
+    });
+    const critical = dataOf<{ id: string; message: { reportersCount: number } }[]>(
+      await asAdmin('get', '/reports').query({ severity: 'CRITICAL', pageSize: 100 }),
+    );
+    const spam = dataOf<{ id: string }[]>(
+      await asAdmin('get', '/reports').query({ severity: 'SPAM', pageSize: 100 }),
+    );
+    const ofMessage = critical.filter((report) => report.message.reportersCount >= 2);
+
+    expect(critical.length).toBeGreaterThan(0);
+    expect(spam.length).toBeGreaterThan(0);
+    expect(ofMessage.length).toBeGreaterThan(0);
+    expect(ofMessage[0]?.message.reportersCount).toBe(2);
   });
 
   it('CA7: dispensa a denúncia e a mensagem continua', async () => {
@@ -239,6 +308,89 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
     expect((audit?.details as { resolvedReportIds: string[] }).resolvedReportIds).toContain(
       otherReportId,
     );
+  });
+
+  it('CA5/R8: remove a mensagem, adverte o autor, notifica e resolve a denúncia', async () => {
+    const author = await createUser('autor-advertido');
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: author, content: 'Ofensa a outro membro' },
+    });
+    const reportId = await createReport(message.id);
+
+    const res = await asAdmin('post', `/reports/${reportId}/remove-and-warn`).send(REASON);
+
+    expect(dataOf<object>(res)).toEqual({ id: reportId, status: 'RESOLVED' });
+    const removedMessage = await prisma.groupMessage.findUniqueOrThrow({
+      where: { id: message.id },
+    });
+    expect(removedMessage.deletedAt).toBeInstanceOf(Date);
+
+    const warning = await prisma.userWarning.findFirstOrThrow({ where: { userId: author } });
+    expect(warning.reason).toBe(REASON.reason);
+    expect(warning.reportId).toBe(reportId);
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: { userId: author, type: 'USER_WARNED' },
+    });
+    expect(notification.message).toBe(REASON.reason);
+
+    await expect(auditOf('GROUP_MESSAGE_REMOVED', message.id)).resolves.not.toBeNull();
+    await expect(auditOf('USER_WARNED', author)).resolves.not.toBeNull();
+  });
+
+  it('R7: se a advertência falhar, a mensagem não é removida, a denúncia fica aberta e nada é registrado', async () => {
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: adminId, content: 'Mensagem do próprio admin' },
+    });
+    const reportId = await createReport(message.id);
+
+    const res = await asAdmin('post', `/reports/${reportId}/remove-and-warn`).send(REASON);
+
+    expect(res.status).toBe(422);
+    const storedMessage = await prisma.groupMessage.findUniqueOrThrow({
+      where: { id: message.id },
+    });
+    expect(storedMessage.deletedAt).toBeNull();
+    const report = await prisma.report.findUniqueOrThrow({ where: { id: reportId } });
+    expect(report.status).toBe('PENDING');
+    await expect(auditOf('GROUP_MESSAGE_REMOVED', message.id)).resolves.toBeNull();
+
+    await prisma.report.delete({ where: { id: reportId } });
+    await prisma.groupMessage.delete({ where: { id: message.id } });
+  });
+
+  it('R3: justificativa acima de 255 caracteres responde 400 sem remover a mensagem', async () => {
+    const author = await createUser('autor-justificativa-longa');
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: author, content: 'Mensagem denunciada' },
+    });
+    const reportId = await createReport(message.id);
+
+    const res = await asAdmin('post', `/reports/${reportId}/remove-and-warn`).send({
+      reason: 'a'.repeat(256),
+    });
+
+    expect(res.status).toBe(400);
+    const storedMessage = await prisma.groupMessage.findUniqueOrThrow({
+      where: { id: message.id },
+    });
+    expect(storedMessage.deletedAt).toBeNull();
+
+    await prisma.report.delete({ where: { id: reportId } });
+    await prisma.groupMessage.delete({ where: { id: message.id } });
+  });
+
+  it('R13: o histórico de resolvidas mostra a denúncia mesmo com a mensagem já removida', async () => {
+    const author = await createUser('autor-historico');
+    const message = await prisma.groupMessage.create({
+      data: { groupId, authorId: author, content: 'Mensagem que vai para o histórico' },
+    });
+    const reportId = await createReport(message.id);
+    await asAdmin('post', `/reports/${reportId}/remove-message`).send(REASON);
+
+    const res = await asAdmin('get', '/reports').query({ status: 'RESOLVED', pageSize: 100 });
+
+    expect(dataOf<{ id: string }[]>(res).map(({ id }) => id)).toContain(reportId);
   });
 
   it('responde 404 para denúncia inexistente', async () => {
@@ -289,7 +441,7 @@ describe('exclusão de grupo (PostgreSQL real)', () => {
     const group = await prisma.group.findUniqueOrThrow({ where: { id: groupId } });
     expect(group.deletedAt).toBeInstanceOf(Date);
     const listed = await listedGroups({});
-    expect(listed.map(({ id }) => id)).toEqual([suspendedGroupId]);
+    expect(listed.map(({ id }) => id).sort()).toEqual([suspendedGroupId, warnableGroupId].sort());
     expect((await asAdmin('get', `/groups/${groupId}`)).status).toBe(404);
     await expect(auditOf('GROUP_DELETED', groupId)).resolves.not.toBeNull();
   });

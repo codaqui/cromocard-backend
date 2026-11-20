@@ -8,6 +8,7 @@ import {
   listGroupMessageReportsQuerySchema,
   listGroupsQuerySchema,
   moderationReasonSchema,
+  warningModerationReasonSchema,
 } from './community-admin.validator';
 
 const groupsTags = ['Administração - Comunidades'];
@@ -58,8 +59,12 @@ const groupMessageReport = z.object({
       id: z.uuid(),
       content: z.string(),
       createdAt: z.iso.datetime(),
+      authorId: z.uuid(),
       authorName: z.string(),
       groupName: z.string(),
+      authorAccountAgeDays: count,
+      authorWarnings: count,
+      reportersCount: count,
     })
     .nullable(),
 });
@@ -99,14 +104,14 @@ function groupAction(path: string, summary: string, conflict: string): RouteConf
   };
 }
 
-function reportAction(path: string, summary: string): RouteConfig {
+function reportAction(path: string, summary: string, request = moderationRequest): RouteConfig {
   return {
     method: 'post',
     path,
     tags: moderationTags,
     security,
     summary,
-    request: moderationRequest,
+    request,
     responses: {
       200: { description: 'Denúncia com o status novo', ...dataOf(reportResolution) },
       ...validationError,
@@ -156,8 +161,13 @@ const groupsPaths: RouteConfig[] = [
     },
   },
   groupAction(
+    '/admin/community/groups/{id}/warn',
+    'Advertir um grupo ativo, com motivo (CCD099)',
+    'GROUP_ALREADY_WARNED',
+  ),
+  groupAction(
     '/admin/community/groups/{id}/suspend',
-    'Suspende um grupo ativo, com motivo',
+    'Suspende um grupo ativo ou advertido, com motivo',
     'GROUP_ALREADY_SUSPENDED',
   ),
   groupAction(
@@ -198,6 +208,11 @@ const moderationPaths: RouteConfig[] = [
   reportAction(
     '/admin/community/reports/{id}/remove-message',
     'Remove a mensagem denunciada e resolve a denúncia',
+  ),
+  reportAction(
+    '/admin/community/reports/{id}/remove-and-warn',
+    'Remove a mensagem, adverte o autor e resolve a denúncia (CCD099)',
+    { params: communityAdminIdParamSchema, body: json(warningModerationReasonSchema) },
   ),
   reportAction(
     '/admin/community/reports/{id}/dismiss',
