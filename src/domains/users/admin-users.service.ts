@@ -5,14 +5,11 @@ import { uniqueConstraintFields } from '@/shared/errors/unique-constraint';
 
 import {
   AlreadyActivatedError,
-  AlreadySuspendedError,
   CannotChangeOwnRoleError,
   CannotDeleteSelfError,
-  CannotSuspendSelfError,
   CpfTakenError,
   EmailAlreadyRegisteredError,
   LastAdminError,
-  NotSuspendedError,
   UsernameTakenError,
   UserNotFoundError,
   USERS_UNIQUE_INDEXES,
@@ -60,6 +57,7 @@ export interface UserDetailView extends Omit<UserDetail, 'passwordHash'> {
   activationPending: boolean;
   addresses: Address[];
   adminActions: AuditLogListItem[];
+  warningsCount: number;
 }
 
 export interface AdminUsersServiceDeps {
@@ -102,7 +100,7 @@ export class AdminUsersService {
     const user = await usersRepository.findDetailById(id);
     if (!user) throw new UserNotFoundError();
 
-    const [addresses, { items: adminActions }] = await Promise.all([
+    const [addresses, { items: adminActions }, warningsCount] = await Promise.all([
       usersRepository.findAddressesByUserId(id),
       auditLogService.list({
         entityType: USER_ENTITY,
@@ -110,10 +108,11 @@ export class AdminUsersService {
         page: 1,
         pageSize: ADMIN_ACTIONS_PAGE_SIZE,
       }),
+      usersRepository.countWarningsByUserId(id),
     ]);
     const { passwordHash, ...profile } = user;
     const activationPending = !passwordHash && !user.oauthProvider;
-    return { ...profile, activationPending, addresses, adminActions };
+    return { ...profile, activationPending, addresses, adminActions, warningsCount };
   }
 
   async create(input: CreateUserInput, adminId: string): Promise<UserSummary> {
@@ -173,44 +172,10 @@ export class AdminUsersService {
     return updated;
   }
 
-  async suspend(id: string, { reason }: ReasonInput, adminId: string): Promise<UserSummary> {
-    const { usersRepository, authService, auditLogService, runInTransaction } = this.deps;
-    const target = await this.findByIdOrThrow(id);
-    this.assertNotSelf(target, adminId, CannotSuspendSelfError);
-    if (target.status === 'SUSPENDED') throw new AlreadySuspendedError();
-    await this.assertNotLastActiveAdmin(target);
-
-    const updated = await runInTransaction(async (tx) => {
-      const user = await usersRepository.updateStatus(id, 'SUSPENDED', tx);
-      await auditLogService.record(
-        { adminId, action: 'USER_SUSPENDED', entityType: USER_ENTITY, entityId: id, reason },
-        tx,
-      );
-      return user;
-    });
-    await authService.revokeAllSessions(id);
-    return updated;
-  }
-
-  async reactivate(id: string, adminId: string): Promise<UserSummary> {
-    const { usersRepository, auditLogService, runInTransaction } = this.deps;
-    const target = await this.findByIdOrThrow(id);
-    if (target.status === 'ACTIVE') throw new NotSuspendedError();
-
-    return runInTransaction(async (tx) => {
-      const user = await usersRepository.updateStatus(id, 'ACTIVE', tx);
-      await auditLogService.record(
-        { adminId, action: 'USER_REACTIVATED', entityType: USER_ENTITY, entityId: id },
-        tx,
-      );
-      return user;
-    });
-  }
-
   async remove(id: string, { reason }: ReasonInput, adminId: string): Promise<void> {
     const { usersRepository, authService, auditLogService, runInTransaction } = this.deps;
     const target = await this.findByIdOrThrow(id);
-    this.assertNotSelf(target, adminId, CannotDeleteSelfError);
+    if (target.id === adminId) throw new CannotDeleteSelfError();
     await this.assertNotLastActiveAdmin(target);
 
     await runInTransaction(async (tx) => {
@@ -227,14 +192,6 @@ export class AdminUsersService {
     const user = await this.deps.usersRepository.findById(id);
     if (!user) throw new UserNotFoundError();
     return user;
-  }
-
-  private assertNotSelf(
-    target: UserProfile,
-    adminId: string,
-    ErrorClass: new () => CannotSuspendSelfError | CannotDeleteSelfError,
-  ): void {
-    if (target.id === adminId) throw new ErrorClass();
   }
 
   private async assertRoleChangeAllowed(target: UserProfile, adminId: string): Promise<void> {

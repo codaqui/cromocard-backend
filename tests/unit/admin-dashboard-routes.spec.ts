@@ -6,7 +6,11 @@ import { buildOpenApiDocument } from '@/config/swagger';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { signAccessToken } from '@/lib/jwt';
 
-const dashboardPaths = ['/api/v1/admin/dashboard', '/api/v1/admin/dashboard/recent-sellers'];
+const dashboardPaths = [
+  '/api/v1/admin/dashboard',
+  '/api/v1/admin/dashboard/signups-evolution',
+  '/api/v1/admin/dashboard/recent-sellers',
+];
 
 const customerToken = signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' });
 const adminToken = signAccessToken({ id: crypto.randomUUID(), role: 'ADMIN' });
@@ -37,6 +41,14 @@ describe('validação do dashboard', () => {
     expect((res.body as { error: string }).error).toBe('VALIDATION_ERROR');
   });
 
+  it('recusa período inválido também na evolução', async () => {
+    const res = await request(createApp())
+      .get('/api/v1/admin/dashboard/signups-evolution?period=2d')
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+  });
+
   it('recusa intervalo com só uma das datas com 400', async () => {
     const res = await request(createApp())
       .get('/api/v1/admin/dashboard?from=2026-10-01T00:00:00Z')
@@ -47,11 +59,12 @@ describe('validação do dashboard', () => {
 });
 
 describe('documentação do dashboard', () => {
-  it('lista as duas rotas no Swagger', () => {
+  it('lista as três rotas no Swagger', () => {
     const document = buildOpenApiDocument([dashboardModule]);
 
     expect(Object.keys(document.paths ?? {})).toEqual([
       '/admin/dashboard',
+      '/admin/dashboard/signups-evolution',
       '/admin/dashboard/recent-sellers',
     ]);
   });

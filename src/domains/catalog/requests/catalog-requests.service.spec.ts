@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
+import type { Transaction } from '@/lib/transaction';
 import { CardNumberTakenError } from '@/domains/catalog/catalog.errors';
 import type {
   CreateAlbumInput,
@@ -18,7 +19,6 @@ import type {
   CatalogRequestsRepository,
   CreatedItemLink,
   ReferenceIds,
-  RequesterNotice,
   ReviewInput,
 } from './catalog-requests.repository';
 import type { VoteCounts } from './catalog-request-votes.repository';
@@ -26,6 +26,7 @@ import {
   type CatalogRequestsCatalog,
   CatalogRequestsService,
   type CatalogRequestsVotes,
+  type RequesterNotice,
   codeOf,
   itemNameOf,
 } from './catalog-requests.service';
@@ -45,6 +46,7 @@ const RARE_ID = '0199a000-0000-7000-8000-000000000023';
 const EPIC_ID = '0199a000-0000-7000-8000-000000000024';
 const UNKNOWN_RARITY_ID = '0199a000-0000-7000-8000-000000000029';
 const QUERY: ListCatalogRequestsQuery = { page: 1, pageSize: 10, status: 'PENDING' };
+const TX = { id: 'tx' } as unknown as Transaction;
 
 const cardData = {
   name: 'Pikachu Promo Illustrator',
@@ -74,7 +76,7 @@ function buildRequest(overrides: Partial<CatalogRequestRecord> = {}): CatalogReq
 
 class FakeRepository implements CatalogRequestsRepository {
   requests = new Map<string, CatalogRequestRecord>();
-  notices: RequesterNotice[] = [];
+  transactions: { write: string; tx?: Transaction }[] = [];
   lastQuery?: ListCatalogRequestsQuery;
   lastReferenceIds?: ReferenceIds;
   lastRarityIds?: string[];
@@ -121,7 +123,8 @@ class FakeRepository implements CatalogRequestsRepository {
     return Promise.resolve(new Map(ranks.filter(([id]) => rarityIds.includes(id))));
   }
 
-  markReviewed(id: string, { status, reviewedById, data }: ReviewInput) {
+  markReviewed(id: string, { status, reviewedById, data }: ReviewInput, tx?: Transaction) {
+    this.transactions.push({ write: 'markReviewed', tx });
     const request = this.requests.get(id)!;
     if (this.stolenBy) {
       this.requests.set(id, { ...request, status: 'APPROVED', reviewedBy: this.stolenBy });
@@ -144,7 +147,8 @@ class FakeRepository implements CatalogRequestsRepository {
     return Promise.resolve();
   }
 
-  linkCreatedItem(id: string, { cardId, albumId, data }: CreatedItemLink) {
+  linkCreatedItem(id: string, { cardId, albumId, data }: CreatedItemLink, tx?: Transaction) {
+    this.transactions.push({ write: 'linkCreatedItem', tx });
     const request = this.requests.get(id)!;
     this.requests.set(id, {
       ...request,
@@ -154,9 +158,15 @@ class FakeRepository implements CatalogRequestsRepository {
     });
     return Promise.resolve();
   }
+}
 
-  notifyRequester(notice: RequesterNotice) {
+class FakeNotifier {
+  notices: RequesterNotice[] = [];
+  transactions: (Transaction | undefined)[] = [];
+
+  notify(notice: RequesterNotice, tx?: Transaction) {
     this.notices.push(notice);
+    this.transactions.push(tx);
     return Promise.resolve();
   }
 }
@@ -209,6 +219,8 @@ describe('CatalogRequestsService', () => {
   let catalog: FakeCatalog;
   let audits: RecordAuditLogInput[];
   let votes: FakeVotes;
+  let auditTransactions: (Transaction | undefined)[];
+  let notifier: FakeNotifier;
   let service: CatalogRequestsService;
 
   const stored = () => repository.requests.get(REQUEST_ID)!;
@@ -219,12 +231,21 @@ describe('CatalogRequestsService', () => {
     repository = new FakeRepository();
     catalog = new FakeCatalog();
     audits = [];
+    auditTransactions = [];
+    notifier = new FakeNotifier();
     votes = new FakeVotes();
     service = new CatalogRequestsService({
       repository,
       catalog,
-      auditLog: { record: (input) => Promise.resolve(audits.push(input)) },
+      auditLog: {
+        record: (input, tx) => {
+          auditTransactions.push(tx);
+          return Promise.resolve(audits.push(input));
+        },
+      },
       votes,
+      notifier,
+      runInTransaction: (work) => work(TX),
     });
     store();
   });
@@ -402,13 +423,22 @@ describe('CatalogRequestsService', () => {
           details: { type: 'CARD', createdItemId: CREATED_ID },
         }),
       ]);
-      expect(repository.notices).toEqual([
+      expect(notifier.notices).toEqual([
         {
           userId: REQUESTER_ID,
           title: 'Sua sugestão foi aprovada',
           message: 'Pikachu Promo Illustrator entrou no catálogo do CromoCard.',
+          type: 'CATALOG_REQUEST',
         },
       ]);
+    });
+
+    it('R16: liga o item, registra o log e avisa o solicitante na mesma transação', async () => {
+      await service.approve(REQUEST_ID, ADMIN_ID);
+
+      expect(repository.transactions).toContainEqual({ write: 'linkCreatedItem', tx: TX });
+      expect(auditTransactions).toEqual([TX]);
+      expect(notifier.transactions).toEqual([TX]);
     });
 
     it('CA3: aprovar um álbum cria só o álbum e liga em album_id', async () => {
@@ -513,7 +543,7 @@ describe('CatalogRequestsService', () => {
 
       expect(stored()).toMatchObject({ status: 'PENDING', reviewedBy: null, reviewedAt: null });
       expect(audits).toEqual([]);
-      expect(repository.notices).toEqual([]);
+      expect(notifier.notices).toEqual([]);
     });
 
     it('CA8: sugestão de carta sem idioma responde 422 com o campo e continua pendente', async () => {
@@ -549,11 +579,20 @@ describe('CatalogRequestsService', () => {
       expect(audits).toEqual([
         expect.objectContaining({ action: 'CATALOG_REQUEST_REJECTED', reason: REASON }),
       ]);
-      expect(repository.notices[0]).toEqual({
+      expect(notifier.notices[0]).toEqual({
         userId: REQUESTER_ID,
         title: 'Sua sugestão foi recusada',
         message: `Pikachu Promo Illustrator não foi aprovada. Motivo: ${REASON}`,
+        type: 'CATALOG_REQUEST',
       });
+    });
+
+    it('CA4: muda o status, registra o log e avisa o solicitante na mesma transação', async () => {
+      await service.reject(REQUEST_ID, ADMIN_ID, { reason: REASON });
+
+      expect(repository.transactions).toEqual([{ write: 'markReviewed', tx: TX }]);
+      expect(auditTransactions).toEqual([TX]);
+      expect(notifier.transactions).toEqual([TX]);
     });
 
     it('CA4: não recusa uma solicitação já analisada', async () => {

@@ -1,4 +1,5 @@
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
+import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import { buildPaginationMeta, type PaginationMeta } from '@/shared/utils/pagination';
 
 import type { VoteCounts } from './catalog-request-votes.repository';
@@ -18,6 +19,7 @@ import {
 import type {
   CatalogRequestRecord,
   CatalogRequestsRepository,
+  CreatedItemLink,
   PendingByType,
   ReviewInput,
 } from './catalog-requests.repository';
@@ -39,7 +41,18 @@ export { codeOf, itemNameOf } from './catalog-requests.view';
 export type { CatalogRequestView } from './catalog-requests.view';
 
 export interface CatalogRequestsAuditLog {
-  record(input: RecordAuditLogInput): Promise<unknown>;
+  record(input: RecordAuditLogInput, tx?: Transaction): Promise<unknown>;
+}
+
+export interface RequesterNotice {
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+}
+
+export interface CatalogRequestsNotifier {
+  notify(notice: RequesterNotice, tx?: Transaction): Promise<void>;
 }
 
 /** Votos das sugestões de categoria, para o quórum de cada cartão (CCD103). */
@@ -53,6 +66,8 @@ export interface CatalogRequestsServiceDeps {
   catalog: CatalogRequestsCatalog;
   auditLog: CatalogRequestsAuditLog;
   votes: CatalogRequestsVotes;
+  notifier: CatalogRequestsNotifier;
+  runInTransaction: TransactionRunner;
 }
 
 export interface CatalogRequestsList {
@@ -67,7 +82,15 @@ export interface ChecklistFile {
 
 export type ApprovedCatalogRequest = CatalogRequestView & { createdItem: CreatedItem };
 
+interface ApprovalRecord {
+  request: CatalogRequestRecord;
+  adminId: string;
+  createdItem: CreatedItem;
+  link: CreatedItemLink;
+}
+
 const AUDIT_ENTITY = 'catalog_request';
+const CATALOG_REQUEST_NOTIFICATION = 'CATALOG_REQUEST';
 
 export const approvedNotice = (itemName: string) => ({
   title: 'Sua sugestão foi aprovada',
@@ -119,21 +142,9 @@ export class CatalogRequestsService {
     await this.claim(request, { status: 'APPROVED', reviewedById: adminId });
 
     const createdItem = await this.createOrRelease(id, () => approval.create(adminId));
-    await this.deps.repository.linkCreatedItem(id, approval.link(createdItem));
-    await this.deps.auditLog.record({
-      adminId,
-      action: 'CATALOG_REQUEST_APPROVED',
-      entityType: AUDIT_ENTITY,
-      entityId: id,
-      details: {
-        type: request.type,
-        createdItemId: createdItem.id,
-        ...(createdItem.subcategoryIds.length > 0 && {
-          subcategoryIds: createdItem.subcategoryIds,
-        }),
-      },
-    });
-    await this.notify(request, approvedNotice(createdItem.name));
+    await this.deps.runInTransaction((tx) =>
+      this.recordApproval({ request, adminId, createdItem, link: approval.link(createdItem) }, tx),
+    );
 
     return { ...(await this.find(id)), createdItem };
   }
@@ -145,19 +156,48 @@ export class CatalogRequestsService {
   ): Promise<CatalogRequestView> {
     const request = await this.findPending(id);
     const data = { ...asData(request.data), rejectionReason: reason };
-    await this.claim(request, { status: 'REJECTED', reviewedById: adminId, data });
 
-    await this.deps.auditLog.record({
-      adminId,
-      action: 'CATALOG_REQUEST_REJECTED',
-      entityType: AUDIT_ENTITY,
-      entityId: id,
-      reason,
-      details: { type: request.type },
+    await this.deps.runInTransaction(async (tx) => {
+      await this.claim(request, { status: 'REJECTED', reviewedById: adminId, data }, tx);
+      await this.deps.auditLog.record(
+        {
+          adminId,
+          action: 'CATALOG_REQUEST_REJECTED',
+          entityType: AUDIT_ENTITY,
+          entityId: id,
+          reason,
+          details: { type: request.type },
+        },
+        tx,
+      );
+      await this.notify(request, rejectedNotice(itemNameOf(request.type, data), reason), tx);
     });
-    await this.notify(request, rejectedNotice(itemNameOf(request.type, data), reason));
 
     return this.find(id);
+  }
+
+  private async recordApproval(
+    { request, adminId, createdItem, link }: ApprovalRecord,
+    tx: Transaction,
+  ): Promise<void> {
+    await this.deps.repository.linkCreatedItem(request.id, link, tx);
+    await this.deps.auditLog.record(
+      {
+        adminId,
+        action: 'CATALOG_REQUEST_APPROVED',
+        entityType: AUDIT_ENTITY,
+        entityId: request.id,
+        details: {
+          type: request.type,
+          createdItemId: createdItem.id,
+          ...(createdItem.subcategoryIds.length > 0 && {
+            subcategoryIds: createdItem.subcategoryIds,
+          }),
+        },
+      },
+      tx,
+    );
+    await this.notify(request, approvedNotice(createdItem.name), tx);
   }
 
   /** Nomes, raridades, votos e meta de todos os cartões da página, numa leitura só. */
@@ -187,8 +227,12 @@ export class CatalogRequestsService {
   }
 
   /** Só uma análise vence: se outro admin chegou antes, informa quem e quando. */
-  private async claim(request: CatalogRequestRecord, review: ReviewInput): Promise<void> {
-    if (await this.deps.repository.markReviewed(request.id, review)) return;
+  private async claim(
+    request: CatalogRequestRecord,
+    review: ReviewInput,
+    tx?: Transaction,
+  ): Promise<void> {
+    if (await this.deps.repository.markReviewed(request.id, review, tx)) return;
     throw new CatalogRequestAlreadyReviewedError(await this.findRecord(request.id));
   }
 
@@ -206,7 +250,14 @@ export class CatalogRequestsService {
     return APPROVALS[type](asData(data), this.deps.catalog);
   }
 
-  private notify(request: CatalogRequestRecord, notice: { title: string; message: string }) {
-    return this.deps.repository.notifyRequester({ userId: request.requester.id, ...notice });
+  private notify(
+    request: CatalogRequestRecord,
+    notice: { title: string; message: string },
+    tx: Transaction,
+  ) {
+    return this.deps.notifier.notify(
+      { userId: request.requester.id, ...notice, type: CATALOG_REQUEST_NOTIFICATION },
+      tx,
+    );
   }
 }

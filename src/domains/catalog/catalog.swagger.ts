@@ -5,6 +5,7 @@ import { z } from '@/lib/zod';
 
 import {
   catalogItemIdParamSchema,
+  CATEGORY_BADGES,
   categoryTypeSchema,
   createAlbumSchema,
   createCardSchema,
@@ -78,6 +79,9 @@ const categoryResponse = z.object({
   id: z.uuid(),
   name: z.string(),
   type: categoryTypeSchema,
+  slug: z.string().nullable(),
+  badge: z.enum(CATEGORY_BADGES).nullable(),
+  cardsCount: count,
   parentCategoryId: z.uuid().nullable(),
   parentCategory: reference.nullable(),
   createdAt: timestamp,
@@ -235,6 +239,10 @@ const resources: CatalogResource[] = [
     notFound: 'CATEGORY_NOT_FOUND',
     writeErrors: {
       404: { description: 'CATEGORY_NOT_FOUND (a categoria ou a categoria pai)' },
+      409: {
+        description:
+          'SLUG_TAKEN: o slug gerado do nome já é de outra categoria não excluída (campo name)',
+      },
       422: { description: CATEGORY_PARENT_TYPE_MISMATCH },
     },
     updateErrors: {

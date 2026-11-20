@@ -1,7 +1,24 @@
 import { env } from '@/config/env';
 import { AUDIT_ACTIONS } from '@/domains/admin/audit-logs/audit-logs.validator';
+import {
+  defaultBacksSchema,
+  homeBannerSchema,
+  monthlySignupGoalSchema,
+  notificationTemplatesSchema,
+  SETTING_KEYS,
+  votingGoalSchema,
+} from '@/domains/admin/settings/setting-schemas';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import { CatalogRequestType, CatalogVote, RequestStatus } from '@/generated/prisma/enums';
+import {
+  NOTIFICATION_AUDIENCES,
+  NOTIFICATION_CHANNELS,
+} from '@/domains/notifications/global-notifications.validator';
+import {
+  CatalogRequestType,
+  CatalogVote,
+  NotificationDispatchStatus,
+  RequestStatus,
+} from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import type { StorageProvider } from '@/providers/storage/storage.provider';
 
@@ -34,27 +51,20 @@ const catalogRequestsSchema = z.array(
 const catalogRequestVotesSchema = z.array(
   z.object({ request: seedKey, user: seedKey, vote: z.enum(CatalogVote) }),
 );
+const describedSetting = <T extends z.ZodType>(value: T) =>
+  z.object({ description: z.string().max(255), value });
 
 const globalSettingsSchema = z.object({
-  homeBanner: z.object({
-    description: z.string(),
-    enabled: z.boolean(),
-    title: z.string().max(80),
-    subtitle: z.string().max(200),
-    ctaText: z.string().max(30),
-    ctaPath: z.string().startsWith('/'),
-  }),
+  homeBanner: homeBannerSchema
+    .omit({ ctaUrl: true, imageUrl: true })
+    .extend({ description: z.string().max(255), ctaPath: z.string().startsWith('/') }),
   notificationTemplates: z.object({
-    description: z.string(),
-    templates: z.array(
-      z.object({
-        name: z.string().max(60),
-        title: z.string().max(120),
-        content: z.string().max(500),
-      }),
-    ),
+    description: z.string().max(255),
+    templates: notificationTemplatesSchema,
   }),
-  votingGoal: z.object({ description: z.string(), value: z.int().positive() }),
+  monthlySignupGoal: describedSetting(monthlySignupGoalSchema),
+  votingGoal: describedSetting(votingGoalSchema),
+  defaultBacks: describedSetting(defaultBacksSchema),
 });
 
 const auditLogsSchema = z.array(
@@ -69,10 +79,28 @@ const auditLogsSchema = z.array(
   }),
 );
 
+const globalNotificationsSchema = z.array(
+  z.object({
+    key: seedKey,
+    admin: seedKey,
+    title: z.string().max(120),
+    content: z.string().max(500),
+    link: z.string().startsWith('/').optional(),
+    audience: z.enum(NOTIFICATION_AUDIENCES),
+    channels: z.array(z.enum(NOTIFICATION_CHANNELS)).min(1),
+    status: z.enum(NotificationDispatchStatus),
+    recipientCount: z.number().int().min(0).default(0),
+    daysFromNow: z.number().int(),
+  }),
+);
+
 const catalogRequests = loadSeedData('catalog-requests.json', catalogRequestsSchema);
 const globalSettings = loadSeedData('global-settings.json', globalSettingsSchema);
 const auditLogs = loadSeedData('audit-logs.json', auditLogsSchema);
 const catalogRequestVotes = loadSeedData('catalog-request-votes.json', catalogRequestVotesSchema);
+const globalNotifications = loadSeedData('global-notifications.json', globalNotificationsSchema);
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const catalogRequestIdOf = keyResolver(
   SeedNamespace.catalogRequests,
@@ -85,8 +113,10 @@ const entityIdResolvers: Record<(typeof auditLogs)[number]['entityType'], KeyRes
   REPORT: reportIdOf,
 };
 
-const DEVELOPMENT_FRONTEND_URL = 'http://localhost:5173';
-const frontendUrl = env.CORS_ORIGIN[0] ?? DEVELOPMENT_FRONTEND_URL;
+const HTTPS_FALLBACK_FRONTEND_URL = 'https://cromocard.com.br';
+const httpsOnlyFrontendUrl = env.FRONTEND_URL.startsWith('https://')
+  ? env.FRONTEND_URL
+  : HTTPS_FALLBACK_FRONTEND_URL;
 
 const sampleBanner = {
   key: 'banners/seed-home-banner.png',
@@ -149,27 +179,45 @@ const toCatalogRequestVoteData = ({
   vote,
 });
 
-const globalSetting = (
-  key: string,
-  value: unknown,
-  description: string,
-): Prisma.GlobalSettingCreateManyInput => ({
+const settingRow = (key: string, value: unknown, description: string) => ({
   id: seedId(SeedNamespace.globalSettings, key),
   key,
   value: JSON.stringify(value),
   description,
 });
 
+function seedTemplates() {
+  const { templates } = globalSettings.notificationTemplates;
+  return templates.map((template, index) => ({
+    ...template,
+    id: seedId(SeedNamespace.globalSettings, `notification.templates.${index}`),
+  }));
+}
+
 function buildGlobalSettings(bannerImageUrl?: string): Prisma.GlobalSettingCreateManyInput[] {
-  const { description: bannerDescription, ctaPath, ...banner } = globalSettings.homeBanner;
-  const { description: templatesDescription, templates } = globalSettings.notificationTemplates;
-  const { description: votingGoalDescription, value: votingGoal } = globalSettings.votingGoal;
-  const homeBanner = { ...banner, ctaUrl: `${frontendUrl}${ctaPath}`, imageUrl: bannerImageUrl };
+  const { homeBanner, notificationTemplates, monthlySignupGoal, votingGoal, defaultBacks } =
+    globalSettings;
+  const { description: bannerDescription, ctaPath, ...banner } = homeBanner;
+  const bannerValue = homeBannerSchema.parse({
+    ...banner,
+    ctaUrl: `${httpsOnlyFrontendUrl}${ctaPath}`,
+    imageUrl: bannerImageUrl ?? null,
+  });
 
   return [
-    globalSetting('home.banner', homeBanner, bannerDescription),
-    globalSetting('notification.templates', templates, templatesDescription),
-    globalSetting('catalog.voting_goal', votingGoal, votingGoalDescription),
+    settingRow(SETTING_KEYS.homeBanner, bannerValue, bannerDescription),
+    settingRow(
+      SETTING_KEYS.notificationTemplates,
+      seedTemplates(),
+      notificationTemplates.description,
+    ),
+    settingRow(
+      SETTING_KEYS.monthlySignupGoal,
+      monthlySignupGoal.value,
+      monthlySignupGoal.description,
+    ),
+    settingRow(SETTING_KEYS.votingGoal, votingGoal.value, votingGoal.description),
+    settingRow(SETTING_KEYS.defaultBacks, defaultBacks.value, defaultBacks.description),
   ];
 }
 
@@ -188,6 +236,28 @@ const toAuditLogData = ({
   details: { reason },
   createdAt: new Date(createdAt),
 });
+
+function toGlobalNotificationData({
+  key,
+  admin,
+  link,
+  channels,
+  daysFromNow,
+  ...dispatch
+}: (typeof globalNotifications)[number]) {
+  const date = new Date(Date.now() + daysFromNow * DAY_IN_MS);
+  const isScheduled = dispatch.status === 'SCHEDULED';
+  return {
+    ...dispatch,
+    id: seedId(SeedNamespace.globalNotifications, key),
+    adminId: userIdOf(admin),
+    referenceLink: link ?? null,
+    channels: channels.join(','),
+    scheduledAt: isScheduled ? date : null,
+    sentAt: dispatch.status === 'SENT' ? date : null,
+    createdAt: isScheduled ? new Date() : date,
+  };
+}
 
 export async function uploadSampleImages(storage: StorageProvider): Promise<SampleImages> {
   const [banner, categoryLogo] = await Promise.all([
@@ -211,6 +281,9 @@ export async function seedAdmin(prisma: PrismaClient, images: SampleImages = {})
   }
   for (const setting of buildGlobalSettings(images.bannerImageUrl)) {
     await prisma.globalSetting.upsert({ where: { key: setting.key }, create: setting, update: {} });
+  }
+  for (const data of globalNotifications.map(toGlobalNotificationData)) {
+    await prisma.globalNotification.upsert({ where: { id: data.id }, create: data, update: data });
   }
   for (const data of auditLogs.map(toAuditLogData)) {
     await prisma.auditLog.upsert({ where: { id: data.id }, create: data, update: data });
