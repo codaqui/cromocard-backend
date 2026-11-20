@@ -140,6 +140,22 @@ describe('cartas', () => {
     });
   });
 
+  it('R3: busca a carta pelo nome e pelo número, com a categoria e a raridade', async () => {
+    const album = await createAlbum();
+    const number = `B${crypto.randomUUID().slice(0, 6)}`;
+    const created = await createCard(album.id, number);
+    const id = (created.body as Created).data.id;
+    const filters = `categoryId=${publishable.categoryId}&rarityId=${publishable.rarityId}`;
+
+    const byName = await asAdmin().get(
+      `/cards?q=${encodeURIComponent(`carta ${number}`)}&${filters}`,
+    );
+    const byNumber = await asAdmin().get(`/cards?q=${number.toLowerCase()}`);
+
+    expect((byName.body as ListBody).data.map((card) => card.id)).toEqual([id]);
+    expect((byNumber.body as ListBody).data.map((card) => card.id)).toEqual([id]);
+  });
+
   it('R14: o cadastro grava a auditoria com o admin', async () => {
     const album = await createAlbum();
 
