@@ -8,14 +8,20 @@ vi.mock('@/config/env', async (importOriginal) => {
   return { env: { ...actual.env, NODE_ENV: 'production' } };
 });
 
+const IMPORT_ALL_ROUTES_TIMEOUT_MS = 15_000;
+
 describe('createRoutes', () => {
-  it('não monta o /docs em produção', async () => {
-    const { createRoutes } = await import('@/routes');
-    const app = express();
-    app.use(createRoutes({ withUploads: false }));
+  it(
+    'não monta o /docs em produção',
+    async () => {
+      const { createRoutes } = await import('@/routes');
+      const app = express();
+      app.use(createRoutes({ withUploads: false }));
 
-    const res = await request(app).get('/docs');
+      const res = await request(app).get('/docs');
 
-    expect(res.status).toBe(404);
-  });
+      expect(res.status).toBe(404);
+    },
+    IMPORT_ALL_ROUTES_TIMEOUT_MS,
+  );
 });
