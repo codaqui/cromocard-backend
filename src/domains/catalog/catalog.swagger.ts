@@ -318,6 +318,7 @@ const summaryResponse = z.object({
   albums: count,
   licensedAlbums: count,
   pendingAlbumRequests: count,
+  albumYears: z.array(z.number().int()),
 });
 
 const bulkDeleteResponse = z.object({

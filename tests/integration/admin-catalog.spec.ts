@@ -26,6 +26,13 @@ interface ListBody {
   meta: { total: number };
 }
 
+interface CatalogSummaryBody {
+  albums: number;
+  licensedAlbums: number;
+  pendingAlbumRequests: number;
+  albumYears: number[];
+}
+
 interface ErrorBody {
   error: string;
   details?: { field: string; message: string }[];
@@ -170,6 +177,34 @@ describe('cartas', () => {
     expect(removal.status).toBe(204);
     expect(again.status).toBe(201);
     expect((again.body as Created).data.id).toBe(card.data.id);
+  });
+
+  it('L7: a carta restaurada pela numeração grava o código novo do formulário', async () => {
+    const album = await createAlbum();
+    const code = `${MARKER}-rest`;
+    const original = (
+      await asAdmin().post('/cards', {
+        name: `${MARKER} original`,
+        number: '9',
+        albumId: album.id,
+        code: `${code}-a`,
+        frontImageUrl: FRONT_IMAGE_URL,
+        ...publishable,
+      })
+    ).body as Created;
+    await asAdmin().delete(`/cards/${original.data.id}`);
+
+    const restored = await asAdmin().post('/cards', {
+      name: `${MARKER} restaurada`,
+      number: '9',
+      albumId: album.id,
+      code: `${code}-b`,
+      frontImageUrl: FRONT_IMAGE_URL,
+      ...publishable,
+    });
+
+    expect(restored.status).toBe(201);
+    expect(restored.body).toMatchObject({ data: { id: original.data.id, code: `${code}-b` } });
   });
 
   it('R6: raridade inexistente responde 404 em vez de erro do banco', async () => {
@@ -507,10 +542,12 @@ describe('CCD105: código, variantes, resumo e exclusão em lote', () => {
 
   it('CA4: o resumo conta os álbuns não excluídos, os ACTIVE e as solicitações de álbum pendentes', async () => {
     const summaryNow = async () =>
-      ((await asAdmin().get('/summary')).body as { data: Record<string, number> }).data;
+      ((await asAdmin().get('/summary')).body as { data: CatalogSummaryBody }).data;
     const before = await summaryNow();
+    const year = 1800 + Math.floor(Math.random() * 90);
 
-    await asAdmin().post('/albums', { title: `${MARKER} licenciado`, status: 'ACTIVE' });
+    await asAdmin().post('/albums', { title: `${MARKER} licenciado`, status: 'ACTIVE', year });
+    await asAdmin().post('/albums', { title: `${MARKER} mesmo ano`, status: 'ACTIVE', year });
     await asAdmin().post('/albums', { title: `${MARKER} inativo`, status: 'INACTIVE' });
     const removed = (await asAdmin().post('/albums', { title: `${MARKER} removido` }))
       .body as Created;
@@ -525,11 +562,13 @@ describe('CCD105: código, variantes, resumo e exclusão em lote', () => {
 
     const after = await summaryNow();
 
-    expect(after).toEqual({
-      albums: (before.albums ?? 0) + 2,
-      licensedAlbums: (before.licensedAlbums ?? 0) + 1,
-      pendingAlbumRequests: (before.pendingAlbumRequests ?? 0) + 1,
+    expect(after).toMatchObject({
+      albums: before.albums + 3,
+      licensedAlbums: before.licensedAlbums + 2,
+      pendingAlbumRequests: before.pendingAlbumRequests + 1,
     });
+    expect(after.albumYears.filter((albumYear) => albumYear === year)).toEqual([year]);
+    expect(after.albumYears).toEqual([...after.albumYears].sort((first, second) => second - first));
   });
 
   it('CA7: a exclusão em lote marca deleted_at em cada carta e audita com o motivo', async () => {

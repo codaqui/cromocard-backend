@@ -31,7 +31,6 @@ import {
   RarityNotFoundError,
   SlugTakenError,
 } from './catalog.errors';
-import { CardsBulkDeleteService } from './catalog-bulk-delete.service';
 import type { CatalogSummary, CatalogSummaryRepository } from './catalog-summary.repository';
 import { type CardUsage, noCollectionsYet } from './catalog.ports';
 import { CatalogService } from './catalog.service';
@@ -315,8 +314,6 @@ class InMemoryCardUsage implements CardUsage {
   }
 }
 
-const TRANSACTION = { id: 'tx' } as unknown as Transaction;
-
 class FixedCatalogSummary implements CatalogSummaryRepository {
   constructor(private readonly summary: CatalogSummary) {}
 
@@ -325,7 +322,12 @@ class FixedCatalogSummary implements CatalogSummaryRepository {
   }
 }
 
-const SUMMARY: CatalogSummary = { albums: 142, licensedAlbums: 128, pendingAlbumRequests: 14 };
+const SUMMARY: CatalogSummary = {
+  albums: 142,
+  licensedAlbums: 128,
+  pendingAlbumRequests: 14,
+  albumYears: [2026, 1999],
+};
 
 describe('CatalogService', () => {
   let albums: InMemoryAlbumsRepository;
@@ -336,7 +338,6 @@ describe('CatalogService', () => {
   let cardUsage: InMemoryCardUsage;
   let cardCounts: InMemoryCardCounts;
   let service: CatalogService;
-  let bulkDelete: CardsBulkDeleteService;
   let franchise: Stored<Category>;
 
   beforeEach(() => {
@@ -356,12 +357,6 @@ describe('CatalogService', () => {
       auditLog,
       summary: new FixedCatalogSummary(SUMMARY),
       cardUsage,
-    });
-    bulkDelete = new CardsBulkDeleteService({
-      cards,
-      auditLog,
-      cardUsage,
-      runInTransaction: (work) => work(TRANSACTION),
     });
     franchise = buildCategory({ name: 'Pokémon', type: 'CARD' });
   });
@@ -693,111 +688,6 @@ describe('CatalogService', () => {
   describe('resumo do catálogo', () => {
     it('CA4: devolve o total de álbuns, os licenciados e as solicitações pendentes', async () => {
       await expect(service.getSummary()).resolves.toEqual(SUMMARY);
-    });
-  });
-
-  describe('exclusão em lote', () => {
-    const REASON = 'Rascunhos criados em duplicidade na importação';
-    const fiveCards = () =>
-      Promise.all(['1', '2', '3', '4', '5'].map((number) => newCard({ name: `Carta ${number}` })));
-
-    it('CA7: exclui as cinco cartas e registra cada uma no log com o motivo', async () => {
-      const selected = await fiveCards();
-      const ids = selected.map(({ id }) => id);
-
-      const result = await bulkDelete.deleteCards(ADMIN_ID, { ids, reason: REASON });
-
-      expect(result).toEqual({ deleted: ids, skipped: [] });
-      await expect(service.listCards(PAGE)).resolves.toMatchObject({ items: [] });
-      const deletedEntries = auditLog.entries.filter(({ action }) => action === 'CARD_DELETED');
-      expect(deletedEntries.map(({ entityId, reason }) => ({ entityId, reason }))).toEqual(
-        ids.map((entityId) => ({ entityId, reason: REASON })),
-      );
-    });
-
-    it('CA9: mantém as cartas usadas em coleções e diz quais ficaram', async () => {
-      const selected = await fiveCards();
-      const [first, second] = selected;
-      cardUsage.usedCardIds.add(first!.id).add(second!.id);
-
-      const result = await bulkDelete.deleteCards(ADMIN_ID, {
-        ids: selected.map(({ id }) => id),
-        reason: REASON,
-      });
-
-      expect(result.skipped).toEqual([
-        { id: first!.id, name: 'Carta 1', number: null },
-        { id: second!.id, name: 'Carta 2', number: null },
-      ]);
-      expect(result.deleted).toEqual(selected.slice(2).map(({ id }) => id));
-      const { items } = await service.listCards(PAGE);
-      expect(items.map(({ id }) => id)).toEqual([first!.id, second!.id]);
-      const deletedEntries = auditLog.entries.filter(({ action }) => action === 'CARD_DELETED');
-      expect(deletedEntries.map(({ entityId }) => entityId)).toEqual(result.deleted);
-    });
-
-    it('CA9: com todas as cartas em coleções, nada é excluído nem auditado', async () => {
-      const card = await newCard();
-      cardUsage.usedCardIds.add(card.id);
-
-      const result = await bulkDelete.deleteCards(ADMIN_ID, { ids: [card.id], reason: REASON });
-
-      expect(result).toEqual({
-        deleted: [],
-        skipped: [{ id: card.id, name: 'Pikachu', number: null }],
-      });
-      expect(auditLog.actions()).not.toContain('CARD_DELETED');
-    });
-
-    it('R10: pergunta pelas coleções numa consulta só e grava exclusão e log na mesma transação', async () => {
-      const selected = await fiveCards();
-      const ids = selected.map(({ id }) => id);
-
-      await bulkDelete.deleteCards(ADMIN_ID, { ids, reason: REASON });
-
-      expect(cardUsage.calls).toEqual([ids]);
-      expect(cards.transactions).toEqual([TRANSACTION]);
-      const logged = auditLog.entries.flatMap((entry, index) =>
-        entry.action === 'CARD_DELETED' ? [auditLog.transactions[index]] : [],
-      );
-      expect(logged).toEqual(ids.map(() => TRANSACTION));
-    });
-
-    it('R10: devolve as cartas na ordem em que foram pedidas', async () => {
-      const selected = await fiveCards();
-      const ids = selected.map(({ id }) => id).reverse();
-
-      const result = await bulkDelete.deleteCards(ADMIN_ID, { ids, reason: REASON });
-
-      expect(result.deleted).toEqual(ids);
-    });
-
-    it('R10: ignora cartas inexistentes ou já excluídas', async () => {
-      const removed = await newCard();
-      await service.deleteCard(ADMIN_ID, removed.id);
-      const entriesBefore = auditLog.entries.length;
-
-      const result = await bulkDelete.deleteCards(ADMIN_ID, {
-        ids: [removed.id, crypto.randomUUID()],
-        reason: REASON,
-      });
-
-      expect(result).toEqual({ deleted: [], skipped: [] });
-      expect(auditLog.entries).toHaveLength(entriesBefore);
-    });
-
-    it('L14: antes da CCD014, sem coleções, exclui todas as selecionadas', async () => {
-      const withoutUsage = new CardsBulkDeleteService({
-        cards,
-        auditLog,
-        cardUsage: noCollectionsYet,
-        runInTransaction: (work) => work(TRANSACTION),
-      });
-      const card = await newCard();
-
-      const result = await withoutUsage.deleteCards(ADMIN_ID, { ids: [card.id], reason: REASON });
-
-      expect(result.deleted).toEqual([card.id]);
     });
   });
 

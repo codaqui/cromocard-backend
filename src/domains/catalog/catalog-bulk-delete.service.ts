@@ -9,8 +9,10 @@ export interface BulkDeleteResult {
   skipped: CardIdentity[];
 }
 
+export type BulkDeletableCards = Pick<CardsRepository, 'findActiveIdentities' | 'softDeleteMany'>;
+
 export interface CardsBulkDeleteDeps {
-  cards: CardsRepository;
+  cards: BulkDeletableCards;
   auditLog: CatalogAuditLog;
   cardUsage: CardUsage;
   runInTransaction: TransactionRunner;
