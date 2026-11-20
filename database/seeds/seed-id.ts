@@ -14,7 +14,10 @@ export const SeedNamespace = {
   catalogRequests: 11,
   globalSettings: 12,
   auditLogs: 13,
-  globalNotifications: 14,
+  addresses: 14,
+  sellerVerifications: 15,
+  sellerDocuments: 16,
+  globalNotifications: 17,
 } as const;
 
 type SeedNamespaceValue = (typeof SeedNamespace)[keyof typeof SeedNamespace];

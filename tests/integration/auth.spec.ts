@@ -182,6 +182,17 @@ describe('POST /api/v1/auth/login', () => {
     await expect(prisma.refreshToken.count({ where: { userId: user.id } })).resolves.toBe(0);
   });
 
+  it('CCD099 CA3: conta bloqueada responde 403 sem emitir token', async () => {
+    const user = await createUser({ status: 'BLOCKED' });
+
+    const res = await login(user.email);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ error: 'ACCOUNT_SUSPENDED' });
+    expect(refreshCookie(res)).toBe('');
+    await expect(prisma.refreshToken.count({ where: { userId: user.id } })).resolves.toBe(0);
+  });
+
   it('CA7: conta excluída responde 403 ACCOUNT_DELETED sem emitir token', async () => {
     const user = await createUser({ deletedAt: new Date() });
 

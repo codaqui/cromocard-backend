@@ -327,6 +327,17 @@ describe('AuthService', () => {
       );
     });
 
+    it('CCD099 CA3: recusa conta bloqueada com 403 e mensagem própria, sem emitir token', async () => {
+      users.accounts = [buildAccount({ status: 'BLOCKED' })];
+
+      await expect(login()).rejects.toMatchObject({
+        statusCode: 403,
+        code: 'ACCOUNT_SUSPENDED',
+        message: 'Sua conta foi bloqueada. Entre em contato com o suporte.',
+      });
+      expect(authRepository.tokens).toHaveLength(0);
+    });
+
     it('CA7: recusa conta excluída com ACCOUNT_DELETED sem emitir token', async () => {
       users.accounts = [buildAccount({ deletedAt: new Date() })];
 
@@ -499,6 +510,15 @@ describe('AuthService', () => {
     it('CA14: usuário suspenso depois do login não renova', async () => {
       const session = await loggedInSession();
       users.accounts[0]!.status = 'SUSPENDED';
+
+      await expect(service.refresh(session.refreshToken, context)).rejects.toBeInstanceOf(
+        InvalidRefreshTokenError,
+      );
+    });
+
+    it('CCD099 R11: usuário bloqueado depois do login não renova', async () => {
+      const session = await loggedInSession();
+      users.accounts[0]!.status = 'BLOCKED';
 
       await expect(service.refresh(session.refreshToken, context)).rejects.toBeInstanceOf(
         InvalidRefreshTokenError,

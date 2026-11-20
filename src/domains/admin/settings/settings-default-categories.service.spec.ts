@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { CategoryNotFoundError } from '@/domains/catalog/catalog.errors';
-import type { DefaultCategory } from '@/domains/catalog/catalog-default-categories.service';
+import type {
+  DefaultCategory,
+  DefaultCategoryPlacement,
+} from '@/domains/catalog/catalog-default-categories.service';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 
 import { SETTING_KEYS } from './setting-schemas';
@@ -20,8 +23,33 @@ const BACK_URL = 'https://cdn.cromocard.com.br/backs/pokemon.png';
 
 const id = (n: number) => `0190f3a4-0000-7000-8000-${String(n).padStart(12, '0')}`;
 
-const pokemon: DefaultCategory = { id: id(101), name: 'Pokémon', type: 'CARD' };
-const magic: DefaultCategory = { id: id(102), name: 'Magic: The Gathering', type: 'CARD' };
+function franchise(n: number, name: string, extra: Partial<DefaultCategory>): DefaultCategory {
+  return {
+    id: id(n),
+    name,
+    type: 'CARD',
+    slug: name.toLowerCase(),
+    badge: null,
+    displayOrder: 0,
+    isPinned: false,
+    cardsCount: 0,
+    ...extra,
+  };
+}
+
+const audited = ({
+  cardsCount: _cardsCount,
+  ...category
+}: DefaultCategory & { backImageUrl?: string | null }) => ({
+  ...category,
+  backImageUrl: category.backImageUrl ?? null,
+});
+
+const pokemon = franchise(101, 'Pokémon', { slug: 'pokemon', cardsCount: 18240 });
+const magic = franchise(102, 'Magic: The Gathering', {
+  slug: 'magic-the-gathering',
+  cardsCount: 9870,
+});
 
 class InMemoryBacks implements SettingsRepository {
   row: StoredSetting | null = null;
@@ -64,11 +92,18 @@ class FakeDefaultCategories implements SettingsDefaultCategories {
     return Promise.resolve(this.defaults);
   }
 
-  replaceDefaults(ids: string[]): Promise<DefaultCategory[]> {
-    const chosen = this.known.filter((category) => ids.includes(category.id));
-    if (chosen.length !== ids.length) throw new CategoryNotFoundError();
-    this.defaults = chosen;
-    return Promise.resolve(chosen);
+  listDefaultsUncounted(): Promise<Omit<DefaultCategory, 'cardsCount'>[]> {
+    return Promise.resolve(this.defaults.map(({ cardsCount: _count, ...rest }) => rest));
+  }
+
+  replaceDefaults(placements: DefaultCategoryPlacement[]): Promise<DefaultCategory[]> {
+    const placed = placements.map(({ id: placedId, isPinned }, displayOrder) => {
+      const known = this.known.find((category) => category.id === placedId);
+      if (!known) throw new CategoryNotFoundError();
+      return { ...known, displayOrder, isPinned };
+    });
+    this.defaults = [...placed].sort((a, b) => Number(b.isPinned) - Number(a.isPinned));
+    return Promise.resolve(this.defaults);
   }
 }
 
@@ -122,8 +157,8 @@ describe('DefaultCategoriesSettingsService', () => {
     const saved = await service.update(
       {
         categories: [
-          { id: pokemon.id, backImageUrl: BACK_URL },
-          { id: magic.id, backImageUrl: null },
+          { id: pokemon.id, backImageUrl: BACK_URL, isPinned: false },
+          { id: magic.id, backImageUrl: null, isPinned: false },
         ],
       },
       ADMIN_ID,
@@ -131,7 +166,7 @@ describe('DefaultCategoriesSettingsService', () => {
 
     expect(saved).toEqual([
       { ...pokemon, backImageUrl: BACK_URL },
-      { ...magic, backImageUrl: null },
+      { ...magic, displayOrder: 1, backImageUrl: null },
     ]);
     expect(backs.value()).toEqual({ [pokemon.id]: BACK_URL });
     expect(audits).toEqual([
@@ -140,7 +175,7 @@ describe('DefaultCategoriesSettingsService', () => {
         action: 'DEFAULT_CATEGORIES_UPDATED',
         entityType: 'SETTING',
         entityId: BACKS_SETTING_ID,
-        details: { before: [{ ...pokemon, backImageUrl: null }], after: saved },
+        details: { before: [audited(pokemon)], after: saved.map(audited) },
       },
     ]);
   });
@@ -149,7 +184,10 @@ describe('DefaultCategoriesSettingsService', () => {
     backs.row = null;
 
     await expect(
-      service.update({ categories: [{ id: magic.id, backImageUrl: null }] }, ADMIN_ID),
+      service.update(
+        { categories: [{ id: magic.id, backImageUrl: null, isPinned: false }] },
+        ADMIN_ID,
+      ),
     ).rejects.toThrow(SettingNotFoundError);
     expect(defaultCategories.defaults).toEqual([pokemon]);
     expect(audits).toEqual([]);
@@ -157,10 +195,51 @@ describe('DefaultCategoriesSettingsService', () => {
 
   it('CA4: categoria inexistente não muda o conjunto nem os versos', async () => {
     await expect(
-      service.update({ categories: [{ id: id(999), backImageUrl: BACK_URL }] }, ADMIN_ID),
+      service.update(
+        { categories: [{ id: id(999), backImageUrl: BACK_URL, isPinned: false }] },
+        ADMIN_ID,
+      ),
     ).rejects.toThrow(CategoryNotFoundError);
     expect(defaultCategories.defaults).toEqual([pokemon]);
     expect(backs.value()).toEqual({});
     expect(audits).toEqual([]);
+  });
+
+  it('CCD104 CA2: grava a ordem da lista e audita o antes e o depois com a posição de cada categoria', async () => {
+    const saved = await service.update(
+      {
+        categories: [
+          { id: magic.id, backImageUrl: null, isPinned: false },
+          { id: pokemon.id, backImageUrl: null, isPinned: false },
+        ],
+      },
+      ADMIN_ID,
+    );
+
+    expect(saved.map(({ name, displayOrder }) => [name, displayOrder])).toEqual([
+      ['Magic: The Gathering', 0],
+      ['Pokémon', 1],
+    ]);
+    expect(audits[0]?.details).toEqual({
+      before: [audited(pokemon)],
+      after: saved.map(audited),
+    });
+  });
+
+  it('CCD104 CA3: grava a categoria fixada e a devolve primeiro', async () => {
+    const saved = await service.update(
+      {
+        categories: [
+          { id: pokemon.id, backImageUrl: null, isPinned: false },
+          { id: magic.id, backImageUrl: null, isPinned: true },
+        ],
+      },
+      ADMIN_ID,
+    );
+
+    expect(saved.map(({ name, isPinned }) => [name, isPinned])).toEqual([
+      ['Magic: The Gathering', true],
+      ['Pokémon', false],
+    ]);
   });
 });

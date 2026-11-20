@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '@/app';
 import { signAccessToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { slugify } from '@/lib/slug';
 
 const app = createApp();
 const BASE = '/api/v1/admin/catalog';
@@ -17,7 +18,7 @@ let adminToken: string;
 let publishable: { categoryId: string; rarityId: string; languageId: string };
 
 interface Created {
-  data: { id: string; totalCards?: number };
+  data: { id: string; totalCards?: number; slug?: string | null; badge?: string | null };
 }
 
 interface ListBody {
@@ -59,6 +60,16 @@ function createCard(albumId: string, number: string) {
     frontImageUrl: FRONT_IMAGE_URL,
     ...publishable,
   });
+}
+
+async function createCategory(name: string, type: 'ALBUM' | 'CARD', parentCategoryId?: string) {
+  const res = await asAdmin().post('/categories', { name, type, parentCategoryId });
+  return { ...(res.body as Created).data, name };
+}
+
+function cardsCountOf(body: unknown, id: string): number | undefined {
+  const items = (body as { data: { id: string; cardsCount: number }[] }).data;
+  return items.find((item) => item.id === id)?.cardsCount;
 }
 
 function namesOf(body: unknown): string[] {
@@ -258,6 +269,91 @@ describe('álbuns e categorias', () => {
     expect((res.body as ErrorBody).error).toBe('CATEGORY_IN_USE');
   });
 
+  it('CA6: cadastra com o slug gerado do nome e o selo escolhido', async () => {
+    const name = `${MARKER} Pokémon ${crypto.randomUUID().slice(0, 6)}`;
+
+    const res = await asAdmin().post('/categories', { name, type: 'CARD', badge: 'TRENDING' });
+
+    expect(res.status).toBe(201);
+    expect((res.body as Created).data).toMatchObject({
+      slug: slugify(name),
+      badge: 'TRENDING',
+    });
+  });
+
+  it('CA13: o índice parcial recusa o slug de uma ativa e aceita o de uma excluída', async () => {
+    const name = `${MARKER} One Piece ${crypto.randomUUID().slice(0, 6)}`;
+    const first = (await asAdmin().post('/categories', { name, type: 'CARD' })).body as Created;
+
+    const duplicate = await asAdmin().post('/categories', {
+      name: name.toUpperCase(),
+      type: 'CARD',
+    });
+    await asAdmin().delete(`/categories/${first.data.id}`);
+    const recreated = await asAdmin().post('/categories', { name, type: 'CARD' });
+
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body).toMatchObject({
+      error: 'SLUG_TAKEN',
+      details: [{ field: 'name' }],
+    });
+    expect(recreated.status).toBe(201);
+    expect((recreated.body as Created).data.id).not.toBe(first.data.id);
+  });
+
+  it('CA1: a quantidade de cartas soma as da categoria, as dos álbuns e as das subcategorias', async () => {
+    const suffix = crypto.randomUUID().slice(0, 6);
+    const root = await createCategory(`${MARKER} Futebol ${suffix}`, 'ALBUM');
+    const child = await createCategory(`${MARKER} Copa ${suffix}`, 'ALBUM', root.id);
+    const franchise = await createCategory(`${MARKER} Magic ${suffix}`, 'CARD');
+    const album = (
+      await asAdmin().post('/albums', { title: `${MARKER} Copa ${suffix}`, categoryId: child.id })
+    ).body as Created;
+    await createCard(album.data.id, '1');
+    const removed = (await createCard(album.data.id, '2')).body as Created;
+    await asAdmin().delete(`/cards/${removed.data.id}`);
+    await asAdmin().post('/cards', {
+      name: `${MARKER} avulsa ${suffix}`,
+      frontImageUrl: FRONT_IMAGE_URL,
+      ...publishable,
+      categoryId: franchise.id,
+    });
+
+    const list = await asAdmin().get(`/categories?q=${suffix}&pageSize=50`);
+    const counts = [root, child, franchise].map(({ id }) => cardsCountOf(list.body, id));
+
+    expect(counts).toEqual([1, 1, 1]);
+  });
+
+  it('CA15: a busca pelo slug encontra a categoria', async () => {
+    const suffix = crypto.randomUUID().slice(0, 6);
+    const category = await createCategory(`${MARKER} Magic: The Gathering ${suffix}`, 'CARD');
+
+    const bySlug = await asAdmin().get(
+      `/categories?q=${encodeURIComponent(`magic-the-gathering-${suffix}`)}`,
+    );
+    const byName = await asAdmin().get(
+      `/categories?q=${encodeURIComponent(`Gathering ${suffix}`)}`,
+    );
+
+    expect((bySlug.body as ListBody).meta.total).toBe(1);
+    expect(namesOf(bySlug.body)).toEqual([category.name]);
+    expect(namesOf(byName.body)).toEqual([category.name]);
+  });
+
+  it('CA12: renomear refaz o slug e libera o antigo', async () => {
+    const name = `${MARKER} Yu-Gi-Oh ${crypto.randomUUID().slice(0, 6)}`;
+    const created = (await asAdmin().post('/categories', { name, type: 'CARD' })).body as Created;
+
+    const renamed = await asAdmin().patch(`/categories/${created.data.id}`, {
+      name: `${name} TCG`,
+    });
+    const reused = await asAdmin().post('/categories', { name, type: 'CARD' });
+
+    expect((renamed.body as Created).data).toMatchObject({ slug: slugify(`${name} TCG`) });
+    expect(reused.status).toBe(201);
+  });
+
   it('L6: lista só as categorias do tipo pedido', async () => {
     const name = `${MARKER} tipo ${crypto.randomUUID()}`;
     await asAdmin().post('/categories', { name: `${name} carta`, type: 'CARD' });
@@ -342,5 +438,22 @@ describe('permissão', () => {
       .set('Authorization', `Bearer ${customerToken}`);
 
     expect(res.status).toBe(403);
+  });
+
+  it('CCD104 CA7: CUSTOMER e visitante nas rotas de categorias do catálogo respondem 403 e 401', async () => {
+    const customer = {
+      Authorization: `Bearer ${signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' })}`,
+    };
+    const id = crypto.randomUUID();
+
+    const asCustomer = await Promise.all([
+      request(app).get(`${BASE}/categories`).set(customer),
+      request(app).post(`${BASE}/categories`).set(customer).send({ name: 'X', type: 'CARD' }),
+      request(app).patch(`${BASE}/categories/${id}`).set(customer).send({ name: 'Y' }),
+    ]);
+    const anonymous = await request(app).get(`${BASE}/categories`);
+
+    expect(asCustomer.map(({ status }) => status)).toEqual([403, 403, 403]);
+    expect(anonymous.status).toBe(401);
   });
 });
