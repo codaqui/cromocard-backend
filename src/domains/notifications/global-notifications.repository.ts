@@ -39,13 +39,11 @@ export interface DispatchData {
   content: string;
   referenceLink: string | null;
   audience: NotificationAudience;
-  /** Canais separados por vírgula, como no DBML (`IN_APP,EMAIL`). */
   channels: string;
 }
 
 export interface Delivery {
   recipientIds: string[];
-  /** Cria as notificações na central (canal plataforma). */
   inApp: boolean;
   sentAt: Date;
 }
@@ -58,12 +56,9 @@ export interface GlobalNotificationsRepository {
   findPage(query: PaginationQuery): Promise<{ items: GlobalNotificationRecord[]; total: number }>;
   findById(id: string): Promise<GlobalNotificationRecord | null>;
   findDueScheduled(now: Date): Promise<GlobalNotificationRecord[]>;
-  /** Grava o disparo já entregue, as notificações e o total numa transação. */
   createSent(data: DispatchData, delivery: Delivery): Promise<GlobalNotificationRecord>;
   createScheduled(data: DispatchData, scheduledAt: Date): Promise<GlobalNotificationRecord>;
-  /** Entrega o agendado só se ele ainda estiver na fila; devolve `null` se não estiver. */
   deliverScheduled(id: string, delivery: Delivery): Promise<GlobalNotificationRecord | null>;
-  /** Cancela só se ainda estiver na fila; devolve se conseguiu. */
   cancelScheduled(id: string): Promise<boolean>;
 }
 

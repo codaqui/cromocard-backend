@@ -7,7 +7,6 @@ export interface GlobalNotificationMailData {
   name: string;
   title: string;
   content: string;
-  /** Endereço completo do link de destino, se houver. */
   link: string | null;
 }
 

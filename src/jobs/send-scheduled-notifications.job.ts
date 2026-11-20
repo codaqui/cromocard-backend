@@ -20,7 +20,6 @@ export async function sendScheduledNotifications(
   if (delivered > 0) logger.info({ delivered }, 'Notificações agendadas entregues');
 }
 
-/** De minuto em minuto, entrega os disparos agendados que venceram (CCD100, L3). */
 export function scheduleSendScheduledNotifications(
   sender: ScheduledNotificationsSender,
   logger: JobLogger,

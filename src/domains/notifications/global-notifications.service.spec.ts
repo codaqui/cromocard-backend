@@ -51,7 +51,6 @@ const input = (overrides: Partial<DispatchGlobalNotificationInput> = {}) =>
     ...overrides,
   }) satisfies DispatchGlobalNotificationInput;
 
-/** Repositório em memória que se comporta como o de verdade. */
 class InMemoryRepository implements GlobalNotificationsRepository {
   records = new Map<string, GlobalNotificationRecord>();
   notifications: { userId: string; globalNotificationId: string }[] = [];
@@ -147,6 +146,7 @@ describe('GlobalNotificationsService', () => {
   let sent: MailMessage[];
   let background: (() => Promise<void>)[];
   let mailFailure: Error | null;
+  let syncMailFailure: Error | null;
   let logger: { error: Mock<GlobalNotificationsLogger['error']> };
   let clock: Date;
   let service: GlobalNotificationsService;
@@ -159,6 +159,7 @@ describe('GlobalNotificationsService', () => {
     sent = [];
     background = [];
     mailFailure = null;
+    syncMailFailure = null;
     logger = { error: vi.fn<GlobalNotificationsLogger['error']>() };
     clock = NOW;
     service = new GlobalNotificationsService({
@@ -166,6 +167,7 @@ describe('GlobalNotificationsService', () => {
       auditLog: { record: (entry) => Promise.resolve(audits.push(entry)) },
       mail: {
         send: (message) => {
+          if (syncMailFailure && message.to.endsWith('1@cromocard.dev')) throw syncMailFailure;
           if (mailFailure && message.to.endsWith('0@cromocard.dev'))
             return Promise.reject(mailFailure);
           sent.push(message);
@@ -247,6 +249,19 @@ describe('GlobalNotificationsService', () => {
 
     expect(sent).toHaveLength(2);
     expect(sent[0]?.text).not.toContain('Veja no CromoCard');
+    expect(logger.error).toHaveBeenCalledWith(
+      { globalNotificationId: 'dispatch-1', failed: 1 },
+      expect.any(String),
+    );
+  });
+
+  it('CCD101: erro síncrono ao montar um e-mail fica no log e os outros continuam', async () => {
+    syncMailFailure = new Error('Template inválido');
+
+    await service.dispatch(ADMIN.id, input({ channels: ['EMAIL'] }));
+    await runBackground();
+
+    expect(sent.map(({ to }) => to)).toEqual(['user0@cromocard.dev', 'user2@cromocard.dev']);
     expect(logger.error).toHaveBeenCalledWith(
       { globalNotificationId: 'dispatch-1', failed: 1 },
       expect.any(String),

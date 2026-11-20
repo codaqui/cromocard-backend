@@ -84,7 +84,6 @@ const globalNotificationsSchema = z.array(
     channels: z.array(z.enum(NOTIFICATION_CHANNELS)).min(1),
     status: z.enum(NotificationDispatchStatus),
     recipientCount: z.number().int().min(0).default(0),
-    /** Data do disparo (ou do agendamento) relativa a hoje: negativa no passado. */
     daysFromNow: z.number().int(),
   }),
 );

@@ -10,10 +10,8 @@ export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 export const TITLE_MAX_LENGTH = 120;
 export const CONTENT_MAX_LENGTH = 500;
 export const LINK_MAX_LENGTH = 255;
-/** O agendamento precisa estar pelo menos 5 minutos à frente (CCD100, L2). */
 export const MIN_SCHEDULE_LEAD_MS = 5 * 60 * 1000;
 
-/** Caminho do site ("/albuns/…") ou endereço http(s) (CCD060, L12). */
 const LINK_PATTERN = /^(\/(?!\/)\S*|https?:\/\/\S+)$/;
 
 const emptyToUndefined = (value: unknown) =>

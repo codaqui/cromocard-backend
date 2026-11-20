@@ -35,10 +35,8 @@ export interface GlobalNotificationsServiceDeps {
   auditLog: GlobalNotificationsAuditLog;
   mail: MailProvider;
   logger: GlobalNotificationsLogger;
-  /** Endereço do site, para completar o link de destino nos e-mails. */
   frontendUrl: string;
   clock?: () => Date;
-  /** Roda os e-mails depois da resposta (CCD101, L4). */
   runInBackground?: (task: () => Promise<void>) => void;
 }
 
@@ -117,7 +115,6 @@ export class GlobalNotificationsService {
     return toView(record);
   }
 
-  /** Entrega os agendados vencidos; os destinatários são calculados agora (CCD100, L1). */
   async deliverDueScheduled(): Promise<number> {
     const now = this.clock();
     const due = await this.deps.repository.findDueScheduled(now);
@@ -189,7 +186,6 @@ export class GlobalNotificationsService {
     return true;
   }
 
-  /** Envia em lotes; um e-mail que falha fica no log e não desfaz a entrega (CCD101, L4). */
   private async sendEmails(record: GlobalNotificationRecord, recipients: Recipient[]) {
     const link = this.absoluteLink(record.referenceLink);
     for (let start = 0; start < recipients.length; start += EMAIL_BATCH_SIZE) {
@@ -203,7 +199,7 @@ export class GlobalNotificationsService {
     link: string | null,
   ) {
     const results = await Promise.allSettled(
-      batch.map(({ email, name }) =>
+      batch.map(async ({ email, name }) =>
         this.deps.mail.send(globalNotificationMail({ to: email, name, title, content, link })),
       ),
     );

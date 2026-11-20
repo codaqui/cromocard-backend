@@ -4,7 +4,6 @@ import type { PrismaClient } from '@/generated/prisma/client';
 
 import { PrismaGlobalNotificationsRepository } from './global-notifications.repository';
 
-/** Só o que a entrega do agendado usa, para simular a corrida com o cancelamento. */
 function prismaWhereDispatchLeftTheQueue() {
   const tx = {
     globalNotification: {
