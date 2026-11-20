@@ -2,6 +2,7 @@ import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openap
 
 import { z } from '@/lib/zod';
 
+import { EVOLUTION_BUCKETS } from './dashboard.evolution';
 import { dashboardQuerySchema, recentSellersQuerySchema } from './dashboard.validator';
 
 const tags = ['Administração - Dashboard'];
@@ -25,7 +26,27 @@ const dashboardSummaryResponse = z.object({
       }),
       newUsers: count,
       newSellers: count,
+      collectors: count.openapi({ description: 'Colecionadores (CUSTOMER) sem conta excluída' }),
+      sellers: count.openapi({ description: 'Lojistas (SELLER) sem conta excluída' }),
+      newCardsThisWeek: count.openapi({
+        description: 'Cartas cadastradas nos últimos 7 dias, desde a meia-noite de Brasília',
+      }),
+      usersVariation: z.number().nullable().openapi({
+        example: 12.4,
+        description:
+          'Variação em % dos cadastros do período contra o período anterior de mesmo tamanho; null quando o anterior é zero e o atual não ("novo")',
+      }),
     }),
+    goal: z
+      .object({
+        monthly: z.number().int().min(1).openapi({ example: 4000 }),
+        percent: count.nullable().openapi({
+          example: 105,
+          description: 'Percentual da meta mensal; só no filtro de 30 dias, null nos demais',
+        }),
+      })
+      .nullable()
+      .openapi({ description: 'Meta mensal de cadastros; null quando não está configurada' }),
     signupsByMonth: z.array(
       z.object({
         month: z
@@ -36,6 +57,23 @@ const dashboardSummaryResponse = z.object({
       }),
     ),
     isEmpty: z.boolean().openapi({ description: 'true quando não há usuários nem cartas' }),
+  }),
+});
+
+const signupsEvolutionResponse = z.object({
+  data: z.object({
+    period: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }),
+    bucket: z.enum(EVOLUTION_BUCKETS).openapi({
+      description: 'hour (até 1 dia), day (até 92 dias) ou month, no horário de Brasília',
+    }),
+    points: z.array(
+      z.object({
+        at: z.iso.datetime().openapi({ description: 'Início do intervalo do ponto' }),
+        collectors: count.openapi({ description: 'Colecionadores (CUSTOMER) cadastrados' }),
+        sellers: count.openapi({ description: 'Lojistas certificados (cadastro aprovado)' }),
+      }),
+    ),
+    totals: z.object({ collectors: count, sellers: count }),
   }),
 });
 
@@ -54,10 +92,25 @@ const dashboardPaths: RouteConfig[] = [
     path: '/admin/dashboard',
     tags,
     security,
-    summary: 'KPIs, cadastros por mês e estado vazio do Dashboard (CCD058)',
+    summary: 'KPIs, meta, cadastros por mês e estado vazio do Dashboard (CCD058, CCD096)',
     request: { query: dashboardQuerySchema },
     responses: {
       200: { description: 'Resumo do período', ...json(dashboardSummaryResponse) },
+      ...accessErrors,
+    },
+  },
+  {
+    method: 'get',
+    path: '/admin/dashboard/signups-evolution',
+    tags,
+    security,
+    summary: 'Evolução de colecionadores e lojistas certificados por hora, dia ou mês (CCD096)',
+    request: { query: dashboardQuerySchema },
+    responses: {
+      200: {
+        description: 'Pontos do período, inclusive os zerados',
+        ...json(signupsEvolutionResponse),
+      },
       ...accessErrors,
     },
   },

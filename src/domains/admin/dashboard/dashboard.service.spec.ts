@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { MonthlySignups, SellerSummary, SignupsQuery } from '@/domains/users/users.service';
+import type {
+  MembersByRole,
+  MonthlySignups,
+  SellerSummary,
+  SignupsQuery,
+} from '@/domains/users/users.service';
 import {
   buildPaginationMeta,
   type Paginated,
@@ -8,24 +13,41 @@ import {
 } from '@/shared/utils/pagination';
 import type { DateRange } from '@/shared/utils/time-zone';
 
-import { type CatalogStats, type DashboardUsers, DashboardService } from './dashboard.service';
+import type { DashboardRepository, EvolutionPoint, EvolutionQuery } from './dashboard.repository';
+import {
+  type CatalogStats,
+  type DashboardGoals,
+  type DashboardUsers,
+  DashboardService,
+} from './dashboard.service';
 
 const NOW = new Date('2026-10-29T13:00:00Z');
 
 class FakeUsers implements DashboardUsers {
   members = 0;
+  byRole: MembersByRole = { collectors: 0, sellers: 0 };
   signups: MonthlySignups[] = [];
+  previousSignups: MonthlySignups[] = [];
   sellers: SellerSummary[] = [];
-  lastSignupsQuery?: SignupsQuery;
+  signupQueries: SignupsQuery[] = [];
   lastSellersRange?: DateRange;
+
+  get lastSignupsQuery(): SignupsQuery | undefined {
+    return this.signupQueries[0];
+  }
 
   countMembers(): Promise<number> {
     return Promise.resolve(this.members);
   }
 
+  countMembersByRole(): Promise<MembersByRole> {
+    return Promise.resolve(this.byRole);
+  }
+
   signupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]> {
-    this.lastSignupsQuery = query;
-    return Promise.resolve(this.signups);
+    this.signupQueries.push(query);
+    const isCurrent = this.signupQueries.length === 1;
+    return Promise.resolve(isCurrent ? this.signups : this.previousSignups);
   }
 
   listSellersCreatedWithin(
@@ -38,17 +60,197 @@ class FakeUsers implements DashboardUsers {
   }
 }
 
-const catalogWith = (cards: number): CatalogStats => ({ countCards: () => Promise.resolve(cards) });
+class FakeDashboardRepository implements DashboardRepository {
+  points: EvolutionPoint[] = [];
+  lastEvolutionQuery?: EvolutionQuery;
+
+  countSignupsEvolution(query: EvolutionQuery): Promise<EvolutionPoint[]> {
+    this.lastEvolutionQuery = query;
+    return Promise.resolve(this.points);
+  }
+}
+
+class FakeGoals implements DashboardGoals {
+  monthly: number | null = null;
+
+  getMonthlySignupGoal(): Promise<number | null> {
+    return Promise.resolve(this.monthly);
+  }
+}
+
+class FakeCatalog implements CatalogStats {
+  newCards = 0;
+  lastCardsSince?: Date;
+
+  constructor(private readonly cards: number) {}
+
+  countCards(): Promise<number> {
+    return Promise.resolve(this.cards);
+  }
+
+  countCardsCreatedSince(since: Date): Promise<number> {
+    this.lastCardsSince = since;
+    return Promise.resolve(this.newCards);
+  }
+}
+
+const catalogWith = (cards: number) => new FakeCatalog(cards);
+
+const signupsOf = (customers: number, sellers = 0): MonthlySignups[] => [
+  { month: '2026-10', customers, sellers },
+];
 
 describe('DashboardService', () => {
   let users: FakeUsers;
+  let repository: FakeDashboardRepository;
+  let goals: FakeGoals;
 
   beforeEach(() => {
     users = new FakeUsers();
+    repository = new FakeDashboardRepository();
+    goals = new FakeGoals();
   });
 
   const serviceWith = (catalog?: CatalogStats) =>
-    new DashboardService({ users, catalog, now: () => NOW });
+    new DashboardService({ users, catalog, repository, goals, now: () => NOW });
+
+  describe('CCD096', () => {
+    it('CA3: com meta de 4.000 e 4.218 cadastros em 30 dias, mostra 105% da meta', async () => {
+      goals.monthly = 4000;
+      users.signups = signupsOf(4070, 148);
+
+      const { kpis, goal } = await serviceWith().getSummary({ period: '30d' });
+
+      expect(kpis.newUsers).toBe(4218);
+      expect(goal).toEqual({ monthly: 4000, percent: 105 });
+    });
+
+    it('L3: o padrão é 30 dias e também mostra o percentual', async () => {
+      goals.monthly = 100;
+      users.signups = signupsOf(50);
+
+      const { goal } = await serviceWith().getSummary({});
+
+      expect(goal?.percent).toBe(50);
+    });
+
+    it('CA8: em 7 dias, mostra o total sem o percentual da meta', async () => {
+      goals.monthly = 4000;
+      users.signups = signupsOf(1120);
+
+      const { kpis, goal } = await serviceWith().getSummary({ period: '7d' });
+
+      expect(kpis.newUsers).toBe(1120);
+      expect(goal).toEqual({ monthly: 4000, percent: null });
+    });
+
+    it('L3: num intervalo de datas, também não mostra o percentual', async () => {
+      goals.monthly = 4000;
+      const from = '2026-09-01T03:00:00.000Z';
+
+      const { goal } = await serviceWith().getSummary({ from, to: '2026-09-30T23:59:59.000Z' });
+
+      expect(goal?.percent).toBeNull();
+    });
+
+    it('CA4: sem meta configurada, não devolve meta', async () => {
+      users.signups = signupsOf(4218);
+
+      const { kpis, goal } = await serviceWith().getSummary({ period: '30d' });
+
+      expect(kpis.newUsers).toBe(4218);
+      expect(goal).toBeNull();
+    });
+
+    it('CA6: 100 cadastros contra 80 no período anterior dá +25% e a divisão por papel', async () => {
+      users.signups = signupsOf(90, 10);
+      users.previousSignups = signupsOf(80);
+      users.byRole = { collectors: 47390, sellers: 1530 };
+
+      const { kpis } = await serviceWith().getSummary({ period: '7d' });
+
+      expect(kpis.usersVariation).toBe(25);
+      expect(kpis).toMatchObject({ collectors: 47390, sellers: 1530 });
+    });
+
+    it('CA6: compara com o período anterior de mesmo tamanho', async () => {
+      await serviceWith().getSummary({ period: '7d' });
+
+      expect(users.signupQueries[1]?.range).toEqual({
+        from: new Date('2026-10-16T16:59:59.999Z'),
+        to: new Date('2026-10-23T02:59:59.999Z'),
+      });
+    });
+
+    it('arredonda a variação em uma casa decimal', async () => {
+      users.signups = signupsOf(1124);
+      users.previousSignups = signupsOf(1000);
+
+      const { kpis } = await serviceWith().getSummary({});
+
+      expect(kpis.usersVariation).toBe(12.4);
+    });
+
+    it('L2: sem cadastros no período anterior, a variação é nula ("novo")', async () => {
+      users.signups = signupsOf(3);
+
+      const { kpis } = await serviceWith().getSummary({});
+
+      expect(kpis.usersVariation).toBeNull();
+    });
+
+    it('L4: sem cadastros nos dois períodos, a variação é 0%', async () => {
+      const { kpis } = await serviceWith().getSummary({});
+
+      expect(kpis.usersVariation).toBe(0);
+    });
+
+    it('CA1: em 7 dias, agrupa a evolução por dia e soma cada linha', async () => {
+      repository.points = [
+        { at: new Date('2026-10-27T03:00:00Z'), collectors: 2, sellers: 1 },
+        { at: new Date('2026-10-28T03:00:00Z'), collectors: 3, sellers: 0 },
+      ];
+
+      const evolution = await serviceWith().getSignupsEvolution({ period: '7d' });
+
+      expect(evolution.bucket).toBe('day');
+      expect(evolution.totals).toEqual({ collectors: 5, sellers: 1 });
+      expect(repository.lastEvolutionQuery).toEqual({
+        range: { from: new Date('2026-10-23T03:00:00Z'), to: NOW },
+        bucket: 'day',
+        timeZone: 'America/Sao_Paulo',
+      });
+    });
+
+    it('CA2: no período de hoje, agrupa por hora', async () => {
+      const evolution = await serviceWith().getSignupsEvolution({ period: 'today' });
+
+      expect(evolution.bucket).toBe('hour');
+      expect(evolution.totals).toEqual({ collectors: 0, sellers: 0 });
+    });
+
+    it('R4: em 1 ano, agrupa por mês', async () => {
+      const { bucket } = await serviceWith().getSignupsEvolution({ period: '1y' });
+
+      expect(bucket).toBe('month');
+    });
+
+    it('R11: conta as cartas novas dos últimos 7 dias, desde a meia-noite de Brasília', async () => {
+      const catalog = catalogWith(10);
+      catalog.newCards = 3120;
+
+      const { kpis } = await serviceWith(catalog).getSummary({ period: 'today' });
+
+      expect(kpis.newCardsThisWeek).toBe(3120);
+      expect(catalog.lastCardsSince).toEqual(new Date('2026-10-23T03:00:00Z'));
+    });
+
+    it('R11: sem o catálogo, as cartas novas da semana ficam em zero', async () => {
+      const { kpis } = await serviceWith().getSummary({ period: 'today' });
+
+      expect(kpis.newCardsThisWeek).toBe(0);
+    });
+  });
 
   it('CA1: soma os novos cadastros do período e traz os totais', async () => {
     users.members = 3;
@@ -59,7 +261,7 @@ describe('DashboardService', () => {
 
     const { kpis, isEmpty } = await serviceWith(catalogWith(2)).getSummary({});
 
-    expect(kpis).toEqual({ totalUsers: 3, totalCards: 2, newUsers: 4, newSellers: 2 });
+    expect(kpis).toMatchObject({ totalUsers: 3, totalCards: 2, newUsers: 4, newSellers: 2 });
     expect(isEmpty).toBe(false);
   });
 
