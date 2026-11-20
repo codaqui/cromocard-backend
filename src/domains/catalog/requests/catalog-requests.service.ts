@@ -1,5 +1,6 @@
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { CatalogRequestType } from '@/generated/prisma/enums';
+import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import type { z } from '@/lib/zod';
 import { buildPaginationMeta, type PaginationMeta } from '@/shared/utils/pagination';
 
@@ -39,13 +40,26 @@ export interface CatalogRequestsCatalog {
 }
 
 export interface CatalogRequestsAuditLog {
-  record(input: RecordAuditLogInput): Promise<unknown>;
+  record(input: RecordAuditLogInput, tx?: Transaction): Promise<unknown>;
+}
+
+export interface RequesterNotice {
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+}
+
+export interface CatalogRequestsNotifier {
+  notify(notice: RequesterNotice, tx?: Transaction): Promise<void>;
 }
 
 export interface CatalogRequestsServiceDeps {
   repository: CatalogRequestsRepository;
   catalog: CatalogRequestsCatalog;
   auditLog: CatalogRequestsAuditLog;
+  notifier: CatalogRequestsNotifier;
+  runInTransaction: TransactionRunner;
 }
 
 type SuggestedData = Record<string, unknown>;
@@ -76,6 +90,13 @@ export interface CreatedItem {
 
 export type ApprovedCatalogRequest = CatalogRequestView & { createdItem: CreatedItem };
 
+interface ApprovalRecord {
+  request: CatalogRequestRecord;
+  adminId: string;
+  createdItem: CreatedItem;
+  link: CreatedItemLink;
+}
+
 interface Approval {
   create(adminId: string): Promise<CreatedItem>;
   link(created: CreatedItem): CreatedItemLink;
@@ -84,6 +105,7 @@ interface Approval {
 const CODE_PREFIX = '#SOL-';
 const CODE_LENGTH = 4;
 const AUDIT_ENTITY = 'catalog_request';
+const CATALOG_REQUEST_NOTIFICATION = 'CATALOG_REQUEST';
 type ReferenceKey = 'albumId' | 'categoryId' | 'rarityId' | 'languageId';
 
 const asData = (data: unknown): SuggestedData =>
@@ -92,7 +114,6 @@ const asData = (data: unknown): SuggestedData =>
 const textOf = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
 
-/** O início do UUID v7 é o horário e se repete; o fim distingue as solicitações. */
 export const codeOf = (id: string): string =>
   `${CODE_PREFIX}${id.slice(-CODE_LENGTH).toUpperCase()}`;
 
@@ -119,7 +140,6 @@ function parseSuggestion<T>(schema: z.ZodType<T>, data: SuggestedData): T {
 
 type ApprovalFactory = (data: SuggestedData, catalog: CatalogRequestsCatalog) => Approval;
 
-/** Como cada tipo de sugestão vira item do catálogo (Strategy). */
 const APPROVALS: Record<CatalogRequestType, ApprovalFactory> = {
   CARD: (data, catalog) => {
     const input = parseSuggestion(createCardSchema, data);
@@ -215,15 +235,9 @@ export class CatalogRequestsService {
     await this.claim(request, { status: 'APPROVED', reviewedById: adminId });
 
     const createdItem = await this.createOrRelease(id, () => approval.create(adminId));
-    await this.deps.repository.linkCreatedItem(id, approval.link(createdItem));
-    await this.deps.auditLog.record({
-      adminId,
-      action: 'CATALOG_REQUEST_APPROVED',
-      entityType: AUDIT_ENTITY,
-      entityId: id,
-      details: { type: request.type, createdItemId: createdItem.id },
-    });
-    await this.notify(request, approvedNotice(createdItem.name));
+    await this.deps.runInTransaction((tx) =>
+      this.recordApproval({ request, adminId, createdItem, link: approval.link(createdItem) }, tx),
+    );
 
     return { ...(await this.find(id)), createdItem };
   }
@@ -235,19 +249,42 @@ export class CatalogRequestsService {
   ): Promise<CatalogRequestView> {
     const request = await this.findPending(id);
     const data = { ...asData(request.data), rejectionReason: reason };
-    await this.claim(request, { status: 'REJECTED', reviewedById: adminId, data });
 
-    await this.deps.auditLog.record({
-      adminId,
-      action: 'CATALOG_REQUEST_REJECTED',
-      entityType: AUDIT_ENTITY,
-      entityId: id,
-      reason,
-      details: { type: request.type },
+    await this.deps.runInTransaction(async (tx) => {
+      await this.claim(request, { status: 'REJECTED', reviewedById: adminId, data }, tx);
+      await this.deps.auditLog.record(
+        {
+          adminId,
+          action: 'CATALOG_REQUEST_REJECTED',
+          entityType: AUDIT_ENTITY,
+          entityId: id,
+          reason,
+          details: { type: request.type },
+        },
+        tx,
+      );
+      await this.notify(request, rejectedNotice(itemNameOf(request.type, data), reason), tx);
     });
-    await this.notify(request, rejectedNotice(itemNameOf(request.type, data), reason));
 
     return this.find(id);
+  }
+
+  private async recordApproval(
+    { request, adminId, createdItem, link }: ApprovalRecord,
+    tx: Transaction,
+  ): Promise<void> {
+    await this.deps.repository.linkCreatedItem(request.id, link, tx);
+    await this.deps.auditLog.record(
+      {
+        adminId,
+        action: 'CATALOG_REQUEST_APPROVED',
+        entityType: AUDIT_ENTITY,
+        entityId: request.id,
+        details: { type: request.type, createdItemId: createdItem.id },
+      },
+      tx,
+    );
+    await this.notify(request, approvedNotice(createdItem.name), tx);
   }
 
   private async findRecord(id: string): Promise<CatalogRequestRecord> {
@@ -262,13 +299,15 @@ export class CatalogRequestsService {
     return record;
   }
 
-  /** Só uma análise vence: se outro admin chegou antes, informa quem e quando. */
-  private async claim(request: CatalogRequestRecord, review: ReviewInput): Promise<void> {
-    if (await this.deps.repository.markReviewed(request.id, review)) return;
+  private async claim(
+    request: CatalogRequestRecord,
+    review: ReviewInput,
+    tx?: Transaction,
+  ): Promise<void> {
+    if (await this.deps.repository.markReviewed(request.id, review, tx)) return;
     throw new CatalogRequestAlreadyReviewedError(await this.findRecord(request.id));
   }
 
-  /** Se o catálogo recusar o item, a solicitação volta a ficar pendente (R16). */
   private async createOrRelease(id: string, create: () => Promise<CreatedItem>) {
     try {
       return await create();
@@ -282,7 +321,14 @@ export class CatalogRequestsService {
     return APPROVALS[type](asData(data), this.deps.catalog);
   }
 
-  private notify(request: CatalogRequestRecord, notice: { title: string; message: string }) {
-    return this.deps.repository.notifyRequester({ userId: request.requester.id, ...notice });
+  private notify(
+    request: CatalogRequestRecord,
+    notice: { title: string; message: string },
+    tx: Transaction,
+  ) {
+    return this.deps.notifier.notify(
+      { userId: request.requester.id, ...notice, type: CATALOG_REQUEST_NOTIFICATION },
+      tx,
+    );
   }
 }

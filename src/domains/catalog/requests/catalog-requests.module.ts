@@ -1,5 +1,7 @@
 import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
+import { notificationsService } from '@/domains/notifications/notifications.module';
 import { prisma } from '@/lib/prisma';
+import { runInTransaction } from '@/lib/transaction';
 import type { DomainModule } from '@/shared/types/domain-module';
 
 import { catalogService } from '@/domains/catalog/catalog.module';
@@ -13,6 +15,8 @@ const catalogRequestsService = new CatalogRequestsService({
   repository: new PrismaCatalogRequestsRepository(prisma),
   catalog: catalogService,
   auditLog: auditLogService,
+  notifier: notificationsService,
+  runInTransaction,
 });
 
 export const catalogRequestsModule: DomainModule = {
