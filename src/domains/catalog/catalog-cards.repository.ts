@@ -9,6 +9,8 @@ const cardSelect = {
   id: true,
   name: true,
   number: true,
+  code: true,
+  variants: true,
   description: true,
   frontImageUrl: true,
   backImageUrl: true,
@@ -28,6 +30,8 @@ export type Card = Prisma.CardGetPayload<{ select: typeof cardSelect }>;
 
 export const emptyOptionalCardFields = {
   number: null,
+  code: null,
+  variants: null,
   description: null,
   backImageUrl: null,
   albumId: null,
@@ -51,6 +55,17 @@ export interface CardNumberOwner {
   deletedAt: Date | null;
 }
 
+export interface CardCodeOwner {
+  id: string;
+  name: string;
+}
+
+export interface CardIdentity {
+  id: string;
+  name: string;
+  number: string | null;
+}
+
 export async function refreshAlbumTotals(
   tx: Transaction,
   albumIds: (string | null)[],
@@ -66,10 +81,13 @@ export interface CardsRepository {
   findPage(query: ListCardsQuery): Promise<CardsPage>;
   findById(id: string): Promise<Card | null>;
   findByAlbumNumberIncludingDeleted(key: AlbumCardNumber): Promise<CardNumberOwner | null>;
+  findActiveByCode(code: string): Promise<CardCodeOwner | null>;
   create(input: CreateCardInput): Promise<Card>;
   restore(id: string, input: CreateCardInput): Promise<Card>;
   update(id: string, input: UpdateCardInput): Promise<Card>;
   softDelete(id: string): Promise<void>;
+  findActiveIdentities(ids: string[]): Promise<CardIdentity[]>;
+  softDeleteMany(ids: string[], tx: Transaction): Promise<void>;
   countByAlbum(albumId: string): Promise<number>;
   count(): Promise<number>;
 }
@@ -81,17 +99,19 @@ function buildSearchFilter(q?: string): Prisma.CardWhereInput {
     OR: [
       { name: { contains: q, mode: 'insensitive' } },
       { number: { contains: q, mode: 'insensitive' } },
+      { code: { contains: q, mode: 'insensitive' } },
     ],
   };
 }
 
-function buildCardsFilter({ q, albumId, categoryId, rarityId }: ListCardsQuery) {
+function buildCardsFilter({ q, albumId, categoryId, rarityId, year }: ListCardsQuery) {
   return {
     ...notDeleted,
     ...buildSearchFilter(q),
     ...(albumId && { albumId }),
     ...(categoryId && { categoryId }),
     ...(rarityId && { rarityId }),
+    ...(year && { album: { year } }),
   } satisfies Prisma.CardWhereInput;
 }
 
@@ -122,6 +142,13 @@ export class PrismaCardsRepository implements CardsRepository {
     return this.prisma.card.findUnique({
       where: { albumId_number: key },
       select: { id: true, deletedAt: true },
+    });
+  }
+
+  findActiveByCode(code: string): Promise<CardCodeOwner | null> {
+    return this.prisma.card.findFirst({
+      where: { code, ...notDeleted },
+      select: { id: true, name: true },
     });
   }
 
@@ -166,6 +193,23 @@ export class PrismaCardsRepository implements CardsRepository {
       });
       await refreshAlbumTotals(tx, [albumId]);
     });
+  }
+
+  findActiveIdentities(ids: string[]): Promise<CardIdentity[]> {
+    return this.prisma.card.findMany({
+      where: { id: { in: ids }, ...notDeleted },
+      select: { id: true, name: true, number: true },
+    });
+  }
+
+  async softDeleteMany(ids: string[], tx: Transaction): Promise<void> {
+    const where = { id: { in: ids }, ...notDeleted };
+    const affected = await tx.card.findMany({ where, select: { albumId: true } });
+    await tx.card.updateMany({ where, data: softDeleteData() });
+    await refreshAlbumTotals(
+      tx,
+      affected.map(({ albumId }) => albumId),
+    );
   }
 
   countByAlbum(albumId: string): Promise<number> {

@@ -18,6 +18,8 @@ const catalogRoutes = [
   ['post', `${BASE}/cards`],
   ['patch', `${BASE}/cards/${ITEM_ID}`],
   ['delete', `${BASE}/cards/${ITEM_ID}`],
+  ['get', `${BASE}/summary`],
+  ['post', `${BASE}/cards/bulk-delete`],
   ['post', `${BASE}/cards/import`],
   ['get', `${BASE}/cards/import/template`],
   ['get', `${BASE}/categories`],
@@ -87,6 +89,22 @@ describe('validação do catálogo', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('R10: recusa a exclusão em lote sem cartas ou sem motivo com 400', async () => {
+    const empty = await asAdmin('post', `${BASE}/cards/bulk-delete`).send({
+      ids: [],
+      reason: 'Duplicadas',
+    });
+    const withoutReason = await asAdmin('post', `${BASE}/cards/bulk-delete`).send({
+      ids: [ITEM_ID],
+    });
+
+    expect(empty.status).toBe(400);
+    expect(withoutReason.status).toBe(400);
+    expect((withoutReason.body as { details: { field: string }[] }).details).toContainEqual(
+      expect.objectContaining({ field: 'reason' }),
+    );
+  });
 });
 
 describe('importação de cartas por CSV', () => {
@@ -118,6 +136,8 @@ describe('documentação do catálogo', () => {
       '/admin/catalog/cards/{id}',
       '/admin/catalog/categories',
       '/admin/catalog/categories/{id}',
+      '/admin/catalog/summary',
+      '/admin/catalog/cards/bulk-delete',
       '/admin/catalog/cards/import',
       '/admin/catalog/cards/import/template',
       '/admin/catalog/rarities',

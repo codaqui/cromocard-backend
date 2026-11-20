@@ -1,7 +1,4 @@
-import type {
-  AuditAction,
-  RecordAuditLogInput,
-} from '@/domains/admin/audit-logs/audit-logs.validator';
+import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
 import type { AppError } from '@/shared/errors/app-error';
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
@@ -10,6 +7,7 @@ import type { Card, CardsRepository } from './catalog-cards.repository';
 import {
   AlbumHasCardsError,
   AlbumNotFoundError,
+  CardCodeTakenError,
   CardInUseError,
   CardNotFoundError,
   CardNumberOfDeletedCardError,
@@ -22,7 +20,7 @@ import {
   RarityNotFoundError,
   rejectDuplicateSlug,
   SlugTakenError,
-  rejectDuplicateNumber,
+  rejectDuplicateCard,
 } from './catalog.errors';
 import type {
   CreateAlbumInput,
@@ -40,16 +38,10 @@ import { slugify } from '@/lib/slug';
 import type { CategoriesRepository, Category } from './catalog-categories.repository';
 import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
-
-export interface CatalogAuditLog {
-  record(input: RecordAuditLogInput): Promise<unknown>;
-}
+import type { CatalogSummary, CatalogSummaryRepository } from './catalog-summary.repository';
+import type { CardUsage, CatalogAuditLog } from './catalog.ports';
 
 export type CategoryWithCount = Category & { cardsCount: number };
-
-export interface CardUsage {
-  isCardInCollections(cardId: string): Promise<boolean>;
-}
 
 export interface CatalogServiceDeps {
   albums: AlbumsRepository;
@@ -58,7 +50,8 @@ export interface CatalogServiceDeps {
   cardCounts: CategoryCardCounts;
   references: ReferencesRepository;
   auditLog: CatalogAuditLog;
-  cardUsage?: CardUsage;
+  summary: CatalogSummaryRepository;
+  cardUsage: CardUsage;
 }
 
 interface AuditedChange {
@@ -95,6 +88,10 @@ function keepOrReplace<T>(replacement: T | undefined, current: T): T {
 
 export class CatalogService {
   constructor(private readonly deps: CatalogServiceDeps) {}
+
+  getSummary(): Promise<CatalogSummary> {
+    return this.deps.summary.summarize();
+  }
 
   async listAlbums(query: ListAlbumsQuery): Promise<Paginated<Album>> {
     const { items, total } = await this.deps.albums.findPage(query);
@@ -146,7 +143,8 @@ export class CatalogService {
 
   async createCard(adminId: string, input: CreateCardInput): Promise<Card> {
     await this.ensureCardReferences(input);
-    const card = await this.saveNewCard(input).catch(rejectDuplicateNumber);
+    await this.ensureCodeAvailable(input.code);
+    const card = await this.saveNewCard(input).catch(rejectDuplicateCard);
     await this.audit(adminId, { action: 'CARD_CREATED', entityType: 'card', entityId: card.id });
     return card;
   }
@@ -158,14 +156,16 @@ export class CatalogService {
       albumId: keepOrReplace(input.albumId, previousAlbumId),
       number: keepOrReplace(input.number, previousNumber),
     });
-    const card = await this.deps.cards.update(id, input).catch(rejectDuplicateNumber);
+    await this.ensureCodeAvailable(input.code, id);
+    const card = await this.deps.cards.update(id, input).catch(rejectDuplicateCard);
     await this.audit(adminId, { action: 'CARD_UPDATED', entityType: 'card', entityId: id });
     return card;
   }
 
   async deleteCard(adminId: string, id: string): Promise<void> {
     await this.findCard(id);
-    if (await this.deps.cardUsage?.isCardInCollections(id)) throw new CardInUseError();
+    const inCollections = await this.deps.cardUsage.cardIdsInCollections([id]);
+    if (inCollections.includes(id)) throw new CardInUseError();
     await this.deps.cards.softDelete(id);
     await this.audit(adminId, { action: 'CARD_DELETED', entityType: 'card', entityId: id });
   }
@@ -253,6 +253,12 @@ export class CatalogService {
     const owner = await this.findNumberOwner(slot);
     if (!owner || owner.id === cardId) return;
     throw owner.deletedAt ? new CardNumberOfDeletedCardError() : new CardNumberTakenError();
+  }
+
+  private async ensureCodeAvailable(code: string | null | undefined, cardId?: string) {
+    if (!code) return;
+    const owner = await this.deps.cards.findActiveByCode(code);
+    if (owner && owner.id !== cardId) throw new CardCodeTakenError(owner.name);
   }
 
   private findNumberOwner({ albumId, number }: CardNumberSlot) {

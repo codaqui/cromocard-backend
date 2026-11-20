@@ -12,6 +12,8 @@ export function createCatalogRoutes(controller: CatalogController): Router {
 
   router.use(authenticate, authorize('ADMIN'));
 
+  router.get('/summary', controller.getSummary);
+
   router.get('/albums', controller.listAlbums);
   router.post('/albums', controller.createAlbum);
   router.patch('/albums/:id', controller.updateAlbum);
@@ -21,6 +23,7 @@ export function createCatalogRoutes(controller: CatalogController): Router {
   router.post('/cards', controller.createCard);
   router.patch('/cards/:id', controller.updateCard);
   router.delete('/cards/:id', controller.deleteCard);
+  router.post('/cards/bulk-delete', controller.bulkDeleteCards);
   router.post('/cards/import', parseSingleFile, controller.importCards);
   router.get('/cards/import/template', controller.downloadImportTemplate);
 

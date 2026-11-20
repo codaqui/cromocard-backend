@@ -222,6 +222,8 @@ model Card {
   description   String?
   frontImageUrl String?   @map("front_image_url") @db.VarChar(255)
   backImageUrl  String?   @map("back_image_url") @db.VarChar(255)
+  code          String?   @db.VarChar(30)
+  variants      String?   @db.VarChar(120)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -235,6 +237,7 @@ model Card {
   catalogRequests CatalogRequest[]
 
   @@unique([albumId, number])
+  @@unique([code], map: "cards_code_key", where: raw("deleted_at IS NULL"))
   @@map("cards")
 }
 

@@ -7,7 +7,9 @@ import { created, noContent, ok, paginated } from '@/shared/utils/http-response'
 import type { CatalogService } from './catalog.service';
 import { CARD_IMPORT_TEMPLATE } from './catalog-import.parser';
 import type { CatalogImportService } from './catalog-import.service';
+import type { CardsBulkDeleteService } from './catalog-bulk-delete.service';
 import {
+  bulkDeleteCardsSchema,
   catalogItemIdParamSchema,
   createAlbumSchema,
   createCardSchema,
@@ -39,7 +41,17 @@ export class CatalogController {
   constructor(
     private readonly catalogService: CatalogService,
     private readonly importService: CatalogImportService,
+    private readonly bulkDeleteService: CardsBulkDeleteService,
   ) {}
+
+  getSummary = async (_req: Request, res: Response): Promise<void> => {
+    ok(res, await this.catalogService.getSummary());
+  };
+
+  bulkDeleteCards = async (req: Request, res: Response): Promise<void> => {
+    const input = bulkDeleteCardsSchema.parse(req.body);
+    ok(res, await this.bulkDeleteService.deleteCards(adminIdOf(req), input));
+  };
 
   listAlbums = async (req: Request, res: Response): Promise<void> => {
     const query = listAlbumsQuerySchema.parse(req.query);

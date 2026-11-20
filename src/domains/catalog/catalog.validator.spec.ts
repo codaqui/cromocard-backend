@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  bulkDeleteCardsSchema,
   catalogItemIdParamSchema,
   createAlbumSchema,
   createCardSchema,
@@ -114,6 +115,78 @@ describe('createCardSchema', () => {
   it('R6: na edição não deixa apagar a imagem da frente', () => {
     expect(updateCardSchema.safeParse({ frontImageUrl: null }).success).toBe(false);
     expect(updateCardSchema.safeParse({ backImageUrl: null }).success).toBe(true);
+  });
+});
+
+describe('código e variantes da carta', () => {
+  it('R8: aceita código até 30 caracteres, sem os espaços das pontas, e recusa acima disso', () => {
+    expect(createCardSchema.parse({ ...validCard, code: ' CRD-POK-0004 ' }).code).toBe(
+      'CRD-POK-0004',
+    );
+    expect(
+      failedFields(createCardSchema.safeParse({ ...validCard, code: 'C'.repeat(31) })),
+    ).toEqual(['code']);
+  });
+
+  it('R8: na edição limpa o código com null', () => {
+    expect(updateCardSchema.parse({ code: null })).toEqual({ code: null });
+  });
+
+  it('R8: guarda as variantes separadas por vírgula, sem vazias nem repetidas', () => {
+    const parsed = createCardSchema.parse({
+      ...validCard,
+      variants: ' Shadowless ,, Holofoil, shadowless , ',
+    });
+
+    expect(parsed.variants).toBe('Shadowless, Holofoil');
+  });
+
+  it('R8: variantes só com vírgulas e espaços viram null', () => {
+    expect(createCardSchema.parse({ ...validCard, variants: ' , ' }).variants).toBeNull();
+  });
+
+  it('R8: recusa variantes acima de 120 caracteres depois de arrumadas', () => {
+    const tooLong = Array.from({ length: 13 }, (_, index) => `Variante${index}`).join(',');
+
+    expect(failedFields(createCardSchema.safeParse({ ...validCard, variants: tooLong }))).toEqual([
+      'variants',
+    ]);
+  });
+});
+
+describe('filtro por ano e exclusão em lote', () => {
+  it('R9: converte o ano da lista de cartas e recusa ano inválido', () => {
+    expect(listCardsQuerySchema.parse({ year: '1999' }).year).toBe(1999);
+    expect(listCardsQuerySchema.safeParse({ year: '0' }).success).toBe(false);
+  });
+
+  it('R10: aceita os ids com o motivo e tira os ids repetidos', () => {
+    const id = crypto.randomUUID();
+
+    expect(bulkDeleteCardsSchema.parse({ ids: [id, id], reason: ' Duplicadas ' })).toEqual({
+      ids: [id],
+      reason: 'Duplicadas',
+    });
+  });
+
+  it('R10: recusa a lista vazia, id que não é UUID e o lote sem motivo', () => {
+    expect(
+      failedFields(bulkDeleteCardsSchema.safeParse({ ids: [], reason: 'Duplicadas' })),
+    ).toEqual(['ids']);
+    expect(
+      failedFields(bulkDeleteCardsSchema.safeParse({ ids: ['x'], reason: 'Duplicadas' })),
+    ).toEqual(['ids.0']);
+    expect(failedFields(bulkDeleteCardsSchema.safeParse({ ids: [crypto.randomUUID()] }))).toEqual([
+      'reason',
+    ]);
+  });
+
+  it('R10: recusa mais de 100 cartas num lote', () => {
+    const ids = Array.from({ length: 101 }, () => crypto.randomUUID());
+
+    expect(failedFields(bulkDeleteCardsSchema.safeParse({ ids, reason: 'Duplicadas' }))).toEqual([
+      'ids',
+    ]);
   });
 });
 
