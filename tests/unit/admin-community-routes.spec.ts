@@ -14,11 +14,13 @@ const communityAdminRoutes: [Method, string][] = [
   ['get', '/api/v1/admin/community/groups'],
   ['get', '/api/v1/admin/community/groups/summary'],
   ['get', `/api/v1/admin/community/groups/${ID}`],
+  ['post', `/api/v1/admin/community/groups/${ID}/warn`],
   ['post', `/api/v1/admin/community/groups/${ID}/suspend`],
   ['post', `/api/v1/admin/community/groups/${ID}/reactivate`],
   ['delete', `/api/v1/admin/community/groups/${ID}`],
   ['get', '/api/v1/admin/community/reports'],
   ['post', `/api/v1/admin/community/reports/${ID}/remove-message`],
+  ['post', `/api/v1/admin/community/reports/${ID}/remove-and-warn`],
   ['post', `/api/v1/admin/community/reports/${ID}/dismiss`],
 ];
 
@@ -56,9 +58,11 @@ describe('validação da administração da comunidade', () => {
   });
 
   it.each([
+    ['post', `/api/v1/admin/community/groups/${ID}/warn`],
     ['post', `/api/v1/admin/community/groups/${ID}/suspend`],
     ['delete', `/api/v1/admin/community/groups/${ID}`],
     ['post', `/api/v1/admin/community/reports/${ID}/dismiss`],
+    ['post', `/api/v1/admin/community/reports/${ID}/remove-and-warn`],
   ] as [Method, string][])('exige o motivo em %s %s', async (method, path) => {
     const res = await asAdmin(method, path).send({ reason: 'ok' });
 
@@ -80,10 +84,12 @@ describe('documentação da administração da comunidade', () => {
       '/admin/community/groups',
       '/admin/community/groups/summary',
       '/admin/community/groups/{id}',
+      '/admin/community/groups/{id}/warn',
       '/admin/community/groups/{id}/suspend',
       '/admin/community/groups/{id}/reactivate',
       '/admin/community/reports',
       '/admin/community/reports/{id}/remove-message',
+      '/admin/community/reports/{id}/remove-and-warn',
       '/admin/community/reports/{id}/dismiss',
     ]);
   });

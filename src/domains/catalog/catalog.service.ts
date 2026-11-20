@@ -20,6 +20,8 @@ import {
   CategoryTypeMismatchError,
   LanguageNotFoundError,
   RarityNotFoundError,
+  rejectDuplicateSlug,
+  SlugTakenError,
   rejectDuplicateNumber,
 } from './catalog.errors';
 import type {
@@ -34,12 +36,16 @@ import type {
   UpdateCategoryInput,
 } from './catalog.validator';
 import type { CategoryType } from '@/generated/prisma/enums';
+import { slugify } from '@/lib/slug';
 import type { CategoriesRepository, Category } from './catalog-categories.repository';
+import type { CategoryCardCounts } from './catalog-category-counts.repository';
 import type { CatalogReference, ReferencesRepository } from './catalog-references.repository';
 
 export interface CatalogAuditLog {
   record(input: RecordAuditLogInput): Promise<unknown>;
 }
+
+export type CategoryWithCount = Category & { cardsCount: number };
 
 export interface CardUsage {
   isCardInCollections(cardId: string): Promise<boolean>;
@@ -49,6 +55,7 @@ export interface CatalogServiceDeps {
   albums: AlbumsRepository;
   cards: CardsRepository;
   categories: CategoriesRepository;
+  cardCounts: CategoryCardCounts;
   references: ReferencesRepository;
   auditLog: CatalogAuditLog;
   cardUsage?: CardUsage;
@@ -167,43 +174,65 @@ export class CatalogService {
     await this.audit(adminId, { action: 'CARD_DELETED', entityType: 'card', entityId: id });
   }
 
-  async listCategories(query: ListCategoriesQuery): Promise<Paginated<Category>> {
+  async listCategories(query: ListCategoriesQuery): Promise<Paginated<CategoryWithCount>> {
     const { items, total } = await this.deps.categories.findPage(query);
-    return { items, meta: buildPaginationMeta(query, total) };
+    const counts = await this.deps.cardCounts.countByCategory(items.map(({ id }) => id));
+    const withCounts = items.map((item) => ({ ...item, cardsCount: counts.get(item.id) ?? 0 }));
+    return { items: withCounts, meta: buildPaginationMeta(query, total) };
   }
 
-  async findCategory(id: string): Promise<Category> {
+  async findCategory(id: string): Promise<CategoryWithCount> {
+    return this.withCount(await this.requireCategory(id));
+  }
+
+  private async requireCategory(id: string): Promise<Category> {
     const category = await this.deps.categories.findById(id);
     if (!category) throw new CategoryNotFoundError();
     return category;
   }
 
-  async createCategory(adminId: string, input: CreateCategoryInput): Promise<Category> {
+  private async withCount(category: Category): Promise<CategoryWithCount> {
+    const counts = await this.deps.cardCounts.countByCategory([category.id]);
+    return { ...category, cardsCount: counts.get(category.id) ?? 0 };
+  }
+
+  async createCategory(adminId: string, input: CreateCategoryInput): Promise<CategoryWithCount> {
     await this.ensureCategory(input.parentCategoryId, input.type);
-    const category = await this.deps.categories.create(input);
+    const slug = slugify(input.name);
+    await this.ensureSlugAvailable(slug);
+    const category = await this.deps.categories
+      .create({ ...input, slug })
+      .catch((error: unknown) => rejectDuplicateSlug(error));
     await this.audit(adminId, {
       action: 'CATEGORY_CREATED',
       entityType: 'category',
       entityId: category.id,
     });
-    return category;
+    return { ...category, cardsCount: 0 };
   }
 
-  async updateCategory(adminId: string, id: string, input: UpdateCategoryInput): Promise<Category> {
-    const current = await this.findCategory(id);
+  async updateCategory(
+    adminId: string,
+    id: string,
+    input: UpdateCategoryInput,
+  ): Promise<CategoryWithCount> {
+    const current = await this.requireCategory(id);
     await this.ensureTypeChangeAllowed(current, input.type);
     await this.ensureCategory(
       keepOrReplace(input.parentCategoryId, current.parentCategoryId),
       keepOrReplace(input.type, current.type),
     );
     await this.ensureNotOwnAncestor(id, input.parentCategoryId);
-    const category = await this.deps.categories.update(id, input);
+    const slug = await this.slugAfterRename(current, input.name);
+    const category = await this.deps.categories
+      .update(id, { ...input, ...(slug && { slug }) })
+      .catch((error: unknown) => rejectDuplicateSlug(error));
     await this.audit(adminId, { action: 'CATEGORY_UPDATED', entityType: 'category', entityId: id });
-    return category;
+    return this.withCount(category);
   }
 
   async deleteCategory(adminId: string, id: string): Promise<void> {
-    await this.findCategory(id);
+    await this.requireCategory(id);
     if (await this.deps.categories.isInUse(id)) throw new CategoryInUseError();
     await this.deps.categories.softDelete(id);
     await this.audit(adminId, { action: 'CATEGORY_DELETED', entityType: 'category', entityId: id });
@@ -269,6 +298,17 @@ export class CatalogService {
       (id) => references.languageExists(id),
       () => new LanguageNotFoundError(),
     );
+  }
+
+  private async ensureSlugAvailable(slug: string, exceptId?: string) {
+    if (await this.deps.categories.findActiveBySlug(slug, exceptId)) throw new SlugTakenError();
+  }
+
+  private async slugAfterRename(current: Category, name: string | undefined) {
+    if (name === undefined || name === current.name) return undefined;
+    const slug = slugify(name);
+    if (slug !== current.slug) await this.ensureSlugAvailable(slug, current.id);
+    return slug;
   }
 
   private async ensureCategory(

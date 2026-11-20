@@ -133,6 +133,19 @@ describe('createCategorySchema', () => {
     ).toBe(false);
   });
 
+  it('R10: aceita o selo STANDARD, TRENDING ou nulo e recusa outro valor', () => {
+    const category = { name: 'Futebol', type: 'ALBUM' };
+    const parse = (badge: unknown) => createCategorySchema.safeParse({ ...category, badge });
+
+    expect([parse('STANDARD').success, parse('TRENDING').success, parse(null).success]).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(parse('GOLD').success).toBe(false);
+    expect(createCategorySchema.parse(category).badge).toBeUndefined();
+  });
+
   it('R15: recusa tipo fora do enum e nome acima de 90 caracteres', () => {
     expect(createCategorySchema.safeParse({ name: 'Futebol', type: 'GAME' }).success).toBe(false);
     expect(createCategorySchema.safeParse({ name: 'a'.repeat(91), type: 'CARD' }).success).toBe(

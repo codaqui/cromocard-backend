@@ -9,14 +9,11 @@ import {
 } from './admin-users.service';
 import {
   AlreadyActivatedError,
-  AlreadySuspendedError,
   CannotChangeOwnRoleError,
   CannotDeleteSelfError,
-  CannotSuspendSelfError,
   CpfTakenError,
   EmailAlreadyRegisteredError,
   LastAdminError,
-  NotSuspendedError,
   UsernameTakenError,
   UserNotFoundError,
 } from './users.errors';
@@ -30,6 +27,7 @@ import type {
   OauthLink,
   RegisteredUser,
   SellersPage,
+  StatusUpdate,
   UserChanges,
   UserCredentials,
   UserDetail,
@@ -59,8 +57,10 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     cpf: null,
     lastLoginAt: null,
     lastLoginIp: null,
+    suspendedUntil: null,
     oauthProvider: null,
     passwordHash: null,
+    verificationStatus: null,
     ...overrides,
   };
 }
@@ -103,8 +103,10 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
-  updateStatus(id: string, status: UserSummary['status']): Promise<UserSummary> {
-    this.users = this.users.map((user) => (user.id === id ? { ...user, status } : user));
+  updateStatus(id: string, { status, suspendedUntil }: StatusUpdate): Promise<UserSummary> {
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, status, suspendedUntil: suspendedUntil ?? null } : user,
+    );
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
@@ -113,6 +115,20 @@ class InMemoryUsersRepository implements UsersRepository {
       user.id === id ? { ...user, deletedAt: new Date() } : user,
     );
     return Promise.resolve();
+  }
+
+  warningsCountByUserId: Record<string, number> = {};
+
+  createWarning(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  countWarningsByUserId(userId: string): Promise<number> {
+    return Promise.resolve(this.warningsCountByUserId[userId] ?? 0);
+  }
+
+  reactivateExpiredSuspensions(): Promise<number> {
+    return Promise.reject(new Error('não usado neste teste'));
   }
 
   countMembers(): Promise<number> {
@@ -276,6 +292,14 @@ describe('AdminUsersService', () => {
       expect(auditLog.listCalls).toEqual([
         { entityType: 'user', entityId: user.id, page: 1, pageSize: 10 },
       ]);
+    });
+
+    it('R2: devolve o número de advertências do usuário', async () => {
+      const user = buildUser();
+      repository.users = [user];
+      repository.warningsCountByUserId[user.id] = 2;
+
+      await expect(service.getDetail(user.id)).resolves.toMatchObject({ warningsCount: 2 });
     });
 
     it('R15: conta com senha ou com Google não está com a ativação pendente', async () => {
@@ -532,80 +556,6 @@ describe('AdminUsersService', () => {
       await expect(
         service.update(crypto.randomUUID(), { name: 'Ana' }, adminId),
       ).rejects.toBeInstanceOf(UserNotFoundError);
-    });
-  });
-
-  describe('suspend', () => {
-    it('CA4: suspende, revoga as sessões e grava USER_SUSPENDED com motivo', async () => {
-      const user = buildUser();
-      repository.users = [user];
-
-      const updated = await service.suspend(user.id, { reason: 'Violou as regras' }, adminId);
-
-      expect(updated.status).toBe('SUSPENDED');
-      expect(authService.revoked).toEqual([user.id]);
-      expect(auditLog.entries).toEqual([
-        {
-          adminId,
-          action: 'USER_SUSPENDED',
-          entityType: 'user',
-          entityId: user.id,
-          reason: 'Violou as regras',
-        },
-      ]);
-    });
-
-    it('usuário já suspenso responde 409', async () => {
-      const user = buildUser({ status: 'SUSPENDED' });
-      repository.users = [user];
-
-      await expect(
-        service.suspend(user.id, { reason: 'Violou as regras' }, adminId),
-      ).rejects.toBeInstanceOf(AlreadySuspendedError);
-    });
-
-    it('CA7: admin não suspende a própria conta', async () => {
-      const admin = buildUser({ id: adminId });
-      repository.users = [admin];
-
-      await expect(
-        service.suspend(adminId, { reason: 'Violou as regras' }, adminId),
-      ).rejects.toBeInstanceOf(CannotSuspendSelfError);
-    });
-
-    it('CA7: não suspende o último ADMIN ativo', async () => {
-      const lastAdmin = buildUser({ role: 'ADMIN' });
-      repository.users = [lastAdmin];
-
-      await expect(
-        service.suspend(lastAdmin.id, { reason: 'Violou as regras' }, adminId),
-      ).rejects.toBeInstanceOf(LastAdminError);
-    });
-  });
-
-  describe('reactivate', () => {
-    it('CA5: reativa o usuário suspenso sem motivo e grava USER_REACTIVATED', async () => {
-      const user = buildUser({ status: 'SUSPENDED' });
-      repository.users = [user];
-
-      const updated = await service.reactivate(user.id, adminId);
-
-      expect(updated.status).toBe('ACTIVE');
-      expect(auditLog.entries).toEqual([
-        {
-          adminId,
-          action: 'USER_REACTIVATED',
-          entityType: 'user',
-          entityId: user.id,
-        },
-      ]);
-    });
-
-    it('usuário já ativo responde 409', async () => {
-      const user = buildUser({ status: 'ACTIVE' });
-      repository.users = [user];
-
-      await expect(service.reactivate(user.id, adminId)).rejects.toBeInstanceOf(NotSuspendedError);
     });
   });
 

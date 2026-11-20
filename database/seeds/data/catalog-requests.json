@@ -1,9 +1,44 @@
 [
   {
-    "key": "raphinha",
+    "key": "pikachu-illustrator",
     "requester": "ana",
     "type": "CARD",
-    "data": { "album": "copa-2026", "number": "11", "name": "Raphinha" }
+    "data": {
+      "album": "pokemon-base-set",
+      "number": "99",
+      "name": "Pikachu Illustrator",
+      "category": "pokemon",
+      "rarity": "lendaria",
+      "language": "ja",
+      "frontImageUrl": "https://images.pokemontcg.io/basep/1_hires.png"
+    }
+  },
+  {
+    "key": "charizard-repetido",
+    "requester": "carla",
+    "type": "CARD",
+    "data": {
+      "album": "pokemon-base-set",
+      "number": "4",
+      "name": "Charizard (holo)",
+      "category": "pokemon",
+      "rarity": "epica",
+      "language": "en",
+      "frontImageUrl": "https://images.pokemontcg.io/base1/4_hires.png"
+    }
+  },
+  {
+    "key": "mewtwo-sem-idioma",
+    "requester": "bruno",
+    "type": "CARD",
+    "data": {
+      "album": "pokemon-base-set",
+      "number": "10",
+      "name": "Mewtwo",
+      "category": "pokemon",
+      "rarity": "rara",
+      "frontImageUrl": "https://images.pokemontcg.io/base1/10_hires.png"
+    }
   },
   {
     "key": "pokemon-jungle",
@@ -21,6 +56,20 @@
     "requester": "carla",
     "type": "CATEGORY",
     "data": { "name": "Fórmula 1", "type": "ALBUM" }
+  },
+  {
+    "key": "pokemon-fossil",
+    "requester": "ana",
+    "reviewedBy": "admin",
+    "type": "ALBUM",
+    "status": "APPROVED",
+    "reviewedAt": "2026-11-15T17:52:00Z",
+    "data": {
+      "category": "pokemon-tcg",
+      "title": "Pokémon Fossil",
+      "publisher": "Wizards of the Coast",
+      "year": 1999
+    }
   },
   {
     "key": "neymar-repetida",

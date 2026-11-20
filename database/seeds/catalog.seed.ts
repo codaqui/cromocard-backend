@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@/generated/prisma/client';
 import { AlbumStatus, CategoryType } from '@/generated/prisma/enums';
+import { slugify } from '@/lib/slug';
 import { z } from '@/lib/zod';
 
 import { loadSeedData, seedKey } from './load-seed-data';
@@ -55,8 +56,8 @@ const categories = loadSeedData('categories.json', categoriesSchema);
 const albums = loadSeedData('albums.json', albumsSchema);
 const cards = loadSeedData('cards.json', cardsSchema);
 
-const rarityIdOf = keyResolver(SeedNamespace.rarities, rarities, 'rarities.json');
-const languageIdOf = keyResolver(SeedNamespace.languages, languages, 'languages.json');
+export const rarityIdOf = keyResolver(SeedNamespace.rarities, rarities, 'rarities.json');
+export const languageIdOf = keyResolver(SeedNamespace.languages, languages, 'languages.json');
 export const categoryIdOf = keyResolver(SeedNamespace.categories, categories, 'categories.json');
 export const albumIdOf = keyResolver(SeedNamespace.albums, albums, 'albums.json');
 export const cardIdOf = keyResolver(SeedNamespace.cards, cards, 'cards.json');
@@ -72,14 +73,40 @@ async function seedReferenceData(prisma: PrismaClient) {
   }
 }
 
+function alphabeticKey(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function byAlphabeticKey(a: { key: string; name: string }, b: { key: string; name: string }) {
+  const [first, second] = [alphabeticKey(a.name), alphabeticKey(b.name)];
+  if (first !== second) return first < second ? -1 : 1;
+  return a.key < b.key ? -1 : 1;
+}
+
+function defaultDisplayOrders(): Map<string, number> {
+  const defaults = categories.filter(({ isDefault }) => isDefault).sort(byAlphabeticKey);
+
+  return new Map(defaults.map(({ key }, position) => [key, position]));
+}
+
 async function seedCategories(prisma: PrismaClient) {
+  const orders = defaultDisplayOrders();
+
   for (const { key, parent, ...category } of categories) {
-    const data = {
+    const fields = {
       ...category,
       id: categoryIdOf(key),
       parentCategoryId: optional(categoryIdOf)(parent),
     };
-    await prisma.category.upsert({ where: { id: data.id }, create: data, update: data });
+    const initial = { slug: slugify(category.name), displayOrder: orders.get(key) ?? 0 };
+    await prisma.category.upsert({
+      where: { id: fields.id },
+      create: { ...fields, ...initial },
+      update: fields,
+    });
   }
 }
 

@@ -2,12 +2,15 @@ import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 import { isValidCpf, normalizeCpf } from '@/shared/validators/cpf';
 import { isValidPhone, normalizePhone } from '@/shared/validators/phone';
-import { reasonBodySchema } from '@/shared/validators/reason';
+import { reasonBodySchema, warningReasonBodySchema } from '@/shared/validators/reason';
 import { isValidUsername, normalizeUsername } from '@/shared/validators/username';
 
 const userRoleSchema = z.enum(['CUSTOMER', 'SELLER', 'ADMIN']);
-const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
+const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'BLOCKED']);
 const userSortSchema = z.enum(['name', '-name', 'email', '-email', 'createdAt', '-createdAt']);
+
+export const SUSPENSION_DAY_OPTIONS = [3, 7, 15, 30] as const;
+const suspensionDaysSchema = z.union(SUSPENSION_DAY_OPTIONS.map((days) => z.literal(days)));
 
 export const listUsersQuerySchema = paginationQuerySchema.extend({
   q: z.string().trim().min(1).optional(),
@@ -65,6 +68,16 @@ export const adminUpdateUserSchema = z
 
 export const reasonSchema = reasonBodySchema;
 
+export const warnUserSchema = warningReasonBodySchema.extend({
+  reportId: z.uuid().optional(),
+});
+
+export const suspendUserSchema = reasonBodySchema.extend({
+  days: suspensionDaysSchema,
+});
+
+export const blockUserSchema = reasonBodySchema;
+
 export const userIdParamSchema = z.object({
   id: z.uuid(),
 });
@@ -74,3 +87,6 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
 export type ReasonInput = z.infer<typeof reasonSchema>;
+export type WarnUserInput = z.infer<typeof warnUserSchema>;
+export type SuspendUserInput = z.infer<typeof suspendUserSchema>;
+export type BlockUserInput = z.infer<typeof blockUserSchema>;

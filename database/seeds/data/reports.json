@@ -4,7 +4,7 @@
     "reporter": "carla",
     "targetType": "GROUP_MESSAGE",
     "groupMessage": "mensagem-ofensiva",
-    "reason": "Ofensa",
+    "reason": "Discurso de ódio/Ameaça",
     "description": "Mensagem ofensiva contra os membros do grupo."
   },
   {
@@ -12,7 +12,7 @@
     "reporter": "bruno",
     "targetType": "GROUP_MESSAGE",
     "groupMessage": "spam-site-externo",
-    "reason": "Spam",
+    "reason": "Spam/Golpe",
     "description": "Divulgação de site externo."
   },
   {
@@ -28,7 +28,7 @@
     "moderator": "admin",
     "targetType": "GROUP_MESSAGE",
     "groupMessage": "charizard-chegou",
-    "reason": "Spam",
+    "reason": "Spam/Golpe",
     "status": "DISMISSED",
     "resolvedAt": "2026-10-01T12:00:00Z"
   }
