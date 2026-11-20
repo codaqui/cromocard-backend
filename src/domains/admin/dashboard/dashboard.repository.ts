@@ -1,5 +1,4 @@
 import { Prisma, type PrismaClient } from '@/generated/prisma/client';
-import { notDeleted } from '@/shared/utils/soft-delete';
 import type { DateRange } from '@/shared/utils/time-zone';
 
 import type { EvolutionBucket } from './dashboard.evolution';
@@ -16,15 +15,8 @@ export interface EvolutionQuery {
   timeZone: string;
 }
 
-export interface MembersByRole {
-  collectors: number;
-  sellers: number;
-}
-
 export interface DashboardRepository {
   countSignupsEvolution(query: EvolutionQuery): Promise<EvolutionPoint[]>;
-  countMembersByRole(): Promise<MembersByRole>;
-  countCardsCreatedSince(since: Date): Promise<number>;
 }
 
 function bucketSeries({ range: { from, to }, bucket, timeZone }: EvolutionQuery): Prisma.Sql {
@@ -74,18 +66,5 @@ export class PrismaDashboardRepository implements DashboardRepository {
         LEFT JOIN collectors USING (local_start)
         LEFT JOIN sellers USING (local_start)
        ORDER BY buckets.local_start`;
-  }
-
-  async countMembersByRole(): Promise<MembersByRole> {
-    const where = { ...notDeleted };
-    const [collectors, sellers] = await this.prisma.$transaction([
-      this.prisma.user.count({ where: { ...where, role: 'CUSTOMER' } }),
-      this.prisma.user.count({ where: { ...where, role: 'SELLER' } }),
-    ]);
-    return { collectors, sellers };
-  }
-
-  countCardsCreatedSince(since: Date): Promise<number> {
-    return this.prisma.card.count({ where: { ...notDeleted, createdAt: { gte: since } } });
   }
 }

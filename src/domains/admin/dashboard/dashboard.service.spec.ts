@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { MonthlySignups, SellerSummary, SignupsQuery } from '@/domains/users/users.service';
+import type {
+  MembersByRole,
+  MonthlySignups,
+  SellerSummary,
+  SignupsQuery,
+} from '@/domains/users/users.service';
 import {
   buildPaginationMeta,
   type Paginated,
@@ -8,12 +13,7 @@ import {
 } from '@/shared/utils/pagination';
 import type { DateRange } from '@/shared/utils/time-zone';
 
-import type {
-  DashboardRepository,
-  EvolutionPoint,
-  EvolutionQuery,
-  MembersByRole,
-} from './dashboard.repository';
+import type { DashboardRepository, EvolutionPoint, EvolutionQuery } from './dashboard.repository';
 import {
   type CatalogStats,
   type DashboardGoals,
@@ -25,6 +25,7 @@ const NOW = new Date('2026-10-29T13:00:00Z');
 
 class FakeUsers implements DashboardUsers {
   members = 0;
+  byRole: MembersByRole = { collectors: 0, sellers: 0 };
   signups: MonthlySignups[] = [];
   previousSignups: MonthlySignups[] = [];
   sellers: SellerSummary[] = [];
@@ -37,6 +38,10 @@ class FakeUsers implements DashboardUsers {
 
   countMembers(): Promise<number> {
     return Promise.resolve(this.members);
+  }
+
+  countMembersByRole(): Promise<MembersByRole> {
+    return Promise.resolve(this.byRole);
   }
 
   signupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]> {
@@ -57,23 +62,11 @@ class FakeUsers implements DashboardUsers {
 
 class FakeDashboardRepository implements DashboardRepository {
   points: EvolutionPoint[] = [];
-  byRole: MembersByRole = { collectors: 0, sellers: 0 };
-  newCards = 0;
   lastEvolutionQuery?: EvolutionQuery;
-  lastCardsSince?: Date;
 
   countSignupsEvolution(query: EvolutionQuery): Promise<EvolutionPoint[]> {
     this.lastEvolutionQuery = query;
     return Promise.resolve(this.points);
-  }
-
-  countMembersByRole(): Promise<MembersByRole> {
-    return Promise.resolve(this.byRole);
-  }
-
-  countCardsCreatedSince(since: Date): Promise<number> {
-    this.lastCardsSince = since;
-    return Promise.resolve(this.newCards);
   }
 }
 
@@ -85,7 +78,23 @@ class FakeGoals implements DashboardGoals {
   }
 }
 
-const catalogWith = (cards: number): CatalogStats => ({ countCards: () => Promise.resolve(cards) });
+class FakeCatalog implements CatalogStats {
+  newCards = 0;
+  lastCardsSince?: Date;
+
+  constructor(private readonly cards: number) {}
+
+  countCards(): Promise<number> {
+    return Promise.resolve(this.cards);
+  }
+
+  countCardsCreatedSince(since: Date): Promise<number> {
+    this.lastCardsSince = since;
+    return Promise.resolve(this.newCards);
+  }
+}
+
+const catalogWith = (cards: number) => new FakeCatalog(cards);
 
 const signupsOf = (customers: number, sellers = 0): MonthlySignups[] => [
   { month: '2026-10', customers, sellers },
@@ -156,7 +165,7 @@ describe('DashboardService', () => {
     it('CA6: 100 cadastros contra 80 no período anterior dá +25% e a divisão por papel', async () => {
       users.signups = signupsOf(90, 10);
       users.previousSignups = signupsOf(80);
-      repository.byRole = { collectors: 47390, sellers: 1530 };
+      users.byRole = { collectors: 47390, sellers: 1530 };
 
       const { kpis } = await serviceWith().getSummary({ period: '7d' });
 
@@ -227,12 +236,19 @@ describe('DashboardService', () => {
     });
 
     it('R11: conta as cartas novas dos últimos 7 dias, desde a meia-noite de Brasília', async () => {
-      repository.newCards = 3120;
+      const catalog = catalogWith(10);
+      catalog.newCards = 3120;
 
-      const { kpis } = await serviceWith().getSummary({ period: 'today' });
+      const { kpis } = await serviceWith(catalog).getSummary({ period: 'today' });
 
       expect(kpis.newCardsThisWeek).toBe(3120);
-      expect(repository.lastCardsSince).toEqual(new Date('2026-10-23T03:00:00Z'));
+      expect(catalog.lastCardsSince).toEqual(new Date('2026-10-23T03:00:00Z'));
+    });
+
+    it('R11: sem o catálogo, as cartas novas da semana ficam em zero', async () => {
+      const { kpis } = await serviceWith().getSummary({ period: 'today' });
+
+      expect(kpis.newCardsThisWeek).toBe(0);
     });
   });
 

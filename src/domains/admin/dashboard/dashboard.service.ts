@@ -1,4 +1,9 @@
-import type { MonthlySignups, SellerSummary, SignupsQuery } from '@/domains/users/users.service';
+import type {
+  MembersByRole,
+  MonthlySignups,
+  SellerSummary,
+  SignupsQuery,
+} from '@/domains/users/users.service';
 import type { Paginated, PaginationQuery } from '@/shared/utils/pagination';
 import {
   BRASILIA_TIME_ZONE,
@@ -23,11 +28,12 @@ import {
   variationOf,
 } from './dashboard.kpis';
 import { resolvePeriod } from './dashboard.period';
-import type { DashboardRepository, EvolutionPoint, MembersByRole } from './dashboard.repository';
+import type { DashboardRepository, EvolutionPoint } from './dashboard.repository';
 import type { PeriodQuery, RecentSellersQuery } from './dashboard.validator';
 
 export interface DashboardUsers {
   countMembers(): Promise<number>;
+  countMembersByRole(): Promise<MembersByRole>;
   signupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   listSellersCreatedWithin(
     range: DateRange,
@@ -37,6 +43,7 @@ export interface DashboardUsers {
 
 export interface CatalogStats {
   countCards(): Promise<number>;
+  countCardsCreatedSince(since: Date): Promise<number>;
 }
 
 export interface DashboardGoals {
@@ -86,8 +93,8 @@ export class DashboardService {
         this.countCards(),
         this.signupsWithin(period),
         this.signupsWithin(previousRange(period)),
-        this.deps.repository.countMembersByRole(),
-        this.deps.repository.countCardsCreatedSince(this.startOfWeek()),
+        this.deps.users.countMembersByRole(),
+        this.countCardsCreatedSince(this.startOfWeek()),
         this.deps.goals.getMonthlySignupGoal(),
       ]);
     const signups = sumSignups(signupsByMonth);
@@ -139,5 +146,9 @@ export class DashboardService {
 
   private countCards(): Promise<number | null> {
     return this.deps.catalog ? this.deps.catalog.countCards() : Promise.resolve(null);
+  }
+
+  private countCardsCreatedSince(since: Date): Promise<number> {
+    return this.deps.catalog ? this.deps.catalog.countCardsCreatedSince(since) : Promise.resolve(0);
   }
 }

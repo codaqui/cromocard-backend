@@ -22,6 +22,7 @@ import {
 } from './users.errors';
 import type {
   Address,
+  MembersByRole,
   MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
@@ -115,6 +116,10 @@ class InMemoryUsersRepository implements UsersRepository {
   }
 
   countMembers(): Promise<number> {
+    return Promise.reject(new Error('não usado neste teste'));
+  }
+
+  countMembersByRole(): Promise<MembersByRole> {
     return Promise.reject(new Error('não usado neste teste'));
   }
 
