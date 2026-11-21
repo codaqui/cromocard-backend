@@ -28,6 +28,11 @@ export class CatalogRequestsController {
     ok(res, await this.service.find(idOf(req)));
   };
 
+  checklist = async (req: Request, res: Response): Promise<void> => {
+    const { fileName, content } = await this.service.checklist(idOf(req));
+    res.status(200).type('text/csv; charset=utf-8').attachment(fileName).send(content);
+  };
+
   approve = async (req: Request, res: Response): Promise<void> => {
     ok(res, await this.service.approve(idOf(req), getAuthenticatedUser(req).id));
   };

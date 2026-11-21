@@ -47,6 +47,28 @@ const catalogRequest = z.object({
   cardId: z.uuid().nullable(),
   albumId: z.uuid().nullable(),
   createdAt: z.iso.datetime(),
+  votes: z
+    .object({
+      for: count,
+      neutral: count,
+      against: count,
+      total: count,
+      goal: positive,
+      forPercent: z.number().openapi({ example: 97.4 }),
+      goalPercent: z.number().openapi({ example: 170 }),
+    })
+    .nullable()
+    .openapi({ description: 'Quórum da sugestão de categoria (CCD103); null nos outros tipos' }),
+  checklistSummary: z
+    .object({
+      total: count,
+      rarities: z.array(z.object({ name: z.string(), count })),
+    })
+    .nullable()
+    .openapi({
+      description:
+        'Total do checklist do álbum e as três raridades mais altas presentes (CCD103); null sem checklist',
+    }),
 });
 
 const pendingByType = z.object({ CARD: count, ALBUM: count, CATEGORY: count, ALL: count });
@@ -57,7 +79,12 @@ const listMeta = z.object({
   totalPages: count,
   pendingByType,
 });
-const createdItem = z.object({ type: z.enum(CatalogRequestType), id: z.uuid(), name: z.string() });
+const createdItem = z.object({
+  type: z.enum(CatalogRequestType),
+  id: z.uuid(),
+  name: z.string(),
+  subcategoryIds: z.array(z.uuid()).optional(),
+});
 
 const json = (schema: z.ZodType) => ({ content: { 'application/json': { schema } } });
 const dataOf = (schema: z.ZodType) => json(z.object({ data: schema }));
@@ -95,11 +122,31 @@ const paths: RouteConfig[] = [
     },
   },
   {
+    method: 'get',
+    path: '/admin/catalog-requests/{id}/checklist.csv',
+    tags,
+    security,
+    summary: 'Baixa o checklist do álbum sugerido em CSV, separado por ponto e vírgula (CCD103)',
+    request: idParam,
+    responses: {
+      200: {
+        description: 'Planilha Nº;Código;Nome da carta;Raridade;Variantes, em UTF-8 com BOM',
+        content: { 'text/csv': { schema: z.string() } },
+      },
+      ...accessErrors,
+      404: {
+        description:
+          'CATALOG_REQUEST_NOT_FOUND; ou CHECKLIST_NOT_FOUND, quando não é álbum ou não tem checklist',
+      },
+    },
+  },
+  {
     method: 'post',
     path: '/admin/catalog-requests/{id}/approve',
     tags,
     security,
-    summary: 'Aprova a solicitação e cria o item no catálogo como foi sugerido (CCD064)',
+    summary:
+      'Aprova a solicitação e cria o item no catálogo como foi sugerido (CCD064); a categoria cria também as subcategorias (CCD103)',
     request: idParam,
     responses: {
       200: {

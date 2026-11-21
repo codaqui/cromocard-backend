@@ -11,6 +11,7 @@ export function createCatalogRequestsRoutes(controller: CatalogRequestsControlle
   router.use(authenticate, authorize('ADMIN'));
   router.get('/', controller.list);
   router.get('/:id', controller.find);
+  router.get('/:id/checklist.csv', controller.checklist);
   router.post('/:id/approve', controller.approve);
   router.post('/:id/reject', controller.reject);
 

@@ -53,6 +53,7 @@ model User {
   reportsModerated                Report[]                 @relation("ReportModerator")
   reportsReceived                 Report[]                 @relation("ReportTargetUser")
   catalogRequests                 CatalogRequest[]         @relation("CatalogRequestRequester")
+  catalogRequestVotes             CatalogRequestVote[]
   reviewedCatalogRequests         CatalogRequest[]         @relation("CatalogRequestReviewer")
   performedAuditLogs              AuditLog[]
   updatedSettings                 GlobalSetting[]
@@ -436,12 +437,37 @@ model CatalogRequest {
   updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?          @map("deleted_at") @db.Timestamptz(6)
 
-  requester  User   @relation("CatalogRequestRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_requester_id")
-  reviewedBy User?  @relation("CatalogRequestReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_reviewed_by_id")
-  card       Card?  @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_card_id")
-  album      Album? @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_album_id")
+  requester  User                 @relation("CatalogRequestRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_requester_id")
+  reviewedBy User?                @relation("CatalogRequestReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_reviewed_by_id")
+  card       Card?                @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_card_id")
+  album      Album?               @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_album_id")
+  votes      CatalogRequestVote[]
 
   @@map("catalog_requests")
+}
+
+enum CatalogVote {
+  FOR
+  NEUTRAL
+  AGAINST
+
+  @@map("catalog_vote")
+}
+
+/// Um voto por cliente em cada solicitação (CCD103, ADR-053).
+model CatalogRequestVote {
+  catalogRequestId String      @map("catalog_request_id") @db.Uuid
+  userId           String      @map("user_id") @db.Uuid
+  vote             CatalogVote
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  catalogRequest CatalogRequest @relation(fields: [catalogRequestId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_request_votes_catalog_request_id")
+  user           User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_request_votes_user_id")
+
+  @@id([catalogRequestId, userId])
+  @@map("catalog_request_votes")
 }
 
 model AuditLog {
