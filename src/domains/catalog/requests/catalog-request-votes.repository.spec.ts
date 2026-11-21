@@ -36,7 +36,7 @@ describe('PrismaCatalogRequestVotesRepository', () => {
     it('não grava o voto se a sugestão deixou de estar pendente antes da gravação', async () => {
       const upsert = vi.fn();
       const tx = {
-        catalogRequest: { count: vi.fn().mockResolvedValue(0) },
+        $queryRaw: vi.fn().mockResolvedValue([]),
         catalogRequestVote: { upsert },
       };
       const repository = repositoryWith({

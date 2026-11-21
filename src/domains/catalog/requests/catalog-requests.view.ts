@@ -77,7 +77,7 @@ export const codeOf = (id: string): string =>
 export const itemNameOf = (type: CatalogRequestType, data: SuggestedData): string =>
   textOf(type === 'ALBUM' ? data.title : data.name) ?? '';
 
-const checklistOf = (data: SuggestedData): ChecklistItem[] =>
+export const checklistOf = (data: SuggestedData): ChecklistItem[] =>
   Array.isArray(data.checklist) ? data.checklist.map(asData) : [];
 
 export function referenceIdsOf(items: CatalogRequestRecord[]): ReferenceIds {
@@ -132,7 +132,7 @@ export function checklistSummaryOf(
   return { total: checklist.length, rarities };
 }
 
-function dataWithRarityNames(data: SuggestedData, names: ReferenceNames): SuggestedData {
+export function dataWithRarityNames(data: SuggestedData, names: ReferenceNames): SuggestedData {
   if (!Array.isArray(data.checklist)) return data;
   const checklist = checklistOf(data).map((item) => ({
     ...item,

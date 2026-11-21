@@ -175,7 +175,9 @@ class FakeCatalog implements CatalogRequestsCatalog {
   cards: CreateCardInput[] = [];
   albums: CreateAlbumInput[] = [];
   categories: CreateCategoryInput[] = [];
+  deletedCategories: string[] = [];
   failWith?: Error;
+  failCategoryAt?: number;
 
   createCard(_adminId: string, input: CreateCardInput) {
     if (this.failWith) return Promise.reject(this.failWith);
@@ -189,12 +191,20 @@ class FakeCatalog implements CatalogRequestsCatalog {
   }
 
   createCategory(_adminId: string, input: CreateCategoryInput) {
+    if (this.categories.length === this.failCategoryAt) {
+      return Promise.reject(new Error(`Falhou a categoria ${input.name}`));
+    }
     const id =
       this.categories.length === 0
         ? CREATED_ID
         : `${CREATED_ID.slice(0, -2)}0${this.categories.length}`;
     this.categories.push(input);
     return Promise.resolve({ id, name: input.name });
+  }
+
+  deleteCategory(_adminId: string, id: string) {
+    this.deletedCategories.push(id);
+    return Promise.resolve();
   }
 }
 
@@ -487,6 +497,22 @@ describe('CatalogRequestsService', () => {
       expect(audits[0]?.details).toMatchObject({
         subcategoryIds: result.createdItem.subcategoryIds,
       });
+    });
+
+    it('R12: se uma subcategoria falha, desfaz as que já foram criadas e a categoria', async () => {
+      catalog.failCategoryAt = 2;
+      store({
+        type: 'CATEGORY',
+        data: { name: 'Disney Lorcana TCG', type: 'CARD', subcategories: ['Ursula', 'Mickey'] },
+      });
+
+      await expect(service.approve(REQUEST_ID, ADMIN_ID)).rejects.toThrow(
+        'Falhou a categoria Mickey',
+      );
+
+      expect(catalog.deletedCategories).toEqual([`${CREATED_ID.slice(0, -2)}01`, CREATED_ID]);
+      expect(stored().status).toBe('PENDING');
+      expect(audits).toEqual([]);
     });
 
     it('subcategorias repetidas tornam a sugestão incompleta e nada é criado', async () => {

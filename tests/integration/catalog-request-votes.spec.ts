@@ -2,6 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '@/app';
+import { PrismaCatalogRequestVotesRepository } from '@/domains/catalog/requests/catalog-request-votes.repository';
 import type { Prisma } from '@/generated/prisma/client';
 import type { UserRole } from '@/generated/prisma/enums';
 import { signAccessToken } from '@/lib/jwt';
@@ -227,5 +228,52 @@ describe('Quórum, checklist e subcategorias na fila (CCD103)', () => {
     });
     expect(children).toEqual([...subcategories].sort().map((name) => ({ name, type: 'CARD' })));
     expect(errorOf(await vote(id, 'FOR'))).toBe('VOTING_CLOSED');
+  });
+});
+
+describe('Voto e aprovação ao mesmo tempo (CCD103, R8)', () => {
+  const repository = new PrismaCatalogRequestVotesRepository(prisma);
+  const votesOn = (catalogRequestId: string) =>
+    prisma.catalogRequestVote.count({ where: { catalogRequestId } });
+
+  it('não grava o voto numa sugestão que já foi aprovada', async () => {
+    const voter = await createUser('trava-aprovada', 'CUSTOMER');
+    const id = await category('Já aprovada');
+    await prisma.catalogRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+
+    const saved = await repository.saveVote({
+      catalogRequestId: id,
+      userId: voter.id,
+      vote: 'FOR',
+    });
+
+    expect(saved).toBe(false);
+    await expect(votesOn(id)).resolves.toBe(0);
+  });
+
+  it('o voto espera a aprovação em andamento e não entra depois dela', async () => {
+    const voter = await createUser('trava-andamento', 'CUSTOMER');
+    const id = await category('Aprovando');
+    let release = () => undefined as void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let approvalStarted = () => undefined as void;
+    const started = new Promise<void>((resolve) => (approvalStarted = resolve));
+    const approving = prisma.$transaction(
+      async (tx) => {
+        await tx.catalogRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+        approvalStarted();
+        await gate;
+      },
+      { timeout: 10_000 },
+    );
+    await started;
+
+    const voting = repository.saveVote({ catalogRequestId: id, userId: voter.id, vote: 'FOR' });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await approving;
+
+    await expect(voting).resolves.toBe(false);
+    await expect(votesOn(id)).resolves.toBe(0);
   });
 });

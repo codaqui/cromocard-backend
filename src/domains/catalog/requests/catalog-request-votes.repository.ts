@@ -98,10 +98,14 @@ export class PrismaCatalogRequestVotesRepository implements CatalogRequestVotesR
 
   saveVote({ catalogRequestId, userId, vote }: VoteInput): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
-      const open = await tx.catalogRequest.count({
-        where: { id: catalogRequestId, ...categoryWhere, ...OPEN },
-      });
-      if (open === 0) return false;
+      const open = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM catalog_requests
+         WHERE id = ${catalogRequestId}::uuid
+           AND type = 'CATEGORY'
+           AND status = 'PENDING'
+           AND deleted_at IS NULL
+           FOR SHARE`;
+      if (open.length === 0) return false;
       await tx.catalogRequestVote.upsert({
         where: { catalogRequestId_userId: { catalogRequestId, userId } },
         create: { catalogRequestId, userId, vote },

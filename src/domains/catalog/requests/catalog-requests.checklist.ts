@@ -6,8 +6,14 @@ const HEADER = ['Nº', 'Código', 'Nome da carta', 'Raridade', 'Variantes'];
 const COLUMNS = ['number', 'code', 'name', 'rarity', 'variants'] as const;
 
 /** Aspas em volta só quando o valor tem separador, aspas ou quebra de linha (RFC 4180). */
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+const neutralized = (text: string) => (FORMULA_START.test(text) ? `'${text}` : text);
+
 function cell(value: unknown): string {
-  const text = textOf(value) ?? (typeof value === 'number' ? String(value) : '');
+  const raw = textOf(value);
+  const text =
+    raw === undefined ? (typeof value === 'number' ? String(value) : '') : neutralized(raw);
   return /[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 

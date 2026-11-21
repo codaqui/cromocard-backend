@@ -20,6 +20,7 @@ export interface CatalogRequestsCatalog {
     adminId: string,
     input: CreateCategoryInput,
   ): Promise<{ id: string; name: string }>;
+  deleteCategory(adminId: string, id: string): Promise<void>;
 }
 
 export type SuggestedData = Record<string, unknown>;
@@ -55,20 +56,42 @@ function parseSuggestion<T>(schema: z.ZodType<T>, data: SuggestedData): T {
   );
 }
 
+interface CategoryTree {
+  input: CreateCategoryInput;
+  subcategories: string[];
+}
+
+async function createSubcategories(
+  catalog: CatalogRequestsCatalog,
+  adminId: string,
+  { parent, tree, createdIds }: { parent: string; tree: CategoryTree; createdIds: string[] },
+): Promise<void> {
+  for (const subcategory of tree.subcategories) {
+    const created = await catalog.createCategory(adminId, {
+      name: subcategory,
+      type: tree.input.type,
+      parentCategoryId: parent,
+    });
+    createdIds.push(created.id);
+  }
+}
+
+async function discardCategories(catalog: CatalogRequestsCatalog, adminId: string, ids: string[]) {
+  for (const id of ids) await catalog.deleteCategory(adminId, id);
+}
+
 async function createCategoryTree(
   catalog: CatalogRequestsCatalog,
   adminId: string,
-  { input, subcategories }: { input: CreateCategoryInput; subcategories: string[] },
+  tree: CategoryTree,
 ): Promise<CreatedItem> {
-  const { id, name } = await catalog.createCategory(adminId, input);
+  const { id, name } = await catalog.createCategory(adminId, tree.input);
   const subcategoryIds: string[] = [];
-  for (const subcategory of subcategories) {
-    const created = await catalog.createCategory(adminId, {
-      name: subcategory,
-      type: input.type,
-      parentCategoryId: id,
-    });
-    subcategoryIds.push(created.id);
+  try {
+    await createSubcategories(catalog, adminId, { parent: id, tree, createdIds: subcategoryIds });
+  } catch (error) {
+    await discardCategories(catalog, adminId, [...subcategoryIds].reverse().concat(id));
+    throw error;
   }
   return { type: 'CATEGORY', id, name, subcategoryIds };
 }

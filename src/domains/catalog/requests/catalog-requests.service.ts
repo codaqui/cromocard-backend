@@ -30,6 +30,8 @@ import type {
 import {
   asData,
   type CatalogRequestView,
+  checklistOf,
+  dataWithRarityNames,
   itemNameOf,
   referenceIdsOf,
   toView,
@@ -130,9 +132,13 @@ export class CatalogRequestsService {
 
   /** Planilha do checklist do álbum sugerido (CCD103, R11). */
   async checklist(id: string): Promise<ChecklistFile> {
-    const { type, data } = await this.find(id);
-    const items = Array.isArray(data.checklist) ? data.checklist : [];
-    if (type !== 'ALBUM' || items.length === 0) throw new ChecklistNotFoundError();
+    const record = await this.findRecord(id);
+    const data = asData(record.data);
+    if (record.type !== 'ALBUM' || checklistOf(data).length === 0) {
+      throw new ChecklistNotFoundError();
+    }
+    const names = await this.deps.repository.findReferenceNames(referenceIdsOf([record]));
+    const items = checklistOf(dataWithRarityNames(data, names));
     return { fileName: checklistFileName(id), content: toChecklistCsv(items) };
   }
 
