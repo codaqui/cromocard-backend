@@ -1,5 +1,6 @@
 import type { ErrorDetail } from '@/shared/errors/app-error';
 
+import { CARD_CATEGORY_MISMATCH_MESSAGE } from './catalog.errors';
 import type { CardImportColumn, CardImportRow, LineErrors } from './catalog-import.parser';
 import type {
   AlbumReference,
@@ -89,7 +90,7 @@ function checkRowCategory(row: ResolvedRow, albumCategories: AlbumCategories): R
   const albumCategoryId = albumId ? albumCategories.get(albumId) : null;
   if (!categoryId || !albumCategoryId || albumCategoryId === categoryId) return row;
 
-  const error = { field: `${row.line}.category`, message: 'A franquia precisa ser a do álbum' };
+  const error = { field: `${row.line}.category`, message: CARD_CATEGORY_MISMATCH_MESSAGE };
   return { ...row, errors: [...row.errors, error] };
 }
 

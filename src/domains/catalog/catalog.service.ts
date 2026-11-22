@@ -74,7 +74,7 @@ interface CardReferences {
 }
 
 interface CardCategory {
-  albumId?: string | null;
+  album: Album | null;
   categoryId?: string | null;
 }
 
@@ -91,6 +91,11 @@ async function ensureReference(
   notFound: () => AppError,
 ): Promise<void> {
   if (id && !(await exists(id))) throw notFound();
+}
+
+function ensureSameCategoryAsAlbum({ album, categoryId }: CardCategory): void {
+  if (!categoryId || !album?.categoryId) return;
+  if (album.categoryId !== categoryId) throw new CardCategoryMismatchError();
 }
 
 function keepOrReplace<T>(replacement: T | undefined, current: T): T {
@@ -153,8 +158,8 @@ export class CatalogService {
   }
 
   async createCard(adminId: string, input: CreateCardInput): Promise<Card> {
-    await this.ensureCardReferences(input);
-    await this.ensureSameCategoryAsAlbum(input);
+    const album = await this.ensureCardReferences(input);
+    ensureSameCategoryAsAlbum({ album, categoryId: input.categoryId });
     const card = await this.saveNewCard(input).catch(rejectDuplicateNumber);
     await this.audit(adminId, { action: 'CARD_CREATED', entityType: 'card', entityId: card.id });
     return card;
@@ -163,9 +168,9 @@ export class CatalogService {
   async updateCard(adminId: string, id: string, input: UpdateCardInput): Promise<Card> {
     const current = await this.findCard(id);
     const albumId = keepOrReplace(input.albumId, current.albumId);
-    await this.ensureCardReferences(input);
-    await this.ensureSameCategoryAsAlbum({
-      albumId,
+    const newAlbum = await this.ensureCardReferences(input);
+    ensureSameCategoryAsAlbum({
+      album: input.albumId === undefined ? await this.albumOrNull(albumId) : newAlbum,
       categoryId: keepOrReplace(input.categoryId, current.categoryId),
     });
     await this.ensureNumberAvailable(id, {
@@ -270,22 +275,24 @@ export class CatalogService {
     return this.deps.cards.findByAlbumNumberIncludingDeleted({ albumId, number });
   }
 
-  private async ensureCardReferences(input: CardReferences): Promise<void> {
-    await Promise.all([
+  private async ensureCardReferences(input: CardReferences): Promise<Album | null> {
+    const [album] = await Promise.all([
       this.ensureAlbum(input.albumId),
       this.ensureCategory(input.categoryId),
       this.ensureRarity(input.rarityId),
       this.ensureLanguage(input.languageId),
     ]);
+    return album;
   }
 
-  private ensureAlbum(albumId: string | null | undefined): Promise<void> {
-    const { albums } = this.deps;
-    return ensureReference(
-      albumId,
-      async (id) => (await albums.findById(id)) !== null,
-      () => new AlbumNotFoundError(),
-    );
+  private async ensureAlbum(albumId: string | null | undefined): Promise<Album | null> {
+    const album = await this.albumOrNull(albumId);
+    if (albumId && !album) throw new AlbumNotFoundError();
+    return album;
+  }
+
+  private albumOrNull(albumId: string | null | undefined): Promise<Album | null> {
+    return albumId ? this.deps.albums.findById(albumId) : Promise.resolve(null);
   }
 
   private ensureRarity(rarityId: string | null | undefined): Promise<void> {
@@ -324,12 +331,6 @@ export class CatalogService {
       async (id) => (await categories.findById(id)) !== null,
       () => new CategoryNotFoundError(),
     );
-  }
-
-  private async ensureSameCategoryAsAlbum({ albumId, categoryId }: CardCategory): Promise<void> {
-    if (!albumId || !categoryId) return;
-    const album = await this.deps.albums.findById(albumId);
-    if (album?.categoryId && album.categoryId !== categoryId) throw new CardCategoryMismatchError();
   }
 
   private async ensureNotOwnAncestor(id: string, parentId: string | null | undefined) {

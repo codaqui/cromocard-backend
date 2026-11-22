@@ -414,6 +414,18 @@ describe('álbuns e categorias', () => {
     expect((mismatch.body as ErrorBody).error).toBe('CARD_CATEGORY_MISMATCH');
   });
 
+  it('L11: tirar a franquia do álbum mantém a franquia das cartas dele', async () => {
+    const album = await createAlbum();
+    await asAdmin().patch(`/albums/${album.id}`, { categoryId: publishable.categoryId });
+    const card = (await createCard(album.id, '1')).body as Created;
+
+    const cleared = await asAdmin().patch(`/albums/${album.id}`, { categoryId: null });
+    const stored = await prisma.card.findUniqueOrThrow({ where: { id: card.data.id } });
+
+    expect(cleared.status).toBe(200);
+    expect(stored.categoryId).toBe(publishable.categoryId);
+  });
+
   it('L11: a busca de categorias não aceita mais o filtro por tipo', async () => {
     const name = `${MARKER} sem tipo ${crypto.randomUUID()}`;
     await asAdmin().post('/categories', { name });

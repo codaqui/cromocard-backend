@@ -4,7 +4,11 @@ import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.
 import { Prisma } from '@/generated/prisma/client';
 import type { ErrorDetail } from '@/shared/errors/app-error';
 
-import { CardNumberTakenError, CsvInvalidError } from './catalog.errors';
+import {
+  CARD_CATEGORY_MISMATCH_MESSAGE,
+  CardNumberTakenError,
+  CsvInvalidError,
+} from './catalog.errors';
 import { CARD_IMPORT_TEMPLATE } from './catalog-import.parser';
 import type {
   AlbumReference,
@@ -195,7 +199,7 @@ describe('CatalogImportService', () => {
     );
     const result = await service.importCards(ADMIN_ID, csv('Pokémon Base;2;Charizard;;;Pokémon'));
 
-    expect(errors).toEqual([{ field: '2.category', message: 'A franquia precisa ser a do álbum' }]);
+    expect(errors).toEqual([{ field: '2.category', message: CARD_CATEGORY_MISMATCH_MESSAGE }]);
     expect(result).toEqual({ created: 1 });
   });
 

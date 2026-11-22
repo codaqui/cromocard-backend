@@ -87,9 +87,12 @@ export class CategoryParentInvalidError extends BusinessRuleError {
   }
 }
 
+export const CARD_CATEGORY_MISMATCH_MESSAGE =
+  'A franquia da carta precisa ser a mesma do álbum dela';
+
 export class CardCategoryMismatchError extends BusinessRuleError {
   constructor() {
-    super('A franquia da carta precisa ser a mesma do álbum dela', 'CARD_CATEGORY_MISMATCH');
+    super(CARD_CATEGORY_MISMATCH_MESSAGE, 'CARD_CATEGORY_MISMATCH');
   }
 }
 
