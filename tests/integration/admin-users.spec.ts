@@ -14,6 +14,8 @@ interface UserSummaryBody {
   email: string;
   role: UserRole;
   status: UserStatus;
+  verificationStatus: string | null;
+  suspendedUntil: string | null;
 }
 
 interface UserResponse {
@@ -110,6 +112,10 @@ async function createSellerVerification(userId: string, overrides: { deletedAt?:
 
 afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { adminId: { in: createdUserIds } } });
+  await prisma.userWarning.deleteMany({
+    where: { OR: [{ userId: { in: createdUserIds } }, { adminId: { in: createdUserIds } }] },
+  });
+  await prisma.notification.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.passwordResetToken.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.sellerVerification.deleteMany({ where: { userId: { in: createdUserIds } } });
@@ -266,6 +272,25 @@ describe('GET /api/v1/users', () => {
       .query({ q: otherVerification.cnpj })
       .set('Authorization', bearer(admin));
     expect((resOther.body as UsersPageResponse).data).toHaveLength(0);
+  });
+
+  it('CA11 (CCD094): vendedor com credenciamento em análise mostra o selo, sem mudar o status da conta', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ role: 'SELLER', status: 'ACTIVE' });
+    await createSellerVerification(target.id);
+
+    const res = await request(app)
+      .get('/api/v1/users')
+      .query({ q: target.email })
+      .set('Authorization', bearer(admin));
+
+    const body = res.body as UsersPageResponse;
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).toMatchObject({
+      id: target.id,
+      status: 'ACTIVE',
+      verificationStatus: 'UNDER_REVIEW',
+    });
   });
 
   it('não busca por CPF/CNPJ quando o texto tem letras, mesmo com 3+ dígitos', async () => {
@@ -671,7 +696,7 @@ describe('POST /api/v1/users/:id/suspend', () => {
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/suspend`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Violou as regras da comunidade' });
+      .send({ reason: 'Violou as regras da comunidade', days: 7 });
 
     expect(res.status).toBe(200);
     expect((res.body as UserResponse).data.status).toBe('SUSPENDED');
@@ -693,7 +718,7 @@ describe('POST /api/v1/users/:id/suspend', () => {
     const res = await request(app)
       .post(`/api/v1/users/${target.id}/suspend`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Violou as regras da comunidade' });
+      .send({ reason: 'Violou as regras da comunidade', days: 7 });
 
     expect(res.status).toBe(409);
     expect((res.body as ErrorResponse).error).toBe('ALREADY_SUSPENDED');
@@ -705,10 +730,30 @@ describe('POST /api/v1/users/:id/suspend', () => {
     const res = await request(app)
       .post(`/api/v1/users/${admin.id}/suspend`)
       .set('Authorization', bearer(admin))
-      .send({ reason: 'Violou as regras da comunidade' });
+      .send({ reason: 'Violou as regras da comunidade', days: 7 });
 
     expect(res.status).toBe(422);
-    expect((res.body as ErrorResponse).error).toBe('CANNOT_SUSPEND_SELF');
+    expect((res.body as ErrorResponse).error).toBe('CANNOT_SANCTION_SELF');
+  });
+
+  it('CA2: suspende por um prazo e devolve a data limite', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/suspend`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'Violou as regras da comunidade', days: 7 });
+
+    expect(res.status).toBe(200);
+    const body = res.body as UserResponse;
+    expect(body.data.status).toBe('SUSPENDED');
+    expect(body.data.suspendedUntil).not.toBeNull();
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_SUSPENDED' },
+    });
+    expect(log.details).toMatchObject({ days: 7 });
   });
 
   it('R11/R19: motivo ausente responde 400', async () => {
@@ -721,6 +766,20 @@ describe('POST /api/v1/users/:id/suspend', () => {
       .send({});
 
     expect(res.status).toBe(400);
+  });
+
+  it('R3: suspender sem prazo responde 400 e o usuário continua ativo', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/suspend`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'Violou as regras da comunidade' });
+
+    expect(res.status).toBe(400);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    expect(stored.status).toBe('ACTIVE');
   });
 });
 
@@ -749,6 +808,139 @@ describe('POST /api/v1/users/:id/reactivate', () => {
 
     expect(res.status).toBe(409);
     expect((res.body as ErrorResponse).error).toBe('NOT_SUSPENDED');
+  });
+
+  it('CA7: reativa um usuário bloqueado', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'BLOCKED' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/reactivate`)
+      .set('Authorization', bearer(admin))
+      .send();
+
+    expect(res.status).toBe(200);
+    expect((res.body as UserResponse).data.status).toBe('ACTIVE');
+  });
+});
+
+describe('POST /api/v1/users/:id/warn', () => {
+  it('R3: justificativa acima de 255 caracteres responde 400 sem gravar a advertência', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/warn`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'a'.repeat(256) });
+
+    expect(res.status).toBe(400);
+    await expect(prisma.userWarning.count({ where: { userId: target.id } })).resolves.toBe(0);
+  });
+
+  it('CA1: adverte, notifica o usuário e grava a auditoria com o motivo', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/warn`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'Mensagem ofensiva no grupo' });
+
+    expect(res.status).toBe(201);
+    expect((res.body as { data: { warningsCount: number } }).data.warningsCount).toBe(1);
+
+    const warning = await prisma.userWarning.findFirstOrThrow({ where: { userId: target.id } });
+    expect(warning.adminId).toBe(admin.id);
+    expect(warning.reason).toBe('Mensagem ofensiva no grupo');
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: { userId: target.id, type: 'USER_WARNED' },
+    });
+    expect(notification.message).toBe('Mensagem ofensiva no grupo');
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_WARNED' },
+    });
+    expect(log.adminId).toBe(admin.id);
+  });
+
+  it('admin não adverte a própria conta', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .post(`/api/v1/users/${admin.id}/warn`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'Mensagem ofensiva no grupo' });
+
+    expect(res.status).toBe(422);
+    expect((res.body as ErrorResponse).error).toBe('CANNOT_SANCTION_SELF');
+  });
+
+  it('motivo ausente responde 400', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/warn`)
+      .set('Authorization', bearer(admin))
+      .send({});
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/v1/users/:id/block', () => {
+  it('CA3: bane definitivamente, revoga as sessões e grava a auditoria', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'ACTIVE' });
+    const session = await prisma.refreshToken.create({
+      data: {
+        userId: target.id,
+        tokenHash: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 86400000),
+      },
+    });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/block`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'Golpe confirmado' });
+
+    expect(res.status).toBe(200);
+    expect((res.body as UserResponse).data.status).toBe('BLOCKED');
+
+    const revoked = await prisma.refreshToken.findUniqueOrThrow({ where: { id: session.id } });
+    expect(revoked.revokedAt).toBeInstanceOf(Date);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: target.id, action: 'USER_BLOCKED' },
+    });
+    expect(log.details).toMatchObject({ reason: 'Golpe confirmado' });
+  });
+
+  it('usuário já bloqueado responde 409', async () => {
+    const admin = await createAdmin();
+    const target = await createUser({ status: 'BLOCKED' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/block`)
+      .set('Authorization', bearer(admin))
+      .send({ reason: 'Golpe confirmado' });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('ALREADY_BLOCKED');
+  });
+
+  it('CA10: token de CUSTOMER responde 403', async () => {
+    const target = await createUser({ status: 'ACTIVE' });
+
+    const res = await request(app)
+      .post(`/api/v1/users/${target.id}/block`)
+      .set('Authorization', bearer({ id: crypto.randomUUID(), role: 'CUSTOMER' }))
+      .send({ reason: 'Golpe confirmado' });
+
+    expect(res.status).toBe(403);
   });
 });
 

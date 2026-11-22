@@ -20,12 +20,17 @@ export class EmailNotVerifiedError extends AppError {
   }
 }
 
+const ACCOUNT_SUSPENDED_MESSAGES = {
+  SUSPENDED: 'Sua conta está suspensa. Entre em contato com o suporte.',
+  BLOCKED: 'Sua conta foi bloqueada. Entre em contato com o suporte.',
+} as const;
+
 export class AccountSuspendedError extends AppError {
-  constructor() {
+  constructor(status: keyof typeof ACCOUNT_SUSPENDED_MESSAGES = 'SUSPENDED') {
     super({
       statusCode: 403,
       code: 'ACCOUNT_SUSPENDED',
-      message: 'Sua conta está suspensa. Entre em contato com o suporte.',
+      message: ACCOUNT_SUSPENDED_MESSAGES[status],
     });
   }
 }

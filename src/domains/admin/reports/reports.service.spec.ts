@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReportExporter, ReportTable } from './exporters/report-table';
 import type { ReportArchiveEntry } from './report-exports.service';
 import { ReportEmptyError } from './reports.errors';
-import type { CatalogRow, ReportsRepository, SignupRow } from './reports.repository';
+import type {
+  CatalogRow,
+  ReportsRepository,
+  SellerAuditRow,
+  SignupRow,
+} from './reports.repository';
 import { type ReportsAuditLog, ReportsService } from './reports.service';
 
 const NOW = new Date('2026-11-16T15:00:00Z');
@@ -35,6 +40,16 @@ const catalog: CatalogRow[] = [
   },
 ];
 
+const sellerAudit: SellerAuditRow[] = [
+  {
+    legalName: 'Cards Kanto Colecionáveis Ltda',
+    cnpj: '45.291.802/0001-93',
+    email: 'kanto@cromocard.dev',
+    status: 'REJECTED',
+    createdAt: new Date('2026-11-09T13:00:00Z'),
+  },
+];
+
 function fakeExporter(extension: string): ReportExporter & { tables: ReportTable[] } {
   const tables: ReportTable[] = [];
   return {
@@ -48,16 +63,19 @@ function fakeExporter(extension: string): ReportExporter & { tables: ReportTable
   };
 }
 
-function setup(rows = { signups, catalog }) {
+function setup(rows = { signups, catalog, sellerAudit }) {
   const findSignups = vi.fn((_range: unknown, limit?: number) =>
     Promise.resolve({ rows: rows.signups.slice(0, limit), total: rows.signups.length }),
   );
   const findCatalog = vi.fn(() =>
     Promise.resolve({ rows: rows.catalog, total: rows.catalog.length }),
   );
+  const findSellerAudit = vi.fn(() =>
+    Promise.resolve({ rows: rows.sellerAudit, total: rows.sellerAudit.length }),
+  );
   const record = vi.fn(() => Promise.resolve());
   const archive = vi.fn((_entry: ReportArchiveEntry) => Promise.resolve());
-  const repository: ReportsRepository = { findSignups, findCatalog };
+  const repository: ReportsRepository = { findSignups, findCatalog, findSellerAudit };
   const auditLogService: ReportsAuditLog = { record };
   const exporters = { csv: fakeExporter('csv'), pdf: fakeExporter('pdf') };
   const service = new ReportsService({
@@ -67,7 +85,7 @@ function setup(rows = { signups, catalog }) {
     exporters,
     now: () => NOW,
   });
-  return { service, findSignups, findCatalog, record, archive, exporters };
+  return { service, findSignups, findCatalog, findSellerAudit, record, archive, exporters };
 }
 
 describe('ReportsService', () => {
@@ -105,7 +123,7 @@ describe('ReportsService', () => {
     });
 
     it('CA4: período sem dados devolve a prévia vazia, sem erro', async () => {
-      const { service } = setup({ signups: [], catalog: [] });
+      const { service } = setup({ signups: [], catalog: [], sellerAudit: [] });
 
       await expect(
         service.preview('signups', { period: 'today', pageSize: 10 }),
@@ -113,6 +131,45 @@ describe('ReportsService', () => {
         rows: [],
         total: 0,
       });
+    });
+  });
+
+  describe('auditoria de lojistas (CCD094)', () => {
+    it('L9: a prévia mostra loja, CNPJ, e-mail, status e cadastro', async () => {
+      const { service, findSellerAudit } = setup();
+
+      const preview = await service.preview('seller-audit', { period: '30d', pageSize: 10 });
+
+      expect(findSellerAudit).toHaveBeenCalled();
+      expect(preview.title).toBe('Auditoria de Lojistas');
+      expect(preview.columns.map(({ label }) => label)).toEqual([
+        'Loja',
+        'CNPJ',
+        'E-mail',
+        'Status',
+        'Cadastro',
+      ]);
+      expect(preview.total).toBe(1);
+    });
+
+    it('CA9: o CSV lista os cadastros com o status em português', async () => {
+      const { service, exporters } = setup();
+
+      await service.export({
+        type: 'seller-audit',
+        query: { period: '30d', format: 'csv' },
+        adminId: ADMIN_ID,
+      });
+
+      expect(exporters.csv.tables[0]?.rows).toEqual([
+        [
+          'Cards Kanto Colecionáveis Ltda',
+          '45.291.802/0001-93',
+          'kanto@cromocard.dev',
+          'Reprovado',
+          '09/11/2026',
+        ],
+      ]);
     });
   });
 
@@ -200,7 +257,11 @@ describe('ReportsService', () => {
     });
 
     it('CA4/R12: sem dados no período, não gera arquivo nem grava auditoria', async () => {
-      const { service, record, archive, exporters } = setup({ signups: [], catalog: [] });
+      const { service, record, archive, exporters } = setup({
+        signups: [],
+        catalog: [],
+        sellerAudit: [],
+      });
 
       await expect(
         service.export({

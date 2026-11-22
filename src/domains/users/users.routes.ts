@@ -18,7 +18,9 @@ export function createUsersRoutes(controller: UsersController): Router {
   router.post('/', controller.create);
   router.get('/:id', controller.getById);
   router.patch('/:id', controller.update);
+  router.post('/:id/warn', controller.warn);
   router.post('/:id/suspend', controller.suspend);
+  router.post('/:id/block', controller.block);
   router.post('/:id/reactivate', controller.reactivate);
   router.post('/:id/resend-activation', controller.resendActivation);
   router.delete('/:id', controller.remove);

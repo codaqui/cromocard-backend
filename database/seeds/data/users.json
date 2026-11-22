@@ -59,6 +59,22 @@
     "createdDaysAgo": 10
   },
   {
+    "key": "helena",
+    "name": "Helena Card Shop",
+    "email": "helena@cromocard.dev",
+    "role": "SELLER",
+    "username": "helena.cardshop",
+    "phone": "41998765432",
+    "createdDaysAgo": 20
+  },
+  {
+    "key": "igor",
+    "name": "Igor Colecionáveis",
+    "email": "igor@cromocard.dev",
+    "role": "SELLER",
+    "createdDaysAgo": 45
+  },
+  {
     "key": "gabriela",
     "name": "Gabriela Iniciante",
     "email": "gabriela@cromocard.dev",

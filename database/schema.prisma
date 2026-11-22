@@ -1,7 +1,7 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
   previewFeatures = ["partialIndexes"]
 }
 
@@ -20,48 +20,55 @@ enum UserRole {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+  BLOCKED
 
   @@map("user_status")
 }
 
 model User {
-  id            String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  name          String     @db.VarChar(120)
-  email         String     @unique @db.VarChar(160)
-  passwordHash  String?    @map("password_hash") @db.VarChar(255)
-  role          UserRole
-  status        UserStatus @default(ACTIVE)
-  emailVerified Boolean    @default(false) @map("email_verified")
-  termsAccepted Boolean    @default(false) @map("terms_accepted")
-  oauthProvider String?    @map("oauth_provider") @db.VarChar(30)
-  oauthId       String?    @map("oauth_id") @db.VarChar(120)
-  username      String?    @unique @db.VarChar(30)
-  phone         String?    @db.VarChar(20)
-  cpf           String?    @unique @db.VarChar(14)
-  lastLoginAt   DateTime?  @map("last_login_at") @db.Timestamptz(6)
-  lastLoginIp   String?    @map("last_login_ip") @db.VarChar(45)
-  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  id             String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name           String     @db.VarChar(120)
+  email          String     @unique @db.VarChar(160)
+  passwordHash   String?    @map("password_hash") @db.VarChar(255)
+  role           UserRole
+  status         UserStatus @default(ACTIVE)
+  emailVerified  Boolean    @default(false) @map("email_verified")
+  termsAccepted  Boolean    @default(false) @map("terms_accepted")
+  oauthProvider  String?    @map("oauth_provider") @db.VarChar(30)
+  oauthId        String?    @map("oauth_id") @db.VarChar(120)
+  username       String?    @unique @db.VarChar(30)
+  phone          String?    @db.VarChar(20)
+  cpf            String?    @unique @db.VarChar(14)
+  lastLoginAt    DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  lastLoginIp    String?    @map("last_login_ip") @db.VarChar(45)
+  suspendedUntil DateTime?  @map("suspended_until") @db.Timestamptz(6)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
-  createdGroups           Group[]
-  groupMemberships        GroupMember[]
-  authoredGroupMessages   GroupMessage[]
-  reportsFiled            Report[]             @relation("ReportReporter")
-  reportsModerated        Report[]             @relation("ReportModerator")
-  reportsReceived         Report[]             @relation("ReportTargetUser")
-  catalogRequests         CatalogRequest[]     @relation("CatalogRequestRequester")
-  reviewedCatalogRequests CatalogRequest[]     @relation("CatalogRequestReviewer")
-  performedAuditLogs      AuditLog[]
-  updatedSettings         GlobalSetting[]
-  sentGlobalNotifications GlobalNotification[]
-  reportExports           ReportExport[]
-  notifications          Notification[]
-  refreshTokens           RefreshToken[]
-  passwordResetTokens     PasswordResetToken[]
-  sellerVerification      SellerVerification?  @relation("SellerVerificationSeller")
-  reviewedVerifications   SellerVerification[] @relation("SellerVerificationReviewer")
-  addresses               Address[]
+  createdGroups                   Group[]
+  groupMemberships                GroupMember[]
+  authoredGroupMessages           GroupMessage[]
+  reportsFiled                    Report[]                 @relation("ReportReporter")
+  reportsModerated                Report[]                 @relation("ReportModerator")
+  reportsReceived                 Report[]                 @relation("ReportTargetUser")
+  catalogRequests                 CatalogRequest[]         @relation("CatalogRequestRequester")
+  catalogRequestVotes             CatalogRequestVote[]
+  reviewedCatalogRequests         CatalogRequest[]         @relation("CatalogRequestReviewer")
+  performedAuditLogs              AuditLog[]
+  updatedSettings                 GlobalSetting[]
+  sentGlobalNotifications         GlobalNotification[]
+  reportExports                   ReportExport[]
+  notifications                   Notification[]
+  refreshTokens                   RefreshToken[]
+  passwordResetTokens             PasswordResetToken[]
+  sellerVerification              SellerVerification?      @relation("SellerVerificationSeller")
+  reviewedVerifications           SellerVerification[]     @relation("SellerVerificationReviewer")
+  validatedSellerDocuments        SellerDocument[]         @relation("SellerDocumentValidator")
+  authoredSellerVerificationNotes SellerVerificationNote[] @relation("SellerVerificationNoteAuthor")
+  addresses                       Address[]
+  warningsReceived                UserWarning[]            @relation("UserWarningTarget")
+  warningsGiven                   UserWarning[]            @relation("UserWarningAdmin")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -256,6 +263,7 @@ enum GroupAccessType {
 
 enum GroupStatus {
   ACTIVE
+  WARNED
   SUSPENDED
 
   @@map("group_status")
@@ -378,8 +386,26 @@ model Report {
   moderator    User?         @relation("ReportModerator", fields: [moderatorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_moderator_id")
   targetUser   User?         @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_target_user_id")
   groupMessage GroupMessage? @relation(fields: [groupMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_group_message_id")
+  warnings     UserWarning[]
 
   @@map("reports")
+}
+
+model UserWarning {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  adminId   String    @map("admin_id") @db.Uuid
+  reportId  String?   @map("report_id") @db.Uuid
+  reason    String    @db.VarChar(255)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user   User    @relation("UserWarningTarget", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_warnings_user_id")
+  admin  User    @relation("UserWarningAdmin", fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_warnings_admin_id")
+  report Report? @relation(fields: [reportId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_warnings_report_id")
+
+  @@map("user_warnings")
 }
 
 enum CatalogRequestType {
@@ -412,12 +438,37 @@ model CatalogRequest {
   updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?          @map("deleted_at") @db.Timestamptz(6)
 
-  requester  User   @relation("CatalogRequestRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_requester_id")
-  reviewedBy User?  @relation("CatalogRequestReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_reviewed_by_id")
-  card       Card?  @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_card_id")
-  album      Album? @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_album_id")
+  requester  User                 @relation("CatalogRequestRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_requester_id")
+  reviewedBy User?                @relation("CatalogRequestReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_reviewed_by_id")
+  card       Card?                @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_card_id")
+  album      Album?               @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_album_id")
+  votes      CatalogRequestVote[]
 
   @@map("catalog_requests")
+}
+
+enum CatalogVote {
+  FOR
+  NEUTRAL
+  AGAINST
+
+  @@map("catalog_vote")
+}
+
+/// Um voto por cliente em cada solicitação (CCD103, ADR-053).
+model CatalogRequestVote {
+  catalogRequestId String      @map("catalog_request_id") @db.Uuid
+  userId           String      @map("user_id") @db.Uuid
+  vote             CatalogVote
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  catalogRequest CatalogRequest @relation(fields: [catalogRequestId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_request_votes_catalog_request_id")
+  user           User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_request_votes_user_id")
+
+  @@id([catalogRequestId, userId])
+  @@map("catalog_request_votes")
 }
 
 model AuditLog {
@@ -452,14 +503,20 @@ model GlobalSetting {
 }
 
 model GlobalNotification {
-  id             String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  adminId        String    @map("admin_id") @db.Uuid
-  title          String    @db.VarChar(120)
-  content        String    @db.VarChar(500)
-  recipientCount Int       @default(0) @map("recipient_count")
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id             String                     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  adminId        String                     @map("admin_id") @db.Uuid
+  title          String                     @db.VarChar(120)
+  content        String                     @db.VarChar(500)
+  recipientCount Int                        @default(0) @map("recipient_count")
+  referenceLink  String?                    @map("reference_link") @db.VarChar(255)
+  audience       String                     @default("ALL") @db.VarChar(30)
+  channels       String                     @default("IN_APP") @db.VarChar(60)
+  status         NotificationDispatchStatus @default(SENT)
+  scheduledAt    DateTime?                  @map("scheduled_at") @db.Timestamptz(6)
+  sentAt         DateTime?                  @map("sent_at") @db.Timestamptz(6)
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?                  @map("deleted_at") @db.Timestamptz(6)
 
   admin         User           @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_global_notifications_admin_id")
   notifications Notification[]
@@ -540,9 +597,60 @@ model SellerVerification {
   updatedAt              DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt              DateTime?                @map("deleted_at") @db.Timestamptz(6)
 
-  seller   User     @relation("SellerVerificationSeller", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_user_id")
-  reviewer User?    @relation("SellerVerificationReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_reviewed_by_id")
-  address  Address? @relation(fields: [addressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_address_id")
+  seller    User                     @relation("SellerVerificationSeller", fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_user_id")
+  reviewer  User?                    @relation("SellerVerificationReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_reviewed_by_id")
+  address   Address?                 @relation(fields: [addressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verifications_address_id")
+  documents SellerDocument[]
+  notes     SellerVerificationNote[]
 
   @@map("seller_verifications")
+}
+
+enum NotificationDispatchStatus {
+  SCHEDULED
+  SENT
+  CANCELED
+
+  @@map("notification_dispatch_status")
+}
+
+enum SellerDocumentStatus {
+  SUBMITTED
+  VALIDATED
+
+  @@map("seller_document_status")
+}
+
+model SellerDocument {
+  id                   String               @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  sellerVerificationId String               @map("seller_verification_id") @db.Uuid
+  validatedById        String?              @map("validated_by_id") @db.Uuid
+  type                 String               @db.VarChar(60)
+  fileUrl              String               @map("file_url") @db.VarChar(255)
+  fileSize             Int?                 @map("file_size")
+  status               SellerDocumentStatus @default(SUBMITTED)
+  validatedAt          DateTime?            @map("validated_at") @db.Timestamptz(6)
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  sellerVerification SellerVerification @relation(fields: [sellerVerificationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_documents_seller_verification_id")
+  validatedBy        User?              @relation("SellerDocumentValidator", fields: [validatedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_documents_validated_by_id")
+
+  @@map("seller_documents")
+}
+
+model SellerVerificationNote {
+  id                   String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  sellerVerificationId String    @map("seller_verification_id") @db.Uuid
+  authorId             String    @map("author_id") @db.Uuid
+  content              String
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  sellerVerification SellerVerification @relation(fields: [sellerVerificationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verification_notes_seller_verification_id")
+  author             User               @relation("SellerVerificationNoteAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verification_notes_author_id")
+
+  @@map("seller_verification_notes")
 }

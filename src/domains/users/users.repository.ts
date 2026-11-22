@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import type { UserStatus } from '@/generated/prisma/enums';
+import type { SellerVerificationStatus, UserStatus } from '@/generated/prisma/enums';
 import type { Transaction } from '@/lib/transaction';
 import { type PaginationQuery, toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted, softDeleteData } from '@/shared/utils/soft-delete';
@@ -14,6 +14,7 @@ const userProfileSelect = {
   email: true,
   role: true,
   status: true,
+  suspendedUntil: true,
   emailVerified: true,
   createdAt: true,
   username: true,
@@ -26,9 +27,22 @@ export type UserProfile = Prisma.UserGetPayload<{ select: typeof userProfileSele
 const userSummarySelect = {
   ...userProfileSelect,
   lastLoginIp: true,
+  sellerVerification: { where: notDeleted, select: { status: true } },
 } satisfies Prisma.UserSelect;
 
-export type UserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
+type RawUserSummary = Prisma.UserGetPayload<{ select: typeof userSummarySelect }>;
+export type UserSummary = Omit<RawUserSummary, 'sellerVerification'> & {
+  verificationStatus: SellerVerificationStatus | null;
+};
+
+function withVerificationStatus<
+  T extends { sellerVerification: { status: SellerVerificationStatus } | null },
+>(
+  user: T,
+): Omit<T, 'sellerVerification'> & { verificationStatus: SellerVerificationStatus | null } {
+  const { sellerVerification, ...rest } = user;
+  return { ...rest, verificationStatus: sellerVerification?.status ?? null };
+}
 
 const userDetailSelect = {
   ...userSummarySelect,
@@ -37,7 +51,10 @@ const userDetailSelect = {
   passwordHash: true,
 } satisfies Prisma.UserSelect;
 
-export type UserDetail = Prisma.UserGetPayload<{ select: typeof userDetailSelect }>;
+type RawUserDetail = Prisma.UserGetPayload<{ select: typeof userDetailSelect }>;
+export type UserDetail = Omit<RawUserDetail, 'sellerVerification'> & {
+  verificationStatus: SellerVerificationStatus | null;
+};
 
 const addressSelect = {
   id: true,
@@ -113,6 +130,11 @@ export interface MonthlySignups {
   sellers: number;
 }
 
+export interface MembersByRole {
+  collectors: number;
+  sellers: number;
+}
+
 const sellerSummarySelect = {
   id: true,
   name: true,
@@ -132,6 +154,18 @@ export interface SignupsQuery {
   timeZone: string;
 }
 
+export interface StatusUpdate {
+  status: UserStatus;
+  suspendedUntil?: Date | null;
+}
+
+export interface NewUserWarning {
+  userId: string;
+  adminId: string;
+  reportId?: string;
+  reason: string;
+}
+
 export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserProfile | null>;
@@ -139,9 +173,13 @@ export interface UsersRepository {
   findAddressesByUserId(userId: string): Promise<Address[]>;
   create(input: Omit<CreateUserInput, 'sendActivation'>, tx?: Transaction): Promise<UserSummary>;
   update(id: string, changes: UserChanges, tx?: Transaction): Promise<UserSummary>;
-  updateStatus(id: string, status: UserStatus, tx?: Transaction): Promise<UserSummary>;
+  updateStatus(id: string, update: StatusUpdate, tx?: Transaction): Promise<UserSummary>;
   softDelete(id: string, tx?: Transaction): Promise<void>;
+  createWarning(warning: NewUserWarning, tx?: Transaction): Promise<void>;
+  countWarningsByUserId(userId: string): Promise<number>;
+  reactivateExpiredSuspensions(now: Date): Promise<number>;
   countMembers(): Promise<number>;
+  countMembersByRole(): Promise<MembersByRole>;
   countSignupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   findSellersCreatedWithin(range: DateRange, pagination: PaginationQuery): Promise<SellersPage>;
   findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null>;
@@ -238,15 +276,19 @@ export class PrismaUsersRepository implements UsersRepository {
       this.prisma.user.count({ where }),
     ]);
 
-    return { items, total };
+    return { items: items.map(withVerificationStatus), total };
   }
 
   findById(id: string): Promise<UserProfile | null> {
     return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userProfileSelect });
   }
 
-  findDetailById(id: string): Promise<UserDetail | null> {
-    return this.prisma.user.findFirst({ where: { id, ...notDeleted }, select: userDetailSelect });
+  async findDetailById(id: string): Promise<UserDetail | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { id, ...notDeleted },
+      select: userDetailSelect,
+    });
+    return user && withVerificationStatus(user);
   }
 
   findAddressesByUserId(userId: string): Promise<Address[]> {
@@ -257,34 +299,74 @@ export class PrismaUsersRepository implements UsersRepository {
     });
   }
 
-  create(
+  async create(
     data: Omit<CreateUserInput, 'sendActivation'>,
     tx: Transaction = this.prisma,
   ): Promise<UserSummary> {
-    return tx.user.create({
+    const user = await tx.user.create({
       data: { ...data, emailVerified: true },
       select: userSummarySelect,
     });
+    return withVerificationStatus(user);
   }
 
-  update(id: string, changes: UserChanges, tx: Transaction = this.prisma): Promise<UserSummary> {
-    return tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
-  }
-
-  updateStatus(
+  async update(
     id: string,
-    status: UserStatus,
+    changes: UserChanges,
     tx: Transaction = this.prisma,
   ): Promise<UserSummary> {
-    return tx.user.update({ where: { id }, data: { status }, select: userSummarySelect });
+    const user = await tx.user.update({ where: { id }, data: changes, select: userSummarySelect });
+    return withVerificationStatus(user);
+  }
+
+  async updateStatus(
+    id: string,
+    { status, suspendedUntil }: StatusUpdate,
+    tx: Transaction = this.prisma,
+  ): Promise<UserSummary> {
+    const user = await tx.user.update({
+      where: { id },
+      data: { status, suspendedUntil: suspendedUntil ?? null },
+      select: userSummarySelect,
+    });
+    return withVerificationStatus(user);
   }
 
   async softDelete(id: string, tx: Transaction = this.prisma): Promise<void> {
     await tx.user.update({ where: { id }, data: softDeleteData() });
   }
 
+  async createWarning(
+    { reportId, ...warning }: NewUserWarning,
+    tx: Transaction = this.prisma,
+  ): Promise<void> {
+    await tx.userWarning.create({ data: { ...warning, reportId: reportId ?? null } });
+  }
+
+  countWarningsByUserId(userId: string): Promise<number> {
+    return this.prisma.userWarning.count({ where: { userId, ...notDeleted } });
+  }
+
+  async reactivateExpiredSuspensions(now: Date): Promise<number> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { ...notDeleted, status: 'SUSPENDED', suspendedUntil: { lte: now } },
+      data: { status: 'ACTIVE', suspendedUntil: null },
+    });
+    return count;
+  }
+
   countMembers(): Promise<number> {
     return this.prisma.user.count({ where: activeMembers });
+  }
+
+  async countMembersByRole(): Promise<MembersByRole> {
+    const groups = await this.prisma.user.groupBy({
+      by: ['role'],
+      where: { ...notDeleted, role: { in: ['CUSTOMER', 'SELLER'] } },
+      _count: { _all: true },
+    });
+    const countOf = (role: string) => groups.find((group) => group.role === role)?._count._all ?? 0;
+    return { collectors: countOf('CUSTOMER'), sellers: countOf('SELLER') };
   }
 
   countSignupsByMonth({ range: { from, to }, timeZone }: SignupsQuery): Promise<MonthlySignups[]> {

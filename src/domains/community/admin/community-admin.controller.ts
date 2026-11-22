@@ -10,6 +10,7 @@ import {
   listGroupsQuerySchema,
   type ModerationReasonInput,
   moderationReasonSchema,
+  warningModerationReasonSchema,
 } from './community-admin.validator';
 
 type ModerationArgs = [id: string, input: ModerationReasonInput, adminId: string];
@@ -18,8 +19,8 @@ function idOf(req: Request): string {
   return communityAdminIdParamSchema.parse(req.params).id;
 }
 
-function moderationOf(req: Request): ModerationArgs {
-  return [idOf(req), moderationReasonSchema.parse(req.body), getAuthenticatedUser(req).id];
+function moderationOf(req: Request, schema = moderationReasonSchema): ModerationArgs {
+  return [idOf(req), schema.parse(req.body), getAuthenticatedUser(req).id];
 }
 
 export class CommunityAdminController {
@@ -36,6 +37,10 @@ export class CommunityAdminController {
 
   getGroup = async (req: Request, res: Response): Promise<void> => {
     ok(res, await this.service.getGroup(idOf(req)));
+  };
+
+  warnGroup = async (req: Request, res: Response): Promise<void> => {
+    ok(res, await this.service.warnGroup(...moderationOf(req)));
   };
 
   suspendGroup = async (req: Request, res: Response): Promise<void> => {
@@ -59,6 +64,10 @@ export class CommunityAdminController {
 
   removeReportedMessage = async (req: Request, res: Response): Promise<void> => {
     ok(res, await this.service.removeReportedMessage(...moderationOf(req)));
+  };
+
+  removeAndWarn = async (req: Request, res: Response): Promise<void> => {
+    ok(res, await this.service.removeAndWarn(...moderationOf(req, warningModerationReasonSchema)));
   };
 
   dismissReport = async (req: Request, res: Response): Promise<void> => {

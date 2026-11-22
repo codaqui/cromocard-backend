@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import type { UserRole } from '@/generated/prisma/enums';
+import type { SellerVerificationStatus, UserRole } from '@/generated/prisma/enums';
 import { notDeleted } from '@/shared/utils/soft-delete';
 import type { DateRange } from '@/shared/utils/time-zone';
 
@@ -21,6 +21,14 @@ export type CatalogRow = {
   createdAt: Date;
 };
 
+export type SellerAuditRow = {
+  legalName: string;
+  cnpj: string;
+  email: string;
+  status: SellerVerificationStatus;
+  createdAt: Date;
+};
+
 export interface ReportRows<T> {
   rows: T[];
   total: number;
@@ -29,6 +37,7 @@ export interface ReportRows<T> {
 export interface ReportsRepository {
   findSignups(range: DateRange, limit?: number): Promise<ReportRows<SignupRow>>;
   findCatalog(range: DateRange, limit?: number): Promise<ReportRows<CatalogRow>>;
+  findSellerAudit(range: DateRange, limit?: number): Promise<ReportRows<SellerAuditRow>>;
 }
 
 const newestFirst = { createdAt: 'desc' } as const;
@@ -47,7 +56,18 @@ const albumSelect = {
   category: { select: { name: true } },
 } satisfies Prisma.AlbumSelect;
 
+const sellerAuditSelect = {
+  legalName: true,
+  cnpj: true,
+  status: true,
+  createdAt: true,
+  seller: { select: { email: true } },
+} satisfies Prisma.SellerVerificationSelect;
+
 type CardRecord = Prisma.CardGetPayload<{ select: typeof cardSelect }>;
+type SellerAuditRecord = Prisma.SellerVerificationGetPayload<{
+  select: typeof sellerAuditSelect;
+}>;
 type AlbumRecord = Prisma.AlbumGetPayload<{ select: typeof albumSelect }>;
 
 function createdWithin({ from, to }: DateRange) {
@@ -62,6 +82,10 @@ function toCardRow({ name, number, createdAt, album, category }: CardRecord): Ca
 function toAlbumRow({ title, createdAt, category }: AlbumRecord): CatalogRow {
   const franchise = category?.name ?? null;
   return { kind: 'ALBUM', name: title, number: null, album: null, franchise, createdAt };
+}
+
+function toSellerAuditRow({ seller, ...verification }: SellerAuditRecord): SellerAuditRow {
+  return { ...verification, email: seller.email };
 }
 
 function byNewest(first: CatalogRow, second: CatalogRow): number {
@@ -98,5 +122,19 @@ export class PrismaReportsRepository implements ReportsRepository {
     ]);
     const rows = [...cards.map(toCardRow), ...albums.map(toAlbumRow)].sort(byNewest);
     return { rows: rows.slice(0, limit), total: cardsTotal + albumsTotal };
+  }
+
+  async findSellerAudit(range: DateRange, limit?: number): Promise<ReportRows<SellerAuditRow>> {
+    const where = createdWithin(range);
+    const [verifications, total] = await this.prisma.$transaction([
+      this.prisma.sellerVerification.findMany({
+        where,
+        select: sellerAuditSelect,
+        orderBy: newestFirst,
+        take: limit,
+      }),
+      this.prisma.sellerVerification.count({ where }),
+    ]);
+    return { rows: verifications.map(toSellerAuditRow), total };
   }
 }

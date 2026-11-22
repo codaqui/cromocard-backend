@@ -5,6 +5,7 @@ import type { DateRange } from '@/shared/utils/time-zone';
 import { UserNotFoundError } from './users.errors';
 import type {
   Address,
+  MembersByRole,
   MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
@@ -12,6 +13,7 @@ import type {
   OauthLink,
   RegisteredUser,
   SellersPage,
+  StatusUpdate,
   UserCredentials,
   UserDetail,
   UserProfile,
@@ -47,6 +49,8 @@ function buildUser(overrides: Partial<StoredUser> = {}): StoredUser {
     cpf: null,
     lastLoginAt: null,
     lastLoginIp: null,
+    verificationStatus: null,
+    suspendedUntil: null,
     ...overrides,
   };
 }
@@ -82,8 +86,10 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
-  updateStatus(id: string, status: UserSummary['status']): Promise<UserSummary> {
-    this.users = this.users.map((user) => (user.id === id ? { ...user, status } : user));
+  updateStatus(id: string, { status, suspendedUntil }: StatusUpdate): Promise<UserSummary> {
+    this.users = this.users.map((user) =>
+      user.id === id ? { ...user, status, suspendedUntil: suspendedUntil ?? null } : user,
+    );
     return Promise.resolve(this.users.find((user) => user.id === id) as UserSummary);
   }
 
@@ -94,11 +100,29 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve();
   }
 
+  createWarning(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  countWarningsByUserId(): Promise<number> {
+    return Promise.resolve(0);
+  }
+
+  reactivateExpiredSuspensions(): Promise<number> {
+    return Promise.reject(new Error('não usado neste teste'));
+  }
+
   monthlySignups: MonthlySignups[] = [];
 
   countMembers(): Promise<number> {
     const members = this.users.filter((user) => !user.deletedAt && user.role !== 'ADMIN');
     return Promise.resolve(members.length);
+  }
+
+  countMembersByRole(): Promise<MembersByRole> {
+    const active = this.users.filter((user) => !user.deletedAt);
+    const countOf = (role: string) => active.filter((user) => user.role === role).length;
+    return Promise.resolve({ collectors: countOf('CUSTOMER'), sellers: countOf('SELLER') });
   }
 
   countSignupsByMonth(): Promise<MonthlySignups[]> {
@@ -240,6 +264,17 @@ describe('UsersService', () => {
     ];
 
     await expect(service.countMembers()).resolves.toBe(2);
+  });
+
+  it('CCD096 R10: separa os membros ativos em colecionadores e lojistas', async () => {
+    repository.users = [
+      buildUser({ role: 'CUSTOMER' }),
+      buildUser({ role: 'CUSTOMER', deletedAt: new Date() }),
+      buildUser({ role: 'SELLER' }),
+      buildUser({ role: 'ADMIN' }),
+    ];
+
+    await expect(service.countMembersByRole()).resolves.toEqual({ collectors: 1, sellers: 1 });
   });
 
   it('completa com zero os meses do período sem cadastros', async () => {

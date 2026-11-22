@@ -110,6 +110,7 @@ export class ReportsService {
     const sources: Record<ReportType, () => Promise<ReportRows<ReportRow>>> = {
       signups: () => repository.findSignups(period, limit),
       catalog: () => repository.findCatalog(period, limit),
+      'seller-audit': () => repository.findSellerAudit(period, limit),
     };
     return sources[type]();
   }

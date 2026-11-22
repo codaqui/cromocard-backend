@@ -55,6 +55,15 @@ export default tseslint.config(
     rules: { 'max-lines-per-function': 'off' },
   },
   {
+    files: ['tests/integration/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [{ group: ['../*'], message: 'Use o alias "@/".' }] },
+      ],
+    },
+  },
+  {
     files: ['eslint.config.mjs'],
     ...tseslint.configs.disableTypeChecked,
   },
