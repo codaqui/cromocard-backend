@@ -8,10 +8,13 @@ import {
 } from './reports.validator';
 
 describe('reports.validator', () => {
-  it('R4: aceita só os relatórios de novos cadastros e de catálogo', () => {
+  it('R4: aceita os relatórios de novos cadastros, catálogo e auditoria de lojistas', () => {
     expect(reportTypeParamSchema.parse({ type: 'signups' })).toEqual({ type: 'signups' });
     expect(reportTypeParamSchema.parse({ type: 'catalog' })).toEqual({ type: 'catalog' });
-    expect(reportTypeParamSchema.safeParse({ type: 'seller-audit' }).success).toBe(false);
+    expect(reportTypeParamSchema.parse({ type: 'seller-audit' })).toEqual({
+      type: 'seller-audit',
+    });
+    expect(reportTypeParamSchema.safeParse({ type: 'volume' }).success).toBe(false);
   });
 
   it('R5: aceita os períodos do Dashboard e usa 10 linhas na prévia', () => {

@@ -148,7 +148,7 @@ const MS_PER_SECOND = 1000;
 
 function assertCanSignIn(account: AccountCredentials): void {
   if (account.deletedAt) throw new AccountDeletedError();
-  if (account.status !== 'ACTIVE') throw new AccountSuspendedError();
+  if (account.status !== 'ACTIVE') throw new AccountSuspendedError(account.status);
   if (!account.emailVerified) throw new EmailNotVerifiedError();
 }
 

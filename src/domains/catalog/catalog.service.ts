@@ -142,6 +142,10 @@ export class CatalogService {
     return this.deps.cards.count();
   }
 
+  countCardsCreatedSince(since: Date): Promise<number> {
+    return this.deps.cards.countCreatedSince(since);
+  }
+
   async findCard(id: string): Promise<Card> {
     const card = await this.deps.cards.findById(id);
     if (!card) throw new CardNotFoundError();

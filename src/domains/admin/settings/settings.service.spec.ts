@@ -213,4 +213,19 @@ describe('SettingsService', () => {
   it('CA8: a leitura pública recusa qualquer outra chave', async () => {
     await expect(service.getPublic(SETTING_KEYS.votingGoal)).rejects.toThrow(SettingNotFoundError);
   });
+
+  it('CCD096 R8: lê a meta mensal de cadastros', async () => {
+    expect(await service.getMonthlySignupGoal()).toBe(4000);
+  });
+
+  it('CCD096 R7: meta vazia, ausente ou inválida volta como sem meta', async () => {
+    settings.seed(SETTING_KEYS.monthlySignupGoal, null, 3);
+    expect(await service.getMonthlySignupGoal()).toBeNull();
+
+    settings.seed(SETTING_KEYS.monthlySignupGoal, 'quatro mil', 3);
+    expect(await service.getMonthlySignupGoal()).toBeNull();
+
+    settings.rows.delete(SETTING_KEYS.monthlySignupGoal);
+    expect(await service.getMonthlySignupGoal()).toBeNull();
+  });
 });

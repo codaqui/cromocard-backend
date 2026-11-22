@@ -9,6 +9,8 @@ import { signAccessToken } from '@/lib/jwt';
 const reportPaths = [
   '/api/v1/admin/reports/signups',
   '/api/v1/admin/reports/catalog/export?format=csv',
+  '/api/v1/admin/reports/exports',
+  `/api/v1/admin/reports/exports/${crypto.randomUUID()}/file`,
 ];
 
 const customerToken = signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' });
@@ -36,11 +38,13 @@ describe.each(reportPaths)('rota de relatórios %s', (path) => {
 
 describe('validação dos relatórios', () => {
   it.each([
-    ['relatório que não existe (L9)', '/api/v1/admin/reports/seller-audit'],
+    ['relatório que ainda não existe (volume, CCD097)', '/api/v1/admin/reports/volume'],
     ['período fora da lista', '/api/v1/admin/reports/signups?period=2d'],
     ['prévia acima de 50 linhas', '/api/v1/admin/reports/signups?pageSize=51'],
     ['exportação sem formato', '/api/v1/admin/reports/signups/export'],
     ['formato que não existe', '/api/v1/admin/reports/catalog/export?format=xlsx'],
+    ['histórico acima de 100 linhas', '/api/v1/admin/reports/exports?pageSize=101'],
+    ['exportação com id inválido', '/api/v1/admin/reports/exports/123/file'],
   ])('recusa %s com 400', async (_case, path) => {
     const res = await getAsAdmin(path);
 
@@ -50,10 +54,12 @@ describe('validação dos relatórios', () => {
 });
 
 describe('documentação dos relatórios', () => {
-  it('lista as duas rotas no Swagger', () => {
+  it('lista as rotas de prévia, exportação e histórico no Swagger', () => {
     const document = buildOpenApiDocument([reportsModule]);
 
     expect(Object.keys(document.paths ?? {})).toEqual([
+      '/admin/reports/exports',
+      '/admin/reports/exports/{id}/file',
       '/admin/reports/{type}',
       '/admin/reports/{type}/export',
     ]);

@@ -8,6 +8,7 @@ import { type DateRange, monthsWithin } from '@/shared/utils/time-zone';
 
 import { UserNotFoundError } from './users.errors';
 import type {
+  MembersByRole,
   MonthlySignups,
   NewPasswordAccount,
   RegisteredUser,
@@ -20,7 +21,7 @@ import type {
 } from './users.repository';
 import type { ListUsersQuery, UpdateUserInput } from './users.validator';
 
-export type { MonthlySignups, SellerSummary, SignupsQuery };
+export type { MembersByRole, MonthlySignups, SellerSummary, SignupsQuery };
 
 function withEmptyMonths(signups: MonthlySignups[], { range, timeZone }: SignupsQuery) {
   const byMonth = new Map(signups.map((signup) => [signup.month, signup]));
@@ -124,6 +125,10 @@ export class UsersService {
 
   countMembers(): Promise<number> {
     return this.usersRepository.countMembers();
+  }
+
+  countMembersByRole(): Promise<MembersByRole> {
+    return this.usersRepository.countMembersByRole();
   }
 
   async signupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]> {

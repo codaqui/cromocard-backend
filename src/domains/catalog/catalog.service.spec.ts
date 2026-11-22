@@ -189,6 +189,11 @@ class InMemoryCardsRepository implements CardsRepository {
   count(): Promise<number> {
     return Promise.resolve(this.cards.filter((card) => !card.deletedAt).length);
   }
+
+  countCreatedSince(since: Date): Promise<number> {
+    const created = this.cards.filter((card) => !card.deletedAt && card.createdAt >= since);
+    return Promise.resolve(created.length);
+  }
 }
 
 class InMemoryCategoriesRepository implements CategoriesRepository {
@@ -539,6 +544,15 @@ describe('CatalogService', () => {
       await service.deleteCard(ADMIN_ID, deleted.id);
 
       await expect(service.countCards()).resolves.toBe(1);
+    });
+
+    it('CCD096 R11: conta as cartas ativas criadas desde a data', async () => {
+      await newCard();
+      const deleted = await newCard({ name: 'Excluída' });
+      await service.deleteCard(ADMIN_ID, deleted.id);
+
+      await expect(service.countCardsCreatedSince(new Date(0))).resolves.toBe(1);
+      await expect(service.countCardsCreatedSince(new Date(Date.now() + 60_000))).resolves.toBe(0);
     });
 
     it('R6: aceita raridade e idioma do seed', async () => {

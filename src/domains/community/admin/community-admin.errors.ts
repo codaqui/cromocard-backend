@@ -14,7 +14,13 @@ export class GroupAlreadySuspendedError extends ConflictError {
 
 export class GroupNotSuspendedError extends ConflictError {
   constructor() {
-    super('O grupo não está suspenso', 'GROUP_NOT_SUSPENDED');
+    super('O grupo não está advertido nem suspenso', 'GROUP_NOT_SUSPENDED');
+  }
+}
+
+export class GroupAlreadyWarnedError extends ConflictError {
+  constructor() {
+    super('O grupo já está advertido', 'GROUP_ALREADY_WARNED');
   }
 }
 

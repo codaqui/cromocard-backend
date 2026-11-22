@@ -12,6 +12,7 @@ function createGroupsRoutes(controller: CommunityAdminController): Router {
   router.get('/', controller.listGroups);
   router.get('/summary', controller.getSummary);
   router.get('/:id', controller.getGroup);
+  router.post('/:id/warn', controller.warnGroup);
   router.post('/:id/suspend', controller.suspendGroup);
   router.post('/:id/reactivate', controller.reactivateGroup);
   router.delete('/:id', controller.deleteGroup);
@@ -25,6 +26,7 @@ function createModerationRoutes(controller: CommunityAdminController): Router {
   router.use(authenticate, authorize('ADMIN'));
   router.get('/', controller.listGroupMessageReports);
   router.post('/:id/remove-message', controller.removeReportedMessage);
+  router.post('/:id/remove-and-warn', controller.removeAndWarn);
   router.post('/:id/dismiss', controller.dismissReport);
 
   return router;

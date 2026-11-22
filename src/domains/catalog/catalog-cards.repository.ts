@@ -72,6 +72,7 @@ export interface CardsRepository {
   softDelete(id: string): Promise<void>;
   countByAlbum(albumId: string): Promise<number>;
   count(): Promise<number>;
+  countCreatedSince(since: Date): Promise<number>;
 }
 
 function buildSearchFilter(q?: string): Prisma.CardWhereInput {
@@ -174,5 +175,9 @@ export class PrismaCardsRepository implements CardsRepository {
 
   count(): Promise<number> {
     return this.prisma.card.count({ where: notDeleted });
+  }
+
+  countCreatedSince(since: Date): Promise<number> {
+    return this.prisma.card.count({ where: { ...notDeleted, createdAt: { gte: since } } });
   }
 }
