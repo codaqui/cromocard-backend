@@ -6,7 +6,7 @@ export const CLEANUP_EXPIRED_REPORTS_SCHEDULE = '30 3 * * *';
 const TIMEZONE = 'America/Sao_Paulo';
 
 export interface ExpiredReportsCleaner {
-  deleteExpiredFiles(): Promise<number>;
+  deleteExpiredFiles(): Promise<{ deleted: number; failed: number }>;
 }
 
 export async function cleanupExpiredReports(
@@ -14,8 +14,8 @@ export async function cleanupExpiredReports(
   logger: JobLogger,
 ): Promise<void> {
   try {
-    const deleted = await cleaner.deleteExpiredFiles();
-    logger.info({ deleted }, 'Arquivos de relatórios vencidos apagados');
+    const result = await cleaner.deleteExpiredFiles();
+    logger.info(result, 'Arquivos de relatórios vencidos apagados');
   } catch (error) {
     logger.error({ err: error }, 'Falha ao apagar os arquivos de relatórios vencidos');
   }

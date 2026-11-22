@@ -148,11 +148,15 @@ describe('limpeza dos relatórios vencidos', () => {
     const expired = await prisma.reportExport.findFirstOrThrow({
       where: { adminId: { in: userIds }, expiresAt: { lte: new Date() } },
     });
+    await prisma.reportExport.update({
+      where: { id: expired.id },
+      data: { expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    });
     const before = await ourExports();
 
     const deleted = await reportExportsService.deleteExpiredFiles();
 
-    expect(deleted).toBeGreaterThanOrEqual(1);
+    expect(deleted.deleted).toBeGreaterThanOrEqual(1);
     const res = await getAs(tokens.admin, `/api/v1/admin/reports/exports/${expired.id}/file`);
     expect(res.status).toBe(410);
     expect(await ourExports()).toHaveLength(before.length);

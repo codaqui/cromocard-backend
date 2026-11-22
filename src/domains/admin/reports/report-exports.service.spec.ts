@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type {
   FileToStore,
@@ -6,6 +6,7 @@ import type {
   StoredFile,
 } from '@/providers/storage/storage.provider';
 import type { PaginationQuery } from '@/shared/utils/pagination';
+import type { DateRange } from '@/shared/utils/time-zone';
 
 import type {
   NewReportExport,
@@ -14,7 +15,11 @@ import type {
   ReportExportsRepository,
 } from './report-exports.repository';
 import { type ReportArchiveEntry, ReportExportsService } from './report-exports.service';
-import { ReportExportExpiredError, ReportExportNotFoundError } from './reports.errors';
+import {
+  ReportExportExpiredError,
+  ReportExportNotFoundError,
+  ReportExportUnavailableError,
+} from './reports.errors';
 
 const NOW = new Date('2026-11-18T12:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -60,8 +65,8 @@ class InMemoryReportExports implements ReportExportsRepository {
     return Promise.resolve(this.rows.find((row) => row.id === id) ?? null);
   }
 
-  findExpiredFileUrls(now: Date): Promise<string[]> {
-    const expired = this.rows.filter(({ expiresAt }) => expiresAt <= now);
+  findExpiredFileUrls({ from, to }: DateRange): Promise<string[]> {
+    const expired = this.rows.filter(({ expiresAt }) => expiresAt >= from && expiresAt <= to);
     return Promise.resolve(expired.map(({ fileUrl }) => fileUrl));
   }
 }
@@ -70,8 +75,21 @@ function setup(now = NOW) {
   const storage = new InMemoryStorage();
   const repository = new InMemoryReportExports();
   const contentTypes = { csv: 'text/csv; charset=utf-8', pdf: 'application/pdf' };
-  const service = new ReportExportsService({ repository, storage, contentTypes, now: () => now });
-  return { service, storage, repository };
+  const logger = { warn: vi.fn(), error: vi.fn() };
+  const service = new ReportExportsService({
+    repository,
+    storage,
+    contentTypes,
+    logger,
+    now: () => now,
+  });
+  return { service, storage, repository, logger };
+}
+
+async function archived(service: ReportExportsService, input: ReportArchiveEntry) {
+  const view = await service.archive(input);
+  if (!view) throw new Error('o arquivamento falhou');
+  return view;
 }
 
 function entry(overrides: Partial<ReportArchiveEntry> = {}): ReportArchiveEntry {
@@ -97,7 +115,7 @@ describe('ReportExportsService', () => {
   it('CA1: guarda o arquivo no storage privado e registra a exportação por 90 dias', async () => {
     const { service, storage, repository } = setup();
 
-    const view = await service.archive(entry());
+    const view = await archived(service, entry());
 
     const [row] = repository.rows;
     expect(row?.fileUrl).toMatch(
@@ -131,7 +149,7 @@ describe('ReportExportsService', () => {
 
   it('CA2: baixar devolve o mesmo arquivo, com o nome e o tipo da exportação', async () => {
     const { service } = setup();
-    const { id } = await service.archive(entry({ format: 'pdf' }));
+    const { id } = await archived(service, entry({ format: 'pdf' }));
 
     const file = await service.getFile(id);
 
@@ -144,19 +162,20 @@ describe('ReportExportsService', () => {
 
   it('CA3: arquivo com mais de 90 dias responde expirado', async () => {
     const { service, repository } = setup();
-    const { id } = await service.archive(entry());
+    const { id } = await archived(service, entry());
     expireAll(repository, NOW);
 
     await expect(service.getFile(id)).rejects.toBeInstanceOf(ReportExportExpiredError);
     expect((await service.list({ page: 1, pageSize: 10 })).items[0]?.expired).toBe(true);
   });
 
-  it('CA3: arquivo que já sumiu do storage também responde expirado', async () => {
-    const { service, storage } = setup();
-    const { id } = await service.archive(entry());
+  it('CA3: arquivo que já sumiu do storage responde 410 com outra mensagem e fica no log', async () => {
+    const { service, storage, logger } = setup();
+    const { id } = await archived(service, entry());
     storage.files.clear();
 
-    await expect(service.getFile(id)).rejects.toBeInstanceOf(ReportExportExpiredError);
+    await expect(service.getFile(id)).rejects.toBeInstanceOf(ReportExportUnavailableError);
+    expect(logger.warn).toHaveBeenCalledOnce();
   });
 
   it('exportação inexistente responde não encontrada', async () => {
@@ -177,10 +196,50 @@ describe('ReportExportsService', () => {
     );
     const [recent] = repository.rows;
 
-    const deleted = await service.deleteExpiredFiles();
+    const result = await service.deleteExpiredFiles();
 
-    expect(deleted).toBe(1);
+    expect(result).toEqual({ deleted: 1, failed: 0 });
     expect([...storage.files.keys()]).toEqual([recent?.fileUrl]);
     expect(repository.rows).toHaveLength(2);
+  });
+
+  it('L9: se gravar a linha falhar, apaga o arquivo, registra no log e não derruba a exportação', async () => {
+    const { service, storage, repository, logger } = setup();
+    repository.create = () => Promise.reject(new Error('banco fora do ar'));
+
+    await expect(service.archive(entry())).resolves.toBeNull();
+
+    expect(storage.files.size).toBe(0);
+    expect(logger.error).toHaveBeenCalledOnce();
+  });
+
+  it('L9: se o storage falhar, não grava a linha nem derruba a exportação', async () => {
+    const { service, storage, repository } = setup();
+    storage.upload = () => Promise.reject(new Error('disco cheio'));
+
+    await expect(service.archive(entry())).resolves.toBeNull();
+
+    expect(repository.rows).toHaveLength(0);
+  });
+
+  it('CA4: só olha os vencidos da última semana e conta o que falhou ao apagar', async () => {
+    const { service, storage, repository, logger } = setup();
+    await service.archive(entry());
+    await service.archive(entry({ type: 'catalog' }));
+    await service.archive(entry({ format: 'pdf' }));
+    const expiries = [NOW.getTime() - DAY, NOW.getTime() - 2 * DAY, NOW.getTime() - 30 * DAY];
+    repository.rows = repository.rows.map((row, index) => ({
+      ...row,
+      expiresAt: new Date(expiries[index] ?? 0),
+    }));
+    storage.delete = (key) =>
+      key === repository.rows[0]?.fileUrl
+        ? Promise.reject(new Error('sem permissão'))
+        : Promise.resolve();
+
+    const result = await service.deleteExpiredFiles();
+
+    expect(result).toEqual({ deleted: 1, failed: 1 });
+    expect(logger.warn).toHaveBeenCalledOnce();
   });
 });

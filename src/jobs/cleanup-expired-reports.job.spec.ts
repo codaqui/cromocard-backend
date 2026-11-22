@@ -16,10 +16,13 @@ describe('cleanup-expired-reports job', () => {
   it('CA4: apaga os arquivos vencidos e registra quantos foram', async () => {
     const logger = fakeLogger();
 
-    await cleanupExpiredReports({ deleteExpiredFiles: () => Promise.resolve(2) }, logger);
+    await cleanupExpiredReports(
+      { deleteExpiredFiles: () => Promise.resolve({ deleted: 2, failed: 1 }) },
+      logger,
+    );
 
     expect(logger.info).toHaveBeenCalledWith(
-      { deleted: 2 },
+      { deleted: 2, failed: 1 },
       'Arquivos de relatórios vencidos apagados',
     );
   });
@@ -35,7 +38,7 @@ describe('cleanup-expired-reports job', () => {
 
   it('agenda a limpeza uma vez por dia, às 3h30 de Brasília', async () => {
     const logger = fakeLogger();
-    const cleaner = { deleteExpiredFiles: vi.fn(() => Promise.resolve(0)) };
+    const cleaner = { deleteExpiredFiles: vi.fn(() => Promise.resolve({ deleted: 0, failed: 0 })) };
     const scheduleTask = vi.fn<typeof schedule>(() => ({}) as ScheduledTask);
 
     scheduleCleanupExpiredReports(cleaner, logger, scheduleTask);

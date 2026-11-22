@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { type PaginationQuery, toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted } from '@/shared/utils/soft-delete';
+import type { DateRange } from '@/shared/utils/time-zone';
 
 export interface NewReportExport {
   adminId: string;
@@ -43,7 +44,7 @@ export interface ReportExportsRepository {
   create(data: NewReportExport): Promise<ReportExportRecord>;
   list(pagination: PaginationQuery): Promise<ReportExportPage>;
   findById(id: string): Promise<ReportExportRecord | null>;
-  findExpiredFileUrls(now: Date): Promise<string[]>;
+  findExpiredFileUrls(window: DateRange): Promise<string[]>;
 }
 
 export class PrismaReportExportsRepository implements ReportExportsRepository {
@@ -73,9 +74,9 @@ export class PrismaReportExportsRepository implements ReportExportsRepository {
     });
   }
 
-  async findExpiredFileUrls(now: Date): Promise<string[]> {
+  async findExpiredFileUrls({ from, to }: DateRange): Promise<string[]> {
     const expired = await this.prisma.reportExport.findMany({
-      where: { ...notDeleted, expiresAt: { lte: now } },
+      where: { ...notDeleted, expiresAt: { gte: from, lte: to } },
       select: { fileUrl: true },
     });
     return expired.map(({ fileUrl }) => fileUrl);

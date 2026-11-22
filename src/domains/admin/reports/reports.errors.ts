@@ -12,6 +12,15 @@ export class ReportExportNotFoundError extends NotFoundError {
   }
 }
 
+export class ReportExportUnavailableError extends GoneError {
+  constructor() {
+    super(
+      'O arquivo deste relatório não está mais disponível. Gere o relatório de novo.',
+      'EXPORT_EXPIRED',
+    );
+  }
+}
+
 export class ReportExportExpiredError extends GoneError {
   constructor() {
     super(
