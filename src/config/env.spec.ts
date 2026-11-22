@@ -62,3 +62,28 @@ describe('env: e-mail em produção', () => {
     expect(env.MAIL_HOST).toBeUndefined();
   });
 });
+
+describe('env: pastas do storage', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ['igual à pública', 'uploads', 'uploads'],
+    ['dentro da pública', 'uploads', 'uploads/privado'],
+    ['acima da pública', 'dados/uploads', 'dados'],
+  ])('recusa a pasta privada %s', async (_case, publicDir, privateDir) => {
+    await expect(
+      loadEnv({ STORAGE_LOCAL_DIR: publicDir, STORAGE_LOCAL_PRIVATE_DIR: privateDir }),
+    ).rejects.toThrow(/STORAGE_LOCAL_PRIVATE_DIR/);
+  });
+
+  it('aceita pastas separadas', async () => {
+    const { env } = await loadEnv({
+      STORAGE_LOCAL_DIR: 'uploads',
+      STORAGE_LOCAL_PRIVATE_DIR: 'storage-private',
+    });
+
+    expect(env.STORAGE_LOCAL_PRIVATE_DIR).toBe('storage-private');
+  });
+});

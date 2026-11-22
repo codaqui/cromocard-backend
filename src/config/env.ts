@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { z } from '@/lib/zod';
 
 const optionalText = z.preprocess(
@@ -52,12 +54,28 @@ const requireHostForSmtp = ({ MAIL_DRIVER, MAIL_HOST }: z.infer<typeof envSchema
 const requireRealMailInProduction = ({ APP_ENV, MAIL_DRIVER }: z.infer<typeof envSchema>) =>
   APP_ENV !== 'production' || MAIL_DRIVER === 'smtp';
 
+const isInside = (dir: string, parent: string) => {
+  const relative = path.relative(path.resolve(parent), path.resolve(dir));
+  return !relative.startsWith('..') && !path.isAbsolute(relative);
+};
+
+const separateStorageDirs = ({
+  STORAGE_LOCAL_DIR,
+  STORAGE_LOCAL_PRIVATE_DIR,
+}: z.infer<typeof envSchema>) =>
+  !isInside(STORAGE_LOCAL_PRIVATE_DIR, STORAGE_LOCAL_DIR) &&
+  !isInside(STORAGE_LOCAL_DIR, STORAGE_LOCAL_PRIVATE_DIR);
+
 const envWithPublicUrlSchema = envSchema
   .refine(requirePublicUrlInProduction, {
     path: ['API_PUBLIC_URL'],
     message: 'Obrigatória em produção',
   })
   .refine(requireHostForSmtp, { path: ['MAIL_HOST'], message: 'Obrigatório com MAIL_DRIVER=smtp' })
+  .refine(separateStorageDirs, {
+    path: ['STORAGE_LOCAL_PRIVATE_DIR'],
+    message: 'Use uma pasta separada da STORAGE_LOCAL_DIR: o que está nela é público em /uploads',
+  })
   .refine(requireRealMailInProduction, {
     path: ['MAIL_DRIVER'],
     message: 'Em produção (APP_ENV=production) só smtp: o Ethereal não entrega os e-mails',

@@ -1,6 +1,7 @@
+import { logger } from '@/config/logger';
 import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
 import { prisma } from '@/lib/prisma';
-import { createPrivateStorageProvider } from '@/providers/storage/storage.factory';
+import { createStorageProvider } from '@/providers/storage/storage.factory';
 import type { DomainModule } from '@/shared/types/domain-module';
 
 import { csvExporter } from './exporters/csv.exporter';
@@ -18,8 +19,9 @@ const exporters = { csv: csvExporter, pdf: pdfExporter };
 
 export const reportExportsService = new ReportExportsService({
   repository: new PrismaReportExportsRepository(prisma),
-  storage: createPrivateStorageProvider(),
+  storage: createStorageProvider('private'),
   contentTypes: { csv: csvExporter.contentType, pdf: pdfExporter.contentType },
+  logger,
   now,
 });
 
