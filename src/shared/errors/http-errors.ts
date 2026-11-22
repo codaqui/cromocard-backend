@@ -30,6 +30,12 @@ export class ConflictError extends AppError {
   }
 }
 
+export class GoneError extends AppError {
+  constructor(message: string, code: string) {
+    super({ statusCode: 410, code, message });
+  }
+}
+
 export class BusinessRuleError extends AppError {
   constructor(message: string, code: string) {
     super({ statusCode: 422, code, message });

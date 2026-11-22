@@ -147,6 +147,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { adminId } });
+  await prisma.reportExport.deleteMany({ where: { adminId } });
   await prisma.sellerVerification.deleteMany({ where: { id: { in: created.verificationIds } } });
   await prisma.card.deleteMany({ where: { id: { in: created.cardIds } } });
   await prisma.album.deleteMany({ where: { id: { in: created.albumIds } } });

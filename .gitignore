@@ -13,3 +13,4 @@ src/generated/
 
 # Arquivos enviados pelo storage local (ADR-009)
 /uploads/
+/storage-private/
