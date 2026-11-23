@@ -593,7 +593,9 @@ describe('CCD105: código, variantes, resumo e exclusão em lote', () => {
   });
 
   it('R9: os filtros de franquia e raridade se somam ao de ano', async () => {
-    const otherFranchise = await createCategory(`${MARKER} outra franquia ${crypto.randomUUID().slice(0, 6)}`);
+    const otherFranchise = await createCategory(
+      `${MARKER} outra franquia ${crypto.randomUUID().slice(0, 6)}`,
+    );
     const kept = (await createCardWith({ code: codeOf('r9') })).body as Created;
     await createCardWith({ categoryId: otherFranchise.id });
     const { categoryId, rarityId } = publishable;
