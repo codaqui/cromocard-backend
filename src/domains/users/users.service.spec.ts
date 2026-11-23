@@ -5,6 +5,7 @@ import type { DateRange } from '@/shared/utils/time-zone';
 import { UserNotFoundError } from './users.errors';
 import type {
   Address,
+  MembersByRole,
   MonthlySignups,
   NewOauthAccount,
   NewPasswordAccount,
@@ -116,6 +117,12 @@ class InMemoryUsersRepository implements UsersRepository {
   countMembers(): Promise<number> {
     const members = this.users.filter((user) => !user.deletedAt && user.role !== 'ADMIN');
     return Promise.resolve(members.length);
+  }
+
+  countMembersByRole(): Promise<MembersByRole> {
+    const active = this.users.filter((user) => !user.deletedAt);
+    const countOf = (role: string) => active.filter((user) => user.role === role).length;
+    return Promise.resolve({ collectors: countOf('CUSTOMER'), sellers: countOf('SELLER') });
   }
 
   countSignupsByMonth(): Promise<MonthlySignups[]> {
@@ -257,6 +264,17 @@ describe('UsersService', () => {
     ];
 
     await expect(service.countMembers()).resolves.toBe(2);
+  });
+
+  it('CCD096 R10: separa os membros ativos em colecionadores e lojistas', async () => {
+    repository.users = [
+      buildUser({ role: 'CUSTOMER' }),
+      buildUser({ role: 'CUSTOMER', deletedAt: new Date() }),
+      buildUser({ role: 'SELLER' }),
+      buildUser({ role: 'ADMIN' }),
+    ];
+
+    await expect(service.countMembersByRole()).resolves.toEqual({ collectors: 1, sellers: 1 });
   });
 
   it('completa com zero os meses do período sem cadastros', async () => {

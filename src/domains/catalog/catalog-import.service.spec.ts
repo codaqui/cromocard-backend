@@ -4,9 +4,14 @@ import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.
 import { Prisma } from '@/generated/prisma/client';
 import type { ErrorDetail } from '@/shared/errors/app-error';
 
-import { CardNumberTakenError, CsvInvalidError } from './catalog.errors';
+import {
+  CARD_CATEGORY_MISMATCH_MESSAGE,
+  CardNumberTakenError,
+  CsvInvalidError,
+} from './catalog.errors';
 import { CARD_IMPORT_TEMPLATE } from './catalog-import.parser';
 import type {
+  AlbumReference,
   CardNumberRecord,
   CatalogImportRepository,
   ImportedCard,
@@ -21,24 +26,27 @@ function reference(name: string): NamedReference {
   return { id: crypto.randomUUID(), name };
 }
 
-function matchingNames(references: NamedReference[], names: string[]) {
+function matchingNames<T extends NamedReference>(references: T[], names: string[]): T[] {
   const wanted = names.map((name) => name.toLowerCase());
   return references.filter(({ name }) => wanted.includes(name.toLowerCase()));
 }
 
 class InMemoryCatalogImportRepository implements CatalogImportRepository {
-  albums = [reference('Copa 2026'), reference('Pokémon Base')];
-  categories = [reference('Futebol')];
+  categories = [reference('Futebol'), reference('Pokémon')];
+  albums: AlbumReference[] = [
+    { ...reference('Copa 2026'), categoryId: null },
+    { ...reference('Pokémon Base'), categoryId: this.categories[1]?.id ?? null },
+  ];
   rarities = [reference('Comum'), reference('Rara')];
   languages = [reference('pt-BR'), reference('en')];
   cardNumbers: CardNumberRecord[] = [];
   saved: ImportedCard[] = [];
 
-  findAlbumsByTitles(titles: string[]): Promise<NamedReference[]> {
+  findAlbumsByTitles(titles: string[]): Promise<AlbumReference[]> {
     return Promise.resolve(matchingNames(this.albums, titles));
   }
 
-  findCardCategoriesByNames(names: string[]): Promise<NamedReference[]> {
+  findCategoriesByNames(names: string[]): Promise<NamedReference[]> {
     return Promise.resolve(matchingNames(this.categories, names));
   }
 
@@ -176,13 +184,23 @@ describe('CatalogImportService', () => {
   });
 
   it('CA6: aponta o álbum com título repetido no catálogo como ambíguo', async () => {
-    repository.albums.push(reference('Copa 2026'));
+    repository.albums.push({ ...reference('Copa 2026'), categoryId: null });
 
     const errors = await importErrors(service.importCards(ADMIN_ID, csv('Copa 2026;1;Jogador;;;')));
 
     expect(errors).toEqual([
       { field: '2.album_title', message: '"Copa 2026" aparece mais de uma vez em álbuns' },
     ]);
+  });
+
+  it('L11: recusa a linha cuja franquia não é a do álbum e aceita a franquia certa', async () => {
+    const errors = await importErrors(
+      service.importCards(ADMIN_ID, csv('Pokémon Base;1;Pikachu;;;Futebol')),
+    );
+    const result = await service.importCards(ADMIN_ID, csv('Pokémon Base;2;Charizard;;;Pokémon'));
+
+    expect(errors).toEqual([{ field: '2.category', message: CARD_CATEGORY_MISMATCH_MESSAGE }]);
+    expect(result).toEqual({ created: 1 });
   });
 
   it('R7: o número de uma carta excluída restaura a mesma linha', async () => {

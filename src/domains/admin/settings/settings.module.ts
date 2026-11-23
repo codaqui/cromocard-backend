@@ -16,8 +16,10 @@ import { DefaultCategoriesSettingsService } from './settings-default-categories.
 
 const store = new SettingsStore(new PrismaSettingsRepository(prisma), auditLogService);
 
+const settingsService = new SettingsService({ store, runInTransaction, newId: randomUUID });
+
 const settingsController = new SettingsController(
-  new SettingsService({ store, runInTransaction, newId: randomUUID }),
+  settingsService,
   new DefaultCategoriesSettingsService({
     store,
     defaultCategories: defaultCategoriesService,
@@ -38,3 +40,5 @@ export const publicSettingsModule: DomainModule = {
   router: createPublicSettingsRoutes(settingsController),
   registerDocs: registerPublicSettingsDocs,
 };
+
+export { settingsService };

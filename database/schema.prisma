@@ -53,10 +53,12 @@ model User {
   reportsModerated                Report[]                 @relation("ReportModerator")
   reportsReceived                 Report[]                 @relation("ReportTargetUser")
   catalogRequests                 CatalogRequest[]         @relation("CatalogRequestRequester")
+  catalogRequestVotes             CatalogRequestVote[]
   reviewedCatalogRequests         CatalogRequest[]         @relation("CatalogRequestReviewer")
   performedAuditLogs              AuditLog[]
   updatedSettings                 GlobalSetting[]
   sentGlobalNotifications         GlobalNotification[]
+  reportExports                   ReportExport[]
   notifications                   Notification[]
   refreshTokens                   RefreshToken[]
   passwordResetTokens             PasswordResetToken[]
@@ -126,18 +128,10 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-enum CategoryType {
-  ALBUM
-  CARD
-
-  @@map("category_type")
-}
-
 model Category {
   id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
   parentCategoryId String?      @map("parent_category_id") @db.Uuid
   name             String       @db.VarChar(90)
-  type             CategoryType
   description      String?      @db.VarChar(255)
   isDefault        Boolean      @default(false) @map("is_default")
   slug             String?      @db.VarChar(100)
@@ -436,12 +430,37 @@ model CatalogRequest {
   updatedAt    DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt    DateTime?          @map("deleted_at") @db.Timestamptz(6)
 
-  requester  User   @relation("CatalogRequestRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_requester_id")
-  reviewedBy User?  @relation("CatalogRequestReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_reviewed_by_id")
-  card       Card?  @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_card_id")
-  album      Album? @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_album_id")
+  requester  User                 @relation("CatalogRequestRequester", fields: [requesterId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_requester_id")
+  reviewedBy User?                @relation("CatalogRequestReviewer", fields: [reviewedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_reviewed_by_id")
+  card       Card?                @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_card_id")
+  album      Album?               @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_requests_album_id")
+  votes      CatalogRequestVote[]
 
   @@map("catalog_requests")
+}
+
+enum CatalogVote {
+  FOR
+  NEUTRAL
+  AGAINST
+
+  @@map("catalog_vote")
+}
+
+/// Um voto por cliente em cada solicitação (CCD103, ADR-053).
+model CatalogRequestVote {
+  catalogRequestId String      @map("catalog_request_id") @db.Uuid
+  userId           String      @map("user_id") @db.Uuid
+  vote             CatalogVote
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  catalogRequest CatalogRequest @relation(fields: [catalogRequestId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_request_votes_catalog_request_id")
+  user           User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_catalog_request_votes_user_id")
+
+  @@id([catalogRequestId, userId])
+  @@map("catalog_request_votes")
 }
 
 model AuditLog {
@@ -476,19 +495,43 @@ model GlobalSetting {
 }
 
 model GlobalNotification {
-  id             String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  adminId        String    @map("admin_id") @db.Uuid
-  title          String    @db.VarChar(120)
-  content        String    @db.VarChar(500)
-  recipientCount Int       @default(0) @map("recipient_count")
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id             String                     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  adminId        String                     @map("admin_id") @db.Uuid
+  title          String                     @db.VarChar(120)
+  content        String                     @db.VarChar(500)
+  recipientCount Int                        @default(0) @map("recipient_count")
+  referenceLink  String?                    @map("reference_link") @db.VarChar(255)
+  audience       String                     @default("ALL") @db.VarChar(30)
+  channels       String                     @default("IN_APP") @db.VarChar(60)
+  status         NotificationDispatchStatus @default(SENT)
+  scheduledAt    DateTime?                  @map("scheduled_at") @db.Timestamptz(6)
+  sentAt         DateTime?                  @map("sent_at") @db.Timestamptz(6)
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?                  @map("deleted_at") @db.Timestamptz(6)
 
   admin         User           @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_global_notifications_admin_id")
   notifications Notification[]
 
   @@map("global_notifications")
+}
+
+model ReportExport {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  adminId    String    @map("admin_id") @db.Uuid
+  reportType String    @map("report_type") @db.VarChar(60)
+  filters    Json?     @db.JsonB
+  format     String    @db.VarChar(10)
+  fileUrl    String    @map("file_url") @db.VarChar(255)
+  fileSize   Int?      @map("file_size")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_report_exports_admin_id")
+
+  @@map("report_exports")
 }
 
 model Notification {
@@ -553,6 +596,14 @@ model SellerVerification {
   notes     SellerVerificationNote[]
 
   @@map("seller_verifications")
+}
+
+enum NotificationDispatchStatus {
+  SCHEDULED
+  SENT
+  CANCELED
+
+  @@map("notification_dispatch_status")
 }
 
 enum SellerDocumentStatus {

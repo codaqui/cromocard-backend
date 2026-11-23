@@ -130,6 +130,11 @@ export interface MonthlySignups {
   sellers: number;
 }
 
+export interface MembersByRole {
+  collectors: number;
+  sellers: number;
+}
+
 const sellerSummarySelect = {
   id: true,
   name: true,
@@ -174,6 +179,7 @@ export interface UsersRepository {
   countWarningsByUserId(userId: string): Promise<number>;
   reactivateExpiredSuspensions(now: Date): Promise<number>;
   countMembers(): Promise<number>;
+  countMembersByRole(): Promise<MembersByRole>;
   countSignupsByMonth(query: SignupsQuery): Promise<MonthlySignups[]>;
   findSellersCreatedWithin(range: DateRange, pagination: PaginationQuery): Promise<SellersPage>;
   findCredentialsByEmailIncludingDeleted(email: string): Promise<UserCredentials | null>;
@@ -351,6 +357,16 @@ export class PrismaUsersRepository implements UsersRepository {
 
   countMembers(): Promise<number> {
     return this.prisma.user.count({ where: activeMembers });
+  }
+
+  async countMembersByRole(): Promise<MembersByRole> {
+    const groups = await this.prisma.user.groupBy({
+      by: ['role'],
+      where: { ...notDeleted, role: { in: ['CUSTOMER', 'SELLER'] } },
+      _count: { _all: true },
+    });
+    const countOf = (role: string) => groups.find((group) => group.role === role)?._count._all ?? 0;
+    return { collectors: countOf('CUSTOMER'), sellers: countOf('SELLER') };
   }
 
   countSignupsByMonth({ range: { from, to }, timeZone }: SignupsQuery): Promise<MonthlySignups[]> {

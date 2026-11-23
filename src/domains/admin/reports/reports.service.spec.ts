@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ReportExporter, ReportTable } from './exporters/report-table';
+import type { ReportArchiveEntry } from './report-exports.service';
 import { ReportEmptyError } from './reports.errors';
 import type {
   CatalogRow,
@@ -73,11 +74,18 @@ function setup(rows = { signups, catalog, sellerAudit }) {
     Promise.resolve({ rows: rows.sellerAudit, total: rows.sellerAudit.length }),
   );
   const record = vi.fn(() => Promise.resolve());
+  const archive = vi.fn((_entry: ReportArchiveEntry) => Promise.resolve());
   const repository: ReportsRepository = { findSignups, findCatalog, findSellerAudit };
   const auditLogService: ReportsAuditLog = { record };
   const exporters = { csv: fakeExporter('csv'), pdf: fakeExporter('pdf') };
-  const service = new ReportsService({ repository, auditLogService, exporters, now: () => NOW });
-  return { service, findSignups, findCatalog, findSellerAudit, record, exporters };
+  const service = new ReportsService({
+    repository,
+    auditLogService,
+    archive: { archive },
+    exporters,
+    now: () => NOW,
+  });
+  return { service, findSignups, findCatalog, findSellerAudit, record, archive, exporters };
 }
 
 describe('ReportsService', () => {
@@ -199,6 +207,36 @@ describe('ReportsService', () => {
       });
     });
 
+    it('CCD107 CA1: guarda o arquivo exportado no histórico com os filtros usados', async () => {
+      const { service, archive } = setup();
+
+      const file = await service.export({
+        type: 'signups',
+        query: { period: '7d', format: 'csv' },
+        adminId: ADMIN_ID,
+      });
+
+      expect(archive).toHaveBeenCalledWith({
+        adminId: ADMIN_ID,
+        type: 'signups',
+        format: 'csv',
+        filters: { period: '7d', from: '2026-11-10T03:00:00.000Z', to: NOW.toISOString() },
+        file,
+      });
+    });
+
+    it('CCD107: intervalo de datas fica sem período pronto nos filtros', async () => {
+      const { service, archive } = setup();
+
+      await service.export({
+        type: 'catalog',
+        query: { from: '2026-10-01T03:00:00Z', to: '2026-11-01T02:59:59Z', format: 'pdf' },
+        adminId: ADMIN_ID,
+      });
+
+      expect(archive.mock.calls[0]?.[0].filters.period).toBeNull();
+    });
+
     it('CA3: exporta em PDF com título, período e data de geração', async () => {
       const { service, exporters } = setup();
 
@@ -219,7 +257,11 @@ describe('ReportsService', () => {
     });
 
     it('CA4/R12: sem dados no período, não gera arquivo nem grava auditoria', async () => {
-      const { service, record, exporters } = setup({ signups: [], catalog: [], sellerAudit: [] });
+      const { service, record, archive, exporters } = setup({
+        signups: [],
+        catalog: [],
+        sellerAudit: [],
+      });
 
       await expect(
         service.export({
@@ -230,6 +272,7 @@ describe('ReportsService', () => {
       ).rejects.toBeInstanceOf(ReportEmptyError);
       expect(exporters.csv.tables).toHaveLength(0);
       expect(record).not.toHaveBeenCalled();
+      expect(archive).not.toHaveBeenCalled();
     });
   });
 });

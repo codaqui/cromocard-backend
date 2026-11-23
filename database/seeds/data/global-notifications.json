@@ -1,0 +1,46 @@
+[
+  {
+    "key": "copa-agendada",
+    "admin": "admin",
+    "title": "Novo álbum disponível: Copa do Mundo 2026",
+    "content": "Monte o seu álbum da Copa do Mundo 2026 e marque as cartas que já tem. As figurinhas raras já estão no catálogo.",
+    "link": "/albuns/copa-do-mundo-2026",
+    "audience": "ALL",
+    "channels": ["IN_APP"],
+    "status": "SCHEDULED",
+    "daysFromNow": 3
+  },
+  {
+    "key": "manutencao-sabado",
+    "admin": "admin",
+    "title": "Manutenção programada no sábado",
+    "content": "No sábado, das 2h às 4h, o CromoCard fica fora do ar para manutenção.",
+    "audience": "ALL",
+    "channels": ["IN_APP", "EMAIL"],
+    "status": "SENT",
+    "recipientCount": 12,
+    "daysFromNow": -6
+  },
+  {
+    "key": "regras-vendedores",
+    "admin": "admin",
+    "title": "Novas regras para vendedores",
+    "content": "Atualizamos as regras de anúncios do marketplace. Confira antes de publicar.",
+    "link": "/vendedor/regras",
+    "audience": "SELLERS",
+    "channels": ["IN_APP", "EMAIL"],
+    "status": "SENT",
+    "recipientCount": 2,
+    "daysFromNow": -14
+  },
+  {
+    "key": "completar-albuns",
+    "admin": "admin",
+    "title": "Volte a completar seus álbuns",
+    "content": "Faz tempo que você não aparece! Veja as cartas que faltam nos seus álbuns.",
+    "audience": "ACTIVE_COLLECTORS",
+    "channels": ["IN_APP"],
+    "status": "CANCELED",
+    "daysFromNow": -22
+  }
+]
