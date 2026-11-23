@@ -69,6 +69,7 @@ model User {
   addresses                       Address[]
   warningsReceived                UserWarning[]            @relation("UserWarningTarget")
   warningsGiven                   UserWarning[]            @relation("UserWarningAdmin")
+  listings                        Listing[]
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -129,18 +130,18 @@ model RefreshToken {
 }
 
 model Category {
-  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  parentCategoryId String?      @map("parent_category_id") @db.Uuid
-  name             String       @db.VarChar(90)
-  description      String?      @db.VarChar(255)
-  isDefault        Boolean      @default(false) @map("is_default")
-  slug             String?      @db.VarChar(100)
-  displayOrder     Int          @default(0) @map("display_order")
-  isPinned         Boolean      @default(false) @map("is_pinned")
-  badge            String?      @db.VarChar(20)
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
+  id               String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  parentCategoryId String?   @map("parent_category_id") @db.Uuid
+  name             String    @db.VarChar(90)
+  description      String?   @db.VarChar(255)
+  isDefault        Boolean   @default(false) @map("is_default")
+  slug             String?   @db.VarChar(100)
+  displayOrder     Int       @default(0) @map("display_order")
+  isPinned         Boolean   @default(false) @map("is_pinned")
+  badge            String?   @db.VarChar(20)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_categories_parent_category_id")
   subcategories  Category[] @relation("CategoryHierarchy")
@@ -206,27 +207,30 @@ model Album {
 }
 
 model Card {
-  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  albumId       String?   @map("album_id") @db.Uuid
-  categoryId    String?   @map("category_id") @db.Uuid
-  rarityId      String?   @map("rarity_id") @db.Uuid
-  languageId    String?   @map("language_id") @db.Uuid
-  name          String    @db.VarChar(160)
-  number        String?   @db.VarChar(20)
+  id            String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  albumId       String?    @map("album_id") @db.Uuid
+  categoryId    String?    @map("category_id") @db.Uuid
+  rarityId      String?    @map("rarity_id") @db.Uuid
+  languageId    String?    @map("language_id") @db.Uuid
+  name          String     @db.VarChar(160)
+  number        String?    @db.VarChar(20)
   description   String?
-  frontImageUrl String?   @map("front_image_url") @db.VarChar(255)
-  backImageUrl  String?   @map("back_image_url") @db.VarChar(255)
-  code          String?   @db.VarChar(30)
-  variants      String?   @db.VarChar(120)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  frontImageUrl String?    @map("front_image_url") @db.VarChar(255)
+  backImageUrl  String?    @map("back_image_url") @db.VarChar(255)
+  code          String?    @db.VarChar(30)
+  variants      String?    @db.VarChar(120)
+  status        CardStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
   album           Album?           @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_album_id")
   category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_category_id")
   rarity          Rarity?          @relation(fields: [rarityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_rarity_id")
   language        Language?        @relation(fields: [languageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_language_id")
   photos          CardPhoto[]
+  listings        Listing[]
+  priceHistory    PriceHistory[]
   groupMessages   GroupMessage[]
   catalogRequests CatalogRequest[]
 
@@ -648,4 +652,74 @@ model SellerVerificationNote {
   author             User               @relation("SellerVerificationNoteAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_seller_verification_notes_author_id")
 
   @@map("seller_verification_notes")
+}
+
+enum CardStatus {
+  DRAFT
+  ACTIVE
+
+  @@map("card_status")
+}
+
+enum ListingStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+
+  @@map("listing_status")
+}
+
+enum PriceSource {
+  SALE
+  LISTING
+
+  @@map("price_source")
+}
+
+model CardCondition {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name      String    @unique @db.VarChar(60)
+  sortOrder Int       @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  listings Listing[]
+
+  @@map("card_conditions")
+}
+
+model Listing {
+  id                String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  sellerId          String        @map("seller_id") @db.Uuid
+  cardId            String        @map("card_id") @db.Uuid
+  conditionId       String?       @map("condition_id") @db.Uuid
+  price             Decimal       @db.Decimal(10, 2)
+  availableQuantity Int           @default(1) @map("available_quantity")
+  description       String?
+  status            ListingStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  seller    User           @relation(fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_seller_id")
+  card      Card           @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_card_id")
+  condition CardCondition? @relation(fields: [conditionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_condition_id")
+
+  @@map("listings")
+}
+
+model PriceHistory {
+  id            String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  cardId        String      @map("card_id") @db.Uuid
+  price         Decimal     @db.Decimal(10, 2)
+  referenceDate DateTime    @map("reference_date") @db.Date
+  source        PriceSource
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_price_history_card_id")
+
+  @@map("price_history")
 }
