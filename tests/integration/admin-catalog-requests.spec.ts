@@ -75,7 +75,7 @@ beforeAll(async () => {
     create: { name: 'Português', code: 'pt-BR' },
   });
   const franchise = await prisma.category.create({
-    data: { name: `${MARKER} franquia`, type: 'CARD' },
+    data: { name: `${MARKER} franquia` },
   });
   const album = await prisma.album.create({ data: { title: `${MARKER} álbum` } });
   albumId = album.id;
@@ -165,7 +165,7 @@ describe('Solicitações de catálogo (CCD064)', () => {
   });
 
   it('CA4: recusa com motivo, some das pendentes e avisa com o motivo', async () => {
-    const id = await suggest('CATEGORY', { name: `${MARKER} Fórmula 1`, type: 'ALBUM' });
+    const id = await suggest('CATEGORY', { name: `${MARKER} Fórmula 1` });
 
     const res = await asAdmin().post(`/${id}/reject`, REASON);
 
@@ -180,13 +180,13 @@ describe('Solicitações de catálogo (CCD064)', () => {
   });
 
   it('CA4: recusar sem motivo responde 400', async () => {
-    const id = await suggest('CATEGORY', { name: `${MARKER} Sem motivo`, type: 'ALBUM' });
+    const id = await suggest('CATEGORY', { name: `${MARKER} Sem motivo` });
 
     expect((await asAdmin().post(`/${id}/reject`, {})).status).toBe(400);
   });
 
   it('CA5: aprovar de novo responde 409 com quem analisou e quando', async () => {
-    const id = await suggest('CATEGORY', { name: `${MARKER} Lorcana`, type: 'CARD' });
+    const id = await suggest('CATEGORY', { name: `${MARKER} Lorcana` });
     await asAdmin().post(`/${id}/approve`);
 
     const res = await asAdmin().post(`/${id}/approve`);

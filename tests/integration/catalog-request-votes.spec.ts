@@ -46,7 +46,7 @@ async function suggest(type: 'ALBUM' | 'CATEGORY' | 'CARD', data: Prisma.InputJs
 }
 
 const category = (name: string, extra: Prisma.InputJsonObject = {}) =>
-  suggest('CATEGORY', { name: `${MARKER} ${name}`, type: 'CARD', ...extra });
+  suggest('CATEGORY', { name: `${MARKER} ${name}`, ...extra });
 
 const as = (token: string) => ({ Authorization: `Bearer ${token}` });
 const vote = (id: string, value: string, token = tokens.customer) =>
@@ -223,10 +223,10 @@ describe('Quórum, checklist e subcategorias na fila (CCD103)', () => {
     const parentId = dataOf<AdminItem>(res).createdItem!.id;
     const children = await prisma.category.findMany({
       where: { parentCategoryId: parentId },
-      select: { name: true, type: true },
+      select: { name: true },
       orderBy: { name: 'asc' },
     });
-    expect(children).toEqual([...subcategories].sort().map((name) => ({ name, type: 'CARD' })));
+    expect(children).toEqual([...subcategories].sort().map((name) => ({ name })));
     expect(errorOf(await vote(id, 'FOR'))).toBe('VOTING_CLOSED');
   });
 });
