@@ -59,18 +59,19 @@ async function createAlbum(title = `${MARKER} álbum ${crypto.randomUUID()}`) {
   return (res.body as Created).data;
 }
 
-function createCard(albumId: string, number: string) {
+function createCard(albumId: string, number: string, categoryId = publishable.categoryId) {
   return asAdmin().post('/cards', {
     name: `${MARKER} carta ${number}`,
     number,
     albumId,
     frontImageUrl: FRONT_IMAGE_URL,
     ...publishable,
+    categoryId,
   });
 }
 
-async function createCategory(name: string, type: 'ALBUM' | 'CARD', parentCategoryId?: string) {
-  const res = await asAdmin().post('/categories', { name, type, parentCategoryId });
+async function createCategory(name: string, parentCategoryId?: string) {
+  const res = await asAdmin().post('/categories', { name, parentCategoryId });
   return { ...(res.body as Created).data, name };
 }
 
@@ -105,7 +106,7 @@ beforeAll(async () => {
     create: { name: 'Português', code: 'pt-BR' },
   });
   const franchise = await prisma.category.create({
-    data: { name: `${MARKER} franquia`, type: 'CARD' },
+    data: { name: `${MARKER} franquia` },
   });
   publishable = { categoryId: franchise.id, rarityId: rarity.id, languageId: language.id };
 });
@@ -146,6 +147,22 @@ describe('cartas', () => {
     expect(list.body).toMatchObject({
       data: [{ album: { id: album.id, publisher: null, year: null, totalCards: 1 } }],
     });
+  });
+
+  it('R3: busca a carta pelo nome e pelo número, com a categoria e a raridade', async () => {
+    const album = await createAlbum();
+    const number = `B${crypto.randomUUID().slice(0, 6)}`;
+    const created = await createCard(album.id, number);
+    const id = (created.body as Created).data.id;
+    const filters = `categoryId=${publishable.categoryId}&rarityId=${publishable.rarityId}`;
+
+    const byName = await asAdmin().get(
+      `/cards?q=${encodeURIComponent(`carta ${number}`)}&${filters}`,
+    );
+    const byNumber = await asAdmin().get(`/cards?q=${number.toLowerCase()}`);
+
+    expect((byName.body as ListBody).data.map((card) => card.id)).toEqual([id]);
+    expect((byNumber.body as ListBody).data.map((card) => card.id)).toEqual([id]);
   });
 
   it('R14: o cadastro grava a auditoria com o admin', async () => {
@@ -269,6 +286,34 @@ describe('total de cartas do álbum', () => {
 });
 
 describe('álbuns e categorias', () => {
+  it('R3: filtra os álbuns pelo título, pela franquia e pelo ano', async () => {
+    const suffix = crypto.randomUUID().slice(0, 6);
+    const football = await createCategory(`${MARKER} Futebol ${suffix}`);
+    const title = `${MARKER} Copa ${suffix}`;
+    await asAdmin().post('/albums', { title, categoryId: football.id, year: 2026 });
+    await asAdmin().post('/albums', {
+      title: `${title} antiga`,
+      categoryId: football.id,
+      year: 2022,
+    });
+
+    const query = `q=${encodeURIComponent(title)}&categoryId=${football.id}&year=2026`;
+    const res = await asAdmin().get(`/albums?${query}`);
+
+    expect((res.body as ListBody).meta.total).toBe(1);
+  });
+
+  it('R5: editar o álbum sem mexer na franquia mantém a franquia das cartas', async () => {
+    const album = await createAlbum();
+    const card = (await createCard(album.id, '1')).body as Created;
+
+    const res = await asAdmin().patch(`/albums/${album.id}`, { publisher: 'Panini' });
+    const stored = await prisma.card.findUniqueOrThrow({ where: { id: card.data.id } });
+
+    expect(res.status).toBe(200);
+    expect(stored.categoryId).toBe(publishable.categoryId);
+  });
+
   it('CA4: álbum com cartas não é excluído e informa o motivo', async () => {
     const album = await createAlbum();
     await createCard(album.id, '1');
@@ -291,9 +336,8 @@ describe('álbuns e categorias', () => {
   });
 
   it('R11: categoria com álbum não é excluída', async () => {
-    const category = (
-      await asAdmin().post('/categories', { name: `${MARKER} futebol`, type: 'ALBUM' })
-    ).body as Created;
+    const category = (await asAdmin().post('/categories', { name: `${MARKER} futebol` }))
+      .body as Created;
     await asAdmin().post('/albums', {
       title: `${MARKER} com categoria`,
       categoryId: category.data.id,
@@ -308,7 +352,7 @@ describe('álbuns e categorias', () => {
   it('CA6: cadastra com o slug gerado do nome e o selo escolhido', async () => {
     const name = `${MARKER} Pokémon ${crypto.randomUUID().slice(0, 6)}`;
 
-    const res = await asAdmin().post('/categories', { name, type: 'CARD', badge: 'TRENDING' });
+    const res = await asAdmin().post('/categories', { name, badge: 'TRENDING' });
 
     expect(res.status).toBe(201);
     expect((res.body as Created).data).toMatchObject({
@@ -319,14 +363,13 @@ describe('álbuns e categorias', () => {
 
   it('CA13: o índice parcial recusa o slug de uma ativa e aceita o de uma excluída', async () => {
     const name = `${MARKER} One Piece ${crypto.randomUUID().slice(0, 6)}`;
-    const first = (await asAdmin().post('/categories', { name, type: 'CARD' })).body as Created;
+    const first = (await asAdmin().post('/categories', { name })).body as Created;
 
     const duplicate = await asAdmin().post('/categories', {
       name: name.toUpperCase(),
-      type: 'CARD',
     });
     await asAdmin().delete(`/categories/${first.data.id}`);
-    const recreated = await asAdmin().post('/categories', { name, type: 'CARD' });
+    const recreated = await asAdmin().post('/categories', { name });
 
     expect(duplicate.status).toBe(409);
     expect(duplicate.body).toMatchObject({
@@ -339,14 +382,14 @@ describe('álbuns e categorias', () => {
 
   it('CA1: a quantidade de cartas soma as da categoria, as dos álbuns e as das subcategorias', async () => {
     const suffix = crypto.randomUUID().slice(0, 6);
-    const root = await createCategory(`${MARKER} Futebol ${suffix}`, 'ALBUM');
-    const child = await createCategory(`${MARKER} Copa ${suffix}`, 'ALBUM', root.id);
-    const franchise = await createCategory(`${MARKER} Magic ${suffix}`, 'CARD');
+    const root = await createCategory(`${MARKER} Futebol ${suffix}`);
+    const child = await createCategory(`${MARKER} Copa ${suffix}`, root.id);
+    const franchise = await createCategory(`${MARKER} Magic ${suffix}`);
     const album = (
       await asAdmin().post('/albums', { title: `${MARKER} Copa ${suffix}`, categoryId: child.id })
     ).body as Created;
-    await createCard(album.data.id, '1');
-    const removed = (await createCard(album.data.id, '2')).body as Created;
+    await createCard(album.data.id, '1', child.id);
+    const removed = (await createCard(album.data.id, '2', child.id)).body as Created;
     await asAdmin().delete(`/cards/${removed.data.id}`);
     await asAdmin().post('/cards', {
       name: `${MARKER} avulsa ${suffix}`,
@@ -363,7 +406,7 @@ describe('álbuns e categorias', () => {
 
   it('CA15: a busca pelo slug encontra a categoria', async () => {
     const suffix = crypto.randomUUID().slice(0, 6);
-    const category = await createCategory(`${MARKER} Magic: The Gathering ${suffix}`, 'CARD');
+    const category = await createCategory(`${MARKER} Magic: The Gathering ${suffix}`);
 
     const bySlug = await asAdmin().get(
       `/categories?q=${encodeURIComponent(`magic-the-gathering-${suffix}`)}`,
@@ -379,33 +422,59 @@ describe('álbuns e categorias', () => {
 
   it('CA12: renomear refaz o slug e libera o antigo', async () => {
     const name = `${MARKER} Yu-Gi-Oh ${crypto.randomUUID().slice(0, 6)}`;
-    const created = (await asAdmin().post('/categories', { name, type: 'CARD' })).body as Created;
+    const created = (await asAdmin().post('/categories', { name })).body as Created;
 
     const renamed = await asAdmin().patch(`/categories/${created.data.id}`, {
       name: `${name} TCG`,
     });
-    const reused = await asAdmin().post('/categories', { name, type: 'CARD' });
+    const reused = await asAdmin().post('/categories', { name });
 
     expect((renamed.body as Created).data).toMatchObject({ slug: slugify(`${name} TCG`) });
     expect(reused.status).toBe(201);
   });
 
-  it('L6: lista só as categorias do tipo pedido', async () => {
-    const name = `${MARKER} tipo ${crypto.randomUUID()}`;
-    await asAdmin().post('/categories', { name: `${name} carta`, type: 'CARD' });
-    await asAdmin().post('/categories', { name: `${name} álbum`, type: 'ALBUM' });
+  it('L11: a carta segue a franquia do álbum, inclusive quando o álbum troca de franquia', async () => {
+    const football = await createCategory(`${MARKER} Futebol ${crypto.randomUUID().slice(0, 6)}`);
+    const album = await createAlbum();
+    const card = (await createCard(album.id, '1')).body as Created;
 
-    const cards = await asAdmin().get(`/categories?q=${encodeURIComponent(name)}&type=CARD`);
-    const invalid = await asAdmin().get('/categories?type=FIGURINHA');
+    const moved = await asAdmin().patch(`/albums/${album.id}`, { categoryId: football.id });
+    const stored = await prisma.card.findUniqueOrThrow({ where: { id: card.data.id } });
+    const mismatch = await asAdmin().patch(`/cards/${card.data.id}`, {
+      categoryId: publishable.categoryId,
+    });
 
-    expect(namesOf(cards.body)).toEqual([`${name} carta`]);
-    expect(invalid.status).toBe(400);
+    expect(moved.status).toBe(200);
+    expect(stored.categoryId).toBe(football.id);
+    expect(mismatch.status).toBe(422);
+    expect((mismatch.body as ErrorBody).error).toBe('CARD_CATEGORY_MISMATCH');
+  });
+
+  it('L11: tirar a franquia do álbum mantém a franquia das cartas dele', async () => {
+    const album = await createAlbum();
+    await asAdmin().patch(`/albums/${album.id}`, { categoryId: publishable.categoryId });
+    const card = (await createCard(album.id, '1')).body as Created;
+
+    const cleared = await asAdmin().patch(`/albums/${album.id}`, { categoryId: null });
+    const stored = await prisma.card.findUniqueOrThrow({ where: { id: card.data.id } });
+
+    expect(cleared.status).toBe(200);
+    expect(stored.categoryId).toBe(publishable.categoryId);
+  });
+
+  it('L11: a busca de categorias não aceita mais o filtro por tipo', async () => {
+    const name = `${MARKER} sem tipo ${crypto.randomUUID()}`;
+    await asAdmin().post('/categories', { name });
+
+    const res = await asAdmin().get(`/categories?q=${encodeURIComponent(name)}&type=CARD`);
+
+    expect(res.status).toBe(200);
+    expect(namesOf(res.body)).toEqual([name]);
   });
 
   it('R15: categoria não pode ser pai dela mesma', async () => {
-    const category = (
-      await asAdmin().post('/categories', { name: `${MARKER} ciclo`, type: 'CARD' })
-    ).body as Created;
+    const category = (await asAdmin().post('/categories', { name: `${MARKER} ciclo` }))
+      .body as Created;
 
     const res = await asAdmin().patch(`/categories/${category.data.id}`, {
       parentCategoryId: category.data.id,
@@ -647,7 +716,7 @@ describe('permissão', () => {
 
     const asCustomer = await Promise.all([
       request(app).get(`${BASE}/categories`).set(customer),
-      request(app).post(`${BASE}/categories`).set(customer).send({ name: 'X', type: 'CARD' }),
+      request(app).post(`${BASE}/categories`).set(customer).send({ name: 'X' }),
       request(app).patch(`${BASE}/categories/${id}`).set(customer).send({ name: 'Y' }),
     ]);
     const anonymous = await request(app).get(`${BASE}/categories`);

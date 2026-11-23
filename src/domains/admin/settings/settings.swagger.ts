@@ -1,7 +1,6 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
 import { CATEGORY_BADGES } from '@/domains/catalog/catalog-default-categories.service';
-import { CategoryType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 
 import {
@@ -33,7 +32,6 @@ const settingView = z.object({
 const defaultCategoryView = z.object({
   id: z.uuid(),
   name: z.string(),
-  type: z.enum(CategoryType),
   slug: z.string().nullable(),
   badge: z.enum(CATEGORY_BADGES).nullable(),
   isPinned: z.boolean(),

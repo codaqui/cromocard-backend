@@ -5,6 +5,8 @@ import { createApp } from '@/app';
 import type { SellerVerificationStatus, UserRole } from '@/generated/prisma/enums';
 import { signAccessToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
+import { mailProvider } from '@/providers/mail/mail.factory';
+import type { InMemoryMailProvider } from '@/providers/mail/memory.mail-provider';
 
 interface SellerVerificationDetailBody {
   id: string;
@@ -43,6 +45,7 @@ interface SummaryResponse {
 }
 
 const app = createApp();
+const sentMails = (mailProvider as InMemoryMailProvider).sent;
 const createdUserIds: string[] = [];
 const createdVerificationIds: string[] = [];
 
@@ -508,5 +511,149 @@ describe('POST /api/v1/admin/seller-verifications/:id/reject', () => {
 
     expect(res.status).toBe(409);
     expect((res.body as ErrorResponse).error).toBe('VERIFICATION_ALREADY_DECIDED');
+  });
+});
+
+interface PendingNoticeResponse {
+  data: { sentAt: string; channels: string[]; emailDelivered: boolean };
+}
+
+const PENDING_TEMPLATES_KEY = 'seller.pending_templates';
+const pendingTemplates = [
+  { key: 'pix_key_mismatch', title: 'Chave Pix divergente do CNPJ', body: 'Olá, {nome}!' },
+];
+
+describe('GET /api/v1/admin/seller-verifications/pending-templates', () => {
+  it('R4/R12: devolve os modelos gravados em seller.pending_templates', async () => {
+    const admin = await createAdmin();
+    const previous = await prisma.globalSetting.findUnique({
+      where: { key: PENDING_TEMPLATES_KEY },
+    });
+    await prisma.globalSetting.upsert({
+      where: { key: PENDING_TEMPLATES_KEY },
+      create: { key: PENDING_TEMPLATES_KEY, value: JSON.stringify(pendingTemplates) },
+      update: { value: JSON.stringify(pendingTemplates), deletedAt: null },
+    });
+
+    try {
+      const res = await request(app)
+        .get('/api/v1/admin/seller-verifications/pending-templates')
+        .set('Authorization', bearer(admin));
+
+      expect(res.status).toBe(200);
+      expect((res.body as { data: unknown }).data).toEqual(pendingTemplates);
+    } finally {
+      await (previous
+        ? prisma.globalSetting.update({
+            where: { key: PENDING_TEMPLATES_KEY },
+            data: { value: previous.value, deletedAt: previous.deletedAt },
+          })
+        : prisma.globalSetting.delete({ where: { key: PENDING_TEMPLATES_KEY } }));
+    }
+  });
+
+  it('CA7: token de CUSTOMER responde 403', async () => {
+    const customer = { id: crypto.randomUUID(), role: 'CUSTOMER' as const };
+
+    const res = await request(app)
+      .get('/api/v1/admin/seller-verifications/pending-templates')
+      .set('Authorization', bearer(customer));
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/v1/admin/seller-verifications/:id/pending-notice', () => {
+  const message = 'A chave Pix informada não corresponde ao CNPJ do cadastro.';
+
+  it('CA3: deixa o cadastro Pendente com o prazo, notifica o vendedor, manda o e-mail e audita', async () => {
+    const admin = await createAdmin();
+    const { seller, verification } = await createVerification({ status: 'UNDER_REVIEW' });
+    const before = Date.now();
+
+    const res = await request(app)
+      .post(`/api/v1/admin/seller-verifications/${verification.id}/pending-notice`)
+      .set('Authorization', bearer(admin))
+      .send({ templateKey: 'pix_key_mismatch', message, deadlineHours: 48 });
+
+    expect(res.status).toBe(200);
+    const body = res.body as PendingNoticeResponse;
+    expect(body.data).toMatchObject({ channels: ['SITE', 'EMAIL'], emailDelivered: true });
+
+    const stored = await prisma.sellerVerification.findUniqueOrThrow({
+      where: { id: verification.id },
+    });
+    expect(stored.status).toBe('PENDING');
+    const deadlineMs = stored.regularizationDeadline!.getTime() - before;
+    expect(deadlineMs).toBeGreaterThanOrEqual(48 * 60 * 60 * 1000 - 1000);
+    expect(deadlineMs).toBeLessThanOrEqual(48 * 60 * 60 * 1000 + 60_000);
+
+    const notification = await prisma.notification.findFirstOrThrow({
+      where: { userId: seller.id, type: 'SELLER_PENDING' },
+    });
+    expect(notification.message).toBe(message);
+    const sent = sentMails.filter((mail) => mail.to === seller.email);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toContain('Você tem 48 horas para regularizar o cadastro.');
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: verification.id, action: 'SELLER_VERIFICATION_PENDING_NOTICE_SENT' },
+    });
+    expect(log.adminId).toBe(admin.id);
+    expect(log.details).toMatchObject({ templateKey: 'pix_key_mismatch', deadlineHours: 48 });
+  });
+
+  it('CA5: mensagem vazia responde 400 e nada é enviado', async () => {
+    const admin = await createAdmin();
+    const { seller, verification } = await createVerification({ status: 'UNDER_REVIEW' });
+
+    const res = await request(app)
+      .post(`/api/v1/admin/seller-verifications/${verification.id}/pending-notice`)
+      .set('Authorization', bearer(admin))
+      .send({ message: '   ', deadlineHours: 48 });
+
+    expect(res.status).toBe(400);
+    const stored = await prisma.sellerVerification.findUniqueOrThrow({
+      where: { id: verification.id },
+    });
+    expect(stored.status).toBe('UNDER_REVIEW');
+    expect(await prisma.notification.count({ where: { userId: seller.id } })).toBe(0);
+    expect(sentMails.filter((mail) => mail.to === seller.email)).toHaveLength(0);
+  });
+
+  it('cadastro já aprovado responde 409', async () => {
+    const admin = await createAdmin();
+    const { verification } = await createVerification({ status: 'APPROVED' });
+
+    const res = await request(app)
+      .post(`/api/v1/admin/seller-verifications/${verification.id}/pending-notice`)
+      .set('Authorization', bearer(admin))
+      .send({ message, deadlineHours: 24 });
+
+    expect(res.status).toBe(409);
+    expect((res.body as ErrorResponse).error).toBe('VERIFICATION_ALREADY_DECIDED');
+  });
+
+  it('cadastro inexistente responde 404', async () => {
+    const admin = await createAdmin();
+
+    const res = await request(app)
+      .post(`/api/v1/admin/seller-verifications/${crypto.randomUUID()}/pending-notice`)
+      .set('Authorization', bearer(admin))
+      .send({ message, deadlineHours: 24 });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('CA7: token de CUSTOMER responde 403', async () => {
+    const customer = { id: crypto.randomUUID(), role: 'CUSTOMER' as const };
+    const { verification } = await createVerification({ status: 'UNDER_REVIEW' });
+
+    const res = await request(app)
+      .post(`/api/v1/admin/seller-verifications/${verification.id}/pending-notice`)
+      .set('Authorization', bearer(customer))
+      .send({ message, deadlineHours: 24 });
+
+    expect(res.status).toBe(403);
   });
 });

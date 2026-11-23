@@ -8,6 +8,10 @@ export interface NamedReference {
   name: string;
 }
 
+export interface AlbumReference extends NamedReference {
+  categoryId: string | null;
+}
+
 export interface CardNumberRecord {
   id: string;
   albumId: string | null;
@@ -26,8 +30,8 @@ export interface ImportedCard {
 }
 
 export interface CatalogImportRepository {
-  findAlbumsByTitles(titles: string[]): Promise<NamedReference[]>;
-  findCardCategoriesByNames(names: string[]): Promise<NamedReference[]>;
+  findAlbumsByTitles(titles: string[]): Promise<AlbumReference[]>;
+  findCategoriesByNames(names: string[]): Promise<NamedReference[]>;
   findRarities(): Promise<NamedReference[]>;
   findLanguagesByCode(): Promise<NamedReference[]>;
   findCardNumbersIncludingDeleted(albumIds: string[]): Promise<CardNumberRecord[]>;
@@ -41,17 +45,17 @@ function withoutRestoreId({ restoreId: _restoreId, ...card }: ImportedCard) {
 export class PrismaCatalogImportRepository implements CatalogImportRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async findAlbumsByTitles(titles: string[]): Promise<NamedReference[]> {
+  async findAlbumsByTitles(titles: string[]): Promise<AlbumReference[]> {
     const albums = await this.prisma.album.findMany({
       where: { ...notDeleted, title: { in: titles, mode: 'insensitive' } },
-      select: { id: true, title: true },
+      select: { id: true, title: true, categoryId: true },
     });
-    return albums.map(({ id, title }) => ({ id, name: title }));
+    return albums.map(({ id, title, categoryId }) => ({ id, name: title, categoryId }));
   }
 
-  findCardCategoriesByNames(names: string[]): Promise<NamedReference[]> {
+  findCategoriesByNames(names: string[]): Promise<NamedReference[]> {
     return this.prisma.category.findMany({
-      where: { ...notDeleted, type: 'CARD', name: { in: names, mode: 'insensitive' } },
+      where: { ...notDeleted, name: { in: names, mode: 'insensitive' } },
       select: { id: true, name: true },
     });
   }

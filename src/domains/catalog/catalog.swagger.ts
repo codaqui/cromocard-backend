@@ -7,7 +7,6 @@ import {
   bulkDeleteCardsSchema,
   catalogItemIdParamSchema,
   CATEGORY_BADGES,
-  categoryTypeSchema,
   createAlbumSchema,
   createCardSchema,
   createCategorySchema,
@@ -81,7 +80,6 @@ const cardResponse = z.object({
 const categoryResponse = z.object({
   id: z.uuid(),
   name: z.string(),
-  type: categoryTypeSchema,
   slug: z.string().nullable(),
   badge: z.enum(CATEGORY_BADGES).nullable(),
   cardsCount: count,

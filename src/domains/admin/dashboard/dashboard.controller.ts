@@ -12,6 +12,11 @@ export class DashboardController {
     ok(res, await this.dashboardService.getSummary(dashboardQuerySchema.parse(req.query)));
   };
 
+  getSignupsEvolution = async (req: Request, res: Response): Promise<void> => {
+    const query = dashboardQuerySchema.parse(req.query);
+    ok(res, await this.dashboardService.getSignupsEvolution(query));
+  };
+
   listRecentSellers = async (req: Request, res: Response): Promise<void> => {
     const query = recentSellersQuerySchema.parse(req.query);
     const { items, meta } = await this.dashboardService.listRecentSellers(query);

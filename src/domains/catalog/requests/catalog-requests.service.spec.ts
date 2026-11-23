@@ -21,9 +21,11 @@ import type {
   ReferenceIds,
   ReviewInput,
 } from './catalog-requests.repository';
+import type { VoteCounts } from './catalog-request-votes.repository';
 import {
   type CatalogRequestsCatalog,
   CatalogRequestsService,
+  type CatalogRequestsVotes,
   type RequesterNotice,
   codeOf,
   itemNameOf,
@@ -39,6 +41,10 @@ const FRANCHISE_ID = '0199a000-0000-7000-8000-000000000011';
 const RARITY_ID = '0199a000-0000-7000-8000-000000000012';
 const LANGUAGE_ID = '0199a000-0000-7000-8000-000000000013';
 const CREATED_ID = '0199a000-0000-7000-8000-000000000099';
+const COMMON_ID = '0199a000-0000-7000-8000-000000000021';
+const RARE_ID = '0199a000-0000-7000-8000-000000000023';
+const EPIC_ID = '0199a000-0000-7000-8000-000000000024';
+const UNKNOWN_RARITY_ID = '0199a000-0000-7000-8000-000000000029';
 const QUERY: ListCatalogRequestsQuery = { page: 1, pageSize: 10, status: 'PENDING' };
 const TX = { id: 'tx' } as unknown as Transaction;
 
@@ -73,6 +79,8 @@ class FakeRepository implements CatalogRequestsRepository {
   transactions: { write: string; tx?: Transaction }[] = [];
   lastQuery?: ListCatalogRequestsQuery;
   lastReferenceIds?: ReferenceIds;
+  lastRarityIds?: string[];
+  /** Simula outro admin analisando a solicitação entre a leitura e a gravação. */
   stolenBy?: CatalogRequestRecord['reviewedBy'];
 
   findPage(query: ListCatalogRequestsQuery) {
@@ -97,8 +105,22 @@ class FakeRepository implements CatalogRequestsRepository {
         [FRANCHISE_ID, 'Pokémon'],
         [RARITY_ID, 'Lendária'],
         [LANGUAGE_ID, 'Japonês'],
+        [COMMON_ID, 'Comum'],
+        [RARE_ID, 'Rara'],
+        [EPIC_ID, 'Épica'],
       ]),
     );
+  }
+
+  findRarityRanks(rarityIds: string[]) {
+    this.lastRarityIds = rarityIds;
+    const ranks: [string, { name: string; sortOrder: number }][] = [
+      [COMMON_ID, { name: 'Comum', sortOrder: 1 }],
+      [RARE_ID, { name: 'Rara', sortOrder: 3 }],
+      [EPIC_ID, { name: 'Épica', sortOrder: 4 }],
+      [RARITY_ID, { name: 'Lendária', sortOrder: 5 }],
+    ];
+    return Promise.resolve(new Map(ranks.filter(([id]) => rarityIds.includes(id))));
   }
 
   markReviewed(id: string, { status, reviewedById, data }: ReviewInput, tx?: Transaction) {
@@ -153,7 +175,9 @@ class FakeCatalog implements CatalogRequestsCatalog {
   cards: CreateCardInput[] = [];
   albums: CreateAlbumInput[] = [];
   categories: CreateCategoryInput[] = [];
+  deletedCategories: string[] = [];
   failWith?: Error;
+  failCategoryAt?: number;
 
   createCard(_adminId: string, input: CreateCardInput) {
     if (this.failWith) return Promise.reject(this.failWith);
@@ -167,8 +191,36 @@ class FakeCatalog implements CatalogRequestsCatalog {
   }
 
   createCategory(_adminId: string, input: CreateCategoryInput) {
+    if (this.categories.length === this.failCategoryAt) {
+      return Promise.reject(new Error(`Falhou a categoria ${input.name}`));
+    }
+    const id =
+      this.categories.length === 0
+        ? CREATED_ID
+        : `${CREATED_ID.slice(0, -2)}0${this.categories.length}`;
     this.categories.push(input);
-    return Promise.resolve({ id: CREATED_ID, name: input.name });
+    return Promise.resolve({ id, name: input.name });
+  }
+
+  deleteCategory(_adminId: string, id: string) {
+    this.deletedCategories.push(id);
+    return Promise.resolve();
+  }
+}
+
+class FakeVotes implements CatalogRequestsVotes {
+  counts = new Map<string, VoteCounts>();
+  goalReads = 0;
+
+  countByRequest(ids: string[]) {
+    return Promise.resolve(
+      new Map(ids.flatMap((id) => (this.counts.has(id) ? [[id, this.counts.get(id)!]] : []))),
+    );
+  }
+
+  findVotingGoal() {
+    this.goalReads += 1;
+    return Promise.resolve(200);
   }
 }
 
@@ -176,6 +228,7 @@ describe('CatalogRequestsService', () => {
   let repository: FakeRepository;
   let catalog: FakeCatalog;
   let audits: RecordAuditLogInput[];
+  let votes: FakeVotes;
   let auditTransactions: (Transaction | undefined)[];
   let notifier: FakeNotifier;
   let service: CatalogRequestsService;
@@ -190,6 +243,7 @@ describe('CatalogRequestsService', () => {
     audits = [];
     auditTransactions = [];
     notifier = new FakeNotifier();
+    votes = new FakeVotes();
     service = new CatalogRequestsService({
       repository,
       catalog,
@@ -199,6 +253,7 @@ describe('CatalogRequestsService', () => {
           return Promise.resolve(audits.push(input));
         },
       },
+      votes,
       notifier,
       runInTransaction: (work) => work(TX),
     });
@@ -224,12 +279,126 @@ describe('CatalogRequestsService', () => {
     });
 
     it('não procura nomes de referências que a sugestão não tem', async () => {
-      store({ type: 'CATEGORY', data: { name: 'Fórmula 1', type: 'ALBUM' } });
+      store({ type: 'CATEGORY', data: { name: 'Fórmula 1' } });
 
       const { items } = await service.list(QUERY);
 
       expect(repository.lastReferenceIds?.albumIds).toEqual([]);
       expect(items[0]?.references).toEqual({});
+    });
+  });
+
+  describe('quórum e checklist (CCD103)', () => {
+    it('CA4: meta de 200 e 340 votos mostra 340/200 (170%) e a divisão dos votos', async () => {
+      store({ type: 'CATEGORY', data: { name: 'Disney Lorcana TCG' } });
+      votes.counts.set(REQUEST_ID, { FOR: 331, NEUTRAL: 6, AGAINST: 3 });
+
+      const { items } = await service.list(QUERY);
+
+      expect(items[0]?.votes).toEqual({
+        for: 331,
+        neutral: 6,
+        against: 3,
+        total: 340,
+        goal: 200,
+        forPercent: 97.4,
+        goalPercent: 170,
+      });
+    });
+
+    it('categoria sem votos mostra zero, sem dividir por zero', async () => {
+      store({ type: 'CATEGORY', data: { name: 'Fórmula 1' } });
+      votes.counts.set(REQUEST_ID, { FOR: 0, NEUTRAL: 0, AGAINST: 0 });
+
+      const view = await service.find(REQUEST_ID);
+
+      expect(view.votes).toMatchObject({ total: 0, forPercent: 0, goalPercent: 0 });
+    });
+
+    it('carta e álbum não têm quórum, e a meta nem é lida', async () => {
+      const { items } = await service.list(QUERY);
+
+      expect(items[0]?.votes).toBeNull();
+      expect(votes.goalReads).toBe(0);
+    });
+
+    it('R11: resume o checklist pelo total e pelas três raridades mais altas, com o nome de cada uma', async () => {
+      const checklist = [
+        { number: '001', code: 'JU-001', name: 'Clefable', rarityId: RARITY_ID, variants: 'Holo' },
+        { number: '002', code: 'JU-002', name: 'Electrode', rarityId: EPIC_ID, variants: '' },
+        { number: '003', code: 'JU-003', name: 'Flareon', rarityId: EPIC_ID, variants: '' },
+        { number: '017', code: 'JU-017', name: 'Jolteon', rarityId: RARE_ID, variants: '' },
+        { number: '051', code: 'JU-051', name: 'Eevee', rarityId: COMMON_ID, variants: '' },
+      ];
+      const withoutRarity = { number: '090', code: 'JU-090', name: 'Sem raridade' };
+      const unknownRarity = {
+        number: '091',
+        code: 'JU-091',
+        name: 'Raridade apagada',
+        rarityId: UNKNOWN_RARITY_ID,
+      };
+      store({
+        type: 'ALBUM',
+        data: { title: 'Pokémon Jungle', checklist: [...checklist, withoutRarity, unknownRarity] },
+      });
+
+      const view = await service.find(REQUEST_ID);
+
+      expect(view.checklistSummary).toEqual({
+        total: 7,
+        rarities: [
+          { name: 'Lendária', count: 1 },
+          { name: 'Épica', count: 2 },
+          { name: 'Rara', count: 1 },
+        ],
+      });
+      expect(view.data.checklist).toMatchObject([...checklist, withoutRarity, unknownRarity]);
+      expect((view.data.checklist as { rarity: string }[]).map(({ rarity }) => rarity)).toEqual([
+        'Lendária',
+        'Épica',
+        'Épica',
+        'Rara',
+        'Comum',
+        undefined,
+        undefined,
+      ]);
+      expect(repository.lastRarityIds).toEqual([
+        RARITY_ID,
+        EPIC_ID,
+        RARE_ID,
+        COMMON_ID,
+        UNKNOWN_RARITY_ID,
+      ]);
+    });
+
+    it('CA6: baixa o checklist do álbum sugerido em CSV, com o nome da raridade', async () => {
+      const checklist = [
+        { number: '001', code: 'JU-001', name: 'Clefable', rarityId: RARITY_ID, variants: 'Holo' },
+      ];
+      store({ type: 'ALBUM', data: { title: 'Pokémon Jungle', checklist } });
+
+      const file = await service.checklist(REQUEST_ID);
+
+      expect(file.fileName).toBe('checklist-SOL-88A2.csv');
+      expect(file.content.split('\r\n')[1]).toBe('001;JU-001;Clefable;Lendária;Holo');
+    });
+
+    it('carta ou álbum sem checklist não tem planilha (CHECKLIST_NOT_FOUND)', async () => {
+      await expect(service.checklist(REQUEST_ID)).rejects.toMatchObject({
+        code: 'CHECKLIST_NOT_FOUND',
+      });
+      store({ type: 'ALBUM', data: { title: 'Pokémon Jungle' } });
+      await expect(service.checklist(REQUEST_ID)).rejects.toMatchObject({
+        code: 'CHECKLIST_NOT_FOUND',
+      });
+    });
+
+    it('álbum sem checklist não tem resumo', async () => {
+      store({ type: 'ALBUM', data: { title: 'Pokémon Jungle' } });
+
+      const view = await service.find(REQUEST_ID);
+
+      expect(view.checklistSummary).toBeNull();
     });
   });
 
@@ -252,6 +421,7 @@ describe('CatalogRequestsService', () => {
         type: 'CARD',
         id: CREATED_ID,
         name: 'Pikachu Promo Illustrator',
+        subcategoryIds: [],
       });
       expect(stored()).toMatchObject({ status: 'APPROVED', cardId: CREATED_ID });
       expect(stored().reviewedBy?.id).toBe(ADMIN_ID);
@@ -294,16 +464,68 @@ describe('CatalogRequestsService', () => {
     });
 
     it('aprovar uma categoria cria a categoria e guarda o id em data.createdCategoryId', async () => {
-      store({ type: 'CATEGORY', data: { name: 'Fórmula 1', type: 'ALBUM' } });
+      store({ type: 'CATEGORY', data: { name: 'Fórmula 1' } });
 
       await service.approve(REQUEST_ID, ADMIN_ID);
 
-      expect(catalog.categories).toEqual([{ name: 'Fórmula 1', type: 'ALBUM' }]);
+      expect(catalog.categories).toEqual([{ name: 'Fórmula 1' }]);
       expect(stored().data).toEqual({
         name: 'Fórmula 1',
-        type: 'ALBUM',
         createdCategoryId: CREATED_ID,
+        createdSubcategoryIds: [],
       });
+    });
+
+    it('CA5 (CCD103): aprovar a categoria cria as 3 subcategorias ligadas a ela', async () => {
+      const subcategories = ['The First Chapter', 'Rise of the Floodborn', 'Into the Inklands'];
+      store({
+        type: 'CATEGORY',
+        data: { name: 'Disney Lorcana TCG', subcategories },
+      });
+
+      const result = await service.approve(REQUEST_ID, ADMIN_ID);
+
+      expect(catalog.categories).toEqual([
+        { name: 'Disney Lorcana TCG' },
+        ...subcategories.map((name) => ({ name, parentCategoryId: CREATED_ID })),
+      ]);
+      expect(result.createdItem.subcategoryIds).toHaveLength(3);
+      expect(stored().data).toMatchObject({
+        createdSubcategoryIds: result.createdItem.subcategoryIds,
+      });
+      expect(audits[0]?.details).toMatchObject({
+        subcategoryIds: result.createdItem.subcategoryIds,
+      });
+    });
+
+    it('R12: se uma subcategoria falha, desfaz as que já foram criadas e a categoria', async () => {
+      catalog.failCategoryAt = 2;
+      store({
+        type: 'CATEGORY',
+        data: { name: 'Disney Lorcana TCG', subcategories: ['Ursula', 'Mickey'] },
+      });
+
+      await expect(service.approve(REQUEST_ID, ADMIN_ID)).rejects.toThrow(
+        'Falhou a categoria Mickey',
+      );
+
+      expect(catalog.deletedCategories).toEqual([`${CREATED_ID.slice(0, -2)}01`, CREATED_ID]);
+      expect(stored().status).toBe('PENDING');
+      expect(audits).toEqual([]);
+    });
+
+    it('subcategorias repetidas tornam a sugestão incompleta e nada é criado', async () => {
+      store({
+        type: 'CATEGORY',
+        data: { name: 'Disney Lorcana TCG', subcategories: ['Ursula', 'ursula'] },
+      });
+
+      await expect(service.approve(REQUEST_ID, ADMIN_ID)).rejects.toMatchObject({
+        code: 'REQUEST_DATA_INCOMPLETE',
+        details: [{ field: 'subcategories', message: 'As subcategorias não podem se repetir.' }],
+      });
+      expect(catalog.categories).toEqual([]);
+      expect(stored().status).toBe('PENDING');
     });
 
     it('CA5: recusa aprovar de novo e informa quem analisou e quando', async () => {

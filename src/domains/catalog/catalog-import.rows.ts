@@ -1,7 +1,13 @@
 import type { ErrorDetail } from '@/shared/errors/app-error';
 
+import { CARD_CATEGORY_MISMATCH_MESSAGE } from './catalog.errors';
 import type { CardImportColumn, CardImportRow, LineErrors } from './catalog-import.parser';
-import type { CardNumberRecord, ImportedCard, NamedReference } from './catalog-import.repository';
+import type {
+  AlbumReference,
+  CardNumberRecord,
+  ImportedCard,
+  NamedReference,
+} from './catalog-import.repository';
 
 export type NameIndex = Map<string, string[]>;
 
@@ -23,7 +29,7 @@ interface ResolvedReference {
 
 const REFERENCE_GROUPS: Record<ReferenceColumn, string> = {
   album_title: 'álbuns',
-  category: 'categorias de carta',
+  category: 'categorias',
   rarity: 'raridades',
   language: 'idiomas (use o código, como pt-BR)',
 };
@@ -71,6 +77,25 @@ export function resolveReferences(row: CardImportRow, indexes: ReferenceIndexes)
     },
     errors: [album, category, rarity, language].flatMap(({ error }) => (error ? [error] : [])),
   };
+}
+
+export type AlbumCategories = Map<string, string | null>;
+
+export function categoriesOfAlbums(albums: AlbumReference[]): AlbumCategories {
+  return new Map(albums.map(({ id, categoryId }) => [id, categoryId]));
+}
+
+function checkRowCategory(row: ResolvedRow, albumCategories: AlbumCategories): ResolvedRow {
+  const { albumId, categoryId } = row.card;
+  const albumCategoryId = albumId ? albumCategories.get(albumId) : null;
+  if (!categoryId || !albumCategoryId || albumCategoryId === categoryId) return row;
+
+  const error = { field: `${row.line}.category`, message: CARD_CATEGORY_MISMATCH_MESSAGE };
+  return { ...row, errors: [...row.errors, error] };
+}
+
+export function checkCategories(rows: ResolvedRow[], albums: AlbumCategories): ResolvedRow[] {
+  return rows.map((row) => checkRowCategory(row, albums));
 }
 
 function numberKey(albumId: string, number: string): string {

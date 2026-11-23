@@ -3,6 +3,9 @@ import type { CatalogAuditLog } from './catalog.ports';
 import { type CardImportRow, parseCardImport } from './catalog-import.parser';
 import type { CatalogImportRepository } from './catalog-import.repository';
 import {
+  type AlbumCategories,
+  categoriesOfAlbums,
+  checkCategories,
   checkNumbers,
   errorsInLineOrder,
   indexByName,
@@ -10,6 +13,11 @@ import {
   resolveReferences,
   type ResolvedRow,
 } from './catalog-import.rows';
+
+interface LoadedReferences {
+  indexes: ReferenceIndexes;
+  albumCategories: AlbumCategories;
+}
 
 export interface CardImportResult {
   created: number;
@@ -47,27 +55,28 @@ export class CatalogImportService {
   }
 
   private async resolveRows(rows: CardImportRow[]): Promise<ResolvedRow[]> {
-    const indexes = await this.loadIndexes(rows);
+    const { indexes, albumCategories } = await this.loadIndexes(rows);
     const withReferences = rows.map((row) => resolveReferences(row, indexes));
     const existing = await this.repository.findCardNumbersIncludingDeleted(
       albumIdsOf(withReferences),
     );
-    return checkNumbers(withReferences, existing);
+    return checkNumbers(checkCategories(withReferences, albumCategories), existing);
   }
 
-  private async loadIndexes(rows: CardImportRow[]): Promise<ReferenceIndexes> {
+  private async loadIndexes(rows: CardImportRow[]): Promise<LoadedReferences> {
     const [albums, categories, rarities, languages] = await Promise.all([
       this.repository.findAlbumsByTitles(distinctValues(rows, 'album_title')),
-      this.repository.findCardCategoriesByNames(distinctValues(rows, 'category')),
+      this.repository.findCategoriesByNames(distinctValues(rows, 'category')),
       this.repository.findRarities(),
       this.repository.findLanguagesByCode(),
     ]);
 
-    return {
+    const indexes = {
       album_title: indexByName(albums),
       category: indexByName(categories),
       rarity: indexByName(rarities),
       language: indexByName(languages),
     };
+    return { indexes, albumCategories: categoriesOfAlbums(albums) };
   }
 }

@@ -10,6 +10,7 @@ export function createDashboardRoutes(controller: DashboardController): Router {
 
   router.use(authenticate, authorize('ADMIN'));
   router.get('/', controller.getSummary);
+  router.get('/signups-evolution', controller.getSignupsEvolution);
   router.get('/recent-sellers', controller.listRecentSellers);
 
   return router;

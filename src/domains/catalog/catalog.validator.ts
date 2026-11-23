@@ -1,4 +1,4 @@
-import { AlbumStatus, CategoryType } from '@/generated/prisma/enums';
+import { AlbumStatus } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 import { reasonSchema } from '@/shared/validators/reason';
@@ -77,11 +77,7 @@ export const bulkDeleteCardsSchema = z.object({
   reason: reasonSchema,
 });
 
-export const categoryTypeSchema = z.enum(CategoryType);
-
-export const listCategoriesQuerySchema = searchQuerySchema.extend({
-  type: categoryTypeSchema.optional(),
-});
+export const listCategoriesQuerySchema = searchQuerySchema;
 
 export const createAlbumSchema = z.object({
   title: requiredText(ALBUM_TITLE_MAX_LENGTH),
@@ -115,7 +111,6 @@ export const CATEGORY_BADGES = ['STANDARD', 'TRENDING'] as const;
 
 export const createCategorySchema = z.object({
   name: requiredText(CATEGORY_NAME_MAX_LENGTH),
-  type: categoryTypeSchema,
   parentCategoryId: optionalReference,
   description: optionalText(CATEGORY_DESCRIPTION_MAX_LENGTH),
   badge: z.enum(CATEGORY_BADGES).nullable().optional(),

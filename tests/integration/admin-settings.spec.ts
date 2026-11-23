@@ -63,7 +63,7 @@ async function storedValue(key: string): Promise<unknown> {
 async function createCategory(name: string, extra: object = {}) {
   const fullName = `${MARKER} ${name}`;
   const row = await prisma.category.create({
-    data: { name: fullName, slug: slugify(fullName), type: 'CARD', ...extra },
+    data: { name: fullName, slug: slugify(fullName), ...extra },
   });
   return row.id;
 }

@@ -10,7 +10,16 @@
       "category": "pokemon",
       "rarity": "lendaria",
       "language": "ja",
-      "frontImageUrl": "https://images.pokemontcg.io/basep/1_hires.png"
+      "frontImageUrl": "https://images.pokemontcg.io/basep/1_hires.png",
+      "illustrator": "Atsuko Nishida",
+      "estimatedPopulation": 39,
+      "justification": "Essa carta foi entregue aos vencedores do concurso de ilustração de 1998 no Japão e ainda não está no catálogo. Tenho uma e quero registrá-la na minha coleção.",
+      "sources": [
+        {
+          "label": "PokéBeach Archive Database #PKB-98ILL",
+          "url": "https://www.pokebeach.com/"
+        }
+      ]
     }
   },
   {
@@ -45,17 +54,101 @@
     "requester": "bruno",
     "type": "ALBUM",
     "data": {
-      "category": "pokemon-tcg",
+      "category": "pokemon",
       "title": "Pokémon Jungle",
       "publisher": "Wizards of the Coast",
-      "year": 1999
+      "year": 1999,
+      "coverImageUrl": "https://images.pokemontcg.io/base2/logo.png",
+      "checklist": [
+        {
+          "number": "001",
+          "code": "JU-001",
+          "name": "Clefable",
+          "rarity": "lendaria",
+          "variants": "Holo"
+        },
+        {
+          "number": "002",
+          "code": "JU-002",
+          "name": "Electrode",
+          "rarity": "epica",
+          "variants": "Holo"
+        },
+        {
+          "number": "003",
+          "code": "JU-003",
+          "name": "Flareon",
+          "rarity": "epica",
+          "variants": "Holo"
+        },
+        {
+          "number": "017",
+          "code": "JU-017",
+          "name": "Jolteon",
+          "rarity": "rara",
+          "variants": "Primeira edição"
+        },
+        {
+          "number": "033",
+          "code": "JU-033",
+          "name": "Butterfree",
+          "rarity": "incomum",
+          "variants": ""
+        },
+        {
+          "number": "051",
+          "code": "JU-051",
+          "name": "Eevee",
+          "rarity": "comum",
+          "variants": ""
+        },
+        {
+          "number": "060",
+          "code": "JU-060",
+          "name": "Pikachu",
+          "rarity": "comum",
+          "variants": "Bochecha vermelha"
+        }
+      ]
     }
   },
   {
     "key": "formula-1",
     "requester": "carla",
     "type": "CATEGORY",
-    "data": { "name": "Fórmula 1", "type": "ALBUM" }
+    "data": {
+      "name": "Fórmula 1",
+      "description": "Cards e figurinhas oficiais da Fórmula 1, com pilotos, equipes e circuitos de cada temporada."
+    }
+  },
+  {
+    "key": "disney-lorcana",
+    "requester": "ana",
+    "type": "CATEGORY",
+    "data": {
+      "name": "Disney Lorcana TCG",
+      "publisher": "Ravensburger",
+      "description": "Card game da Disney publicado pela Ravensburger, com coleções desde 2023. Muitos colecionadores pedem para organizar as cartas no CromoCard.",
+      "subcategories": [
+        "The First Chapter",
+        "Rise of the Floodborn",
+        "Into the Inklands",
+        "Ursula's Return",
+        "Shimmering Skies"
+      ],
+      "sampleLogo": true
+    }
+  },
+  {
+    "key": "gundam-card-game",
+    "requester": "elisa",
+    "type": "CATEGORY",
+    "data": {
+      "name": "Gundam Card Game",
+      "publisher": "Bandai",
+      "description": "Novo card game oficial de Gundam lançado pela Bandai em 2025, com coleções em japonês e inglês.",
+      "subcategories": ["Newtype Rising", "Dual Impact"]
+    }
   },
   {
     "key": "pokemon-fossil",

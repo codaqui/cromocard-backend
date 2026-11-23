@@ -191,12 +191,15 @@ describe('filtro por ano e exclusão em lote', () => {
 });
 
 describe('createCategorySchema', () => {
-  it('R15: aceita categoria com nome e tipo', () => {
-    expect(createCategorySchema.safeParse({ name: 'Futebol', type: 'ALBUM' }).success).toBe(true);
+  it('R15: aceita categoria só com o nome, sem tipo (L11)', () => {
+    expect(createCategorySchema.safeParse({ name: 'Futebol' }).success).toBe(true);
+    expect(createCategorySchema.parse({ name: 'Futebol', type: 'ALBUM' })).not.toHaveProperty(
+      'type',
+    );
   });
 
   it('R15: aceita a descrição opcional e recusa acima de 255 caracteres', () => {
-    const category = { name: 'Futebol', type: 'ALBUM' };
+    const category = { name: 'Futebol' };
 
     expect(createCategorySchema.parse({ ...category, description: ' Copas ' }).description).toBe(
       'Copas',
@@ -207,7 +210,7 @@ describe('createCategorySchema', () => {
   });
 
   it('R10: aceita o selo STANDARD, TRENDING ou nulo e recusa outro valor', () => {
-    const category = { name: 'Futebol', type: 'ALBUM' };
+    const category = { name: 'Futebol' };
     const parse = (badge: unknown) => createCategorySchema.safeParse({ ...category, badge });
 
     expect([parse('STANDARD').success, parse('TRENDING').success, parse(null).success]).toEqual([
@@ -219,11 +222,9 @@ describe('createCategorySchema', () => {
     expect(createCategorySchema.parse(category).badge).toBeUndefined();
   });
 
-  it('R15: recusa tipo fora do enum e nome acima de 90 caracteres', () => {
-    expect(createCategorySchema.safeParse({ name: 'Futebol', type: 'GAME' }).success).toBe(false);
-    expect(createCategorySchema.safeParse({ name: 'a'.repeat(91), type: 'CARD' }).success).toBe(
-      false,
-    );
+  it('R15: recusa nome vazio e acima de 90 caracteres', () => {
+    expect(createCategorySchema.safeParse({ name: '' }).success).toBe(false);
+    expect(createCategorySchema.safeParse({ name: 'a'.repeat(91) }).success).toBe(false);
   });
 });
 

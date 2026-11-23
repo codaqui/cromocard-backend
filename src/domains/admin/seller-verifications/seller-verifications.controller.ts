@@ -13,9 +13,25 @@ import {
   sellerVerificationIdParamSchema,
 } from './seller-verifications.validator';
 import type { SellerVerificationsService } from './seller-verifications.service';
+import type { PendingNoticeService } from './pending-notice.service';
+import { sendPendingNoticeSchema } from './pending-notice.validator';
 
 export class SellerVerificationsController {
-  constructor(private readonly service: SellerVerificationsService) {}
+  constructor(
+    private readonly service: SellerVerificationsService,
+    private readonly pendingNoticeService: PendingNoticeService,
+  ) {}
+
+  listPendingTemplates = async (_req: Request, res: Response): Promise<void> => {
+    ok(res, await this.pendingNoticeService.listTemplates());
+  };
+
+  sendPendingNotice = async (req: Request, res: Response): Promise<void> => {
+    const { id } = sellerVerificationIdParamSchema.parse(req.params);
+    const { id: adminId } = getAuthenticatedUser(req);
+    const input = sendPendingNoticeSchema.parse(req.body);
+    ok(res, await this.pendingNoticeService.send(id, adminId, input));
+  };
 
   list = async (req: Request, res: Response): Promise<void> => {
     const query = listSellerVerificationsQuerySchema.parse(req.query);

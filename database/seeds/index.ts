@@ -3,7 +3,7 @@ import { logger } from '@/config/logger';
 import { prisma } from '@/lib/prisma';
 import { createStorageProvider } from '@/providers/storage/storage.factory';
 
-import { seedAdmin, uploadSampleBanner } from './admin.seed';
+import { seedAdmin, uploadSampleImages } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
 import { seedCommunity } from './community.seed';
 import { seedOptionsFrom } from './seed-options';
@@ -25,10 +25,8 @@ async function seed(): Promise<void> {
   await seedCatalog(prisma);
   await seedCommunity(prisma);
   await seedSellerVerifications(prisma);
-  const bannerImageUrl = options.isLocalDatabase
-    ? await uploadSampleBanner(createStorageProvider())
-    : undefined;
-  await seedAdmin(prisma, bannerImageUrl);
+  const images = options.isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
+  await seedAdmin(prisma, images);
 
   logger.info(
     options.isLocalDatabase

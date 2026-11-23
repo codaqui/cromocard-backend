@@ -18,6 +18,7 @@ const testEnv = {
   MAIL_DRIVER: 'memory',
   DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://teste:teste@localhost:5432/teste',
   STORAGE_LOCAL_DIR: path.join(os.tmpdir(), 'cromocard-test-uploads'),
+  STORAGE_LOCAL_PRIVATE_DIR: path.join(os.tmpdir(), 'cromocard-test-private'),
 };
 
 export default defineConfig({

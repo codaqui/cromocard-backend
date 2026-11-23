@@ -7,7 +7,7 @@ import {
 
 import type { PeriodPreset, PeriodQuery } from './dashboard.validator';
 
-const DEFAULT_PERIOD: PeriodPreset = '30d';
+export const DEFAULT_PERIOD: PeriodPreset = '30d';
 
 const daysIncludingToday: Record<PeriodPreset, number> = {
   today: 1,
