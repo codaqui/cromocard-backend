@@ -5,6 +5,7 @@ import {
   homeBannerSchema,
   monthlySignupGoalSchema,
   notificationTemplatesSchema,
+  pendingTemplatesSchema,
   SETTING_KEYS,
   votingGoalSchema,
 } from '@/domains/admin/settings/setting-schemas';
@@ -65,6 +66,7 @@ const globalSettingsSchema = z.object({
   monthlySignupGoal: describedSetting(monthlySignupGoalSchema),
   votingGoal: describedSetting(votingGoalSchema),
   defaultBacks: describedSetting(defaultBacksSchema),
+  sellerPendingTemplates: describedSetting(pendingTemplatesSchema),
 });
 
 const auditLogsSchema = z.array(
@@ -194,9 +196,19 @@ function seedTemplates() {
   }));
 }
 
+function describedSettingRows(): Prisma.GlobalSettingCreateManyInput[] {
+  const { monthlySignupGoal, votingGoal, defaultBacks, sellerPendingTemplates } = globalSettings;
+  const described: [string, { value: unknown; description: string }][] = [
+    [SETTING_KEYS.monthlySignupGoal, monthlySignupGoal],
+    [SETTING_KEYS.votingGoal, votingGoal],
+    [SETTING_KEYS.defaultBacks, defaultBacks],
+    [SETTING_KEYS.sellerPendingTemplates, sellerPendingTemplates],
+  ];
+  return described.map(([key, { value, description }]) => settingRow(key, value, description));
+}
+
 function buildGlobalSettings(bannerImageUrl?: string): Prisma.GlobalSettingCreateManyInput[] {
-  const { homeBanner, notificationTemplates, monthlySignupGoal, votingGoal, defaultBacks } =
-    globalSettings;
+  const { homeBanner, notificationTemplates } = globalSettings;
   const { description: bannerDescription, ctaPath, ...banner } = homeBanner;
   const bannerValue = homeBannerSchema.parse({
     ...banner,
@@ -211,13 +223,7 @@ function buildGlobalSettings(bannerImageUrl?: string): Prisma.GlobalSettingCreat
       seedTemplates(),
       notificationTemplates.description,
     ),
-    settingRow(
-      SETTING_KEYS.monthlySignupGoal,
-      monthlySignupGoal.value,
-      monthlySignupGoal.description,
-    ),
-    settingRow(SETTING_KEYS.votingGoal, votingGoal.value, votingGoal.description),
-    settingRow(SETTING_KEYS.defaultBacks, defaultBacks.value, defaultBacks.description),
+    ...describedSettingRows(),
   ];
 }
 

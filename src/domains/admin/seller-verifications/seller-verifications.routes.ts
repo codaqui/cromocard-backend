@@ -11,11 +11,13 @@ export function createSellerVerificationsRoutes(controller: SellerVerificationsC
   router.use(authenticate, authorize('ADMIN'));
   router.get('/', controller.list);
   router.get('/summary', controller.getSummary);
+  router.get('/pending-templates', controller.listPendingTemplates);
   router.get('/:id', controller.getById);
   router.post('/:id/documents/:documentId/validate', controller.validateDocument);
   router.post('/:id/notes', controller.addNote);
   router.post('/:id/approve', controller.approve);
   router.post('/:id/reject', controller.reject);
+  router.post('/:id/pending-notice', controller.sendPendingNotice);
 
   return router;
 }

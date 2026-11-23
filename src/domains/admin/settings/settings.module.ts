@@ -33,6 +33,8 @@ export const settingsModule: DomainModule = {
   registerDocs: registerSettingsDocs,
 };
 
+export { store as settingsStore };
+
 export const publicSettingsModule: DomainModule = {
   basePath: '/settings/public',
   router: createPublicSettingsRoutes(settingsController),

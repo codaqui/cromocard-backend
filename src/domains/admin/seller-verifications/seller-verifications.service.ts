@@ -1,6 +1,6 @@
 import type { PeriodQuery } from '@/domains/admin/dashboard/dashboard.validator';
-import { resolvePeriod } from '@/domains/admin/dashboard/dashboard.period';
 import type { AuditAction } from '@/domains/admin/audit-logs/audit-logs.validator';
+import { resolvePeriod } from '@/domains/admin/dashboard/dashboard.period';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import type { Paginated } from '@/shared/utils/pagination';
 import { buildPaginationMeta } from '@/shared/utils/pagination';
@@ -11,6 +11,7 @@ import {
   SellerVerificationNotFoundError,
   VerificationAlreadyDecidedError,
 } from './seller-verifications.errors';
+import type { AdminAuditLog, SellerNotifier } from './seller-verifications.ports';
 import type {
   DecisionUpdate,
   SellerVerificationDetail,
@@ -21,26 +22,6 @@ import type {
 import type { ListSellerVerificationsQuery } from './seller-verifications.validator';
 
 const SELLER_REVIEW_NOTIFICATION_TYPE = 'SELLER_REVIEW';
-
-export interface AdminAuditLog {
-  record(
-    entry: {
-      adminId: string;
-      action: AuditAction;
-      entityType: string;
-      entityId?: string;
-      reason?: string;
-    },
-    tx?: Transaction,
-  ): Promise<unknown>;
-}
-
-export interface SellerNotifier {
-  notify(
-    notification: { userId: string; title: string; message: string; type: string },
-    tx?: Transaction,
-  ): Promise<void>;
-}
 
 export interface SellerVerificationsServiceDeps {
   repository: SellerVerificationsRepository;

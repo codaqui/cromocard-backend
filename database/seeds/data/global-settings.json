@@ -33,5 +33,20 @@
   "defaultBacks": {
     "description": "Verso padrão de cada franquia, pelo id da categoria",
     "value": {}
+  },
+  "sellerPendingTemplates": {
+    "description": "Modelos de mensagem da pendência cadastral do vendedor (CCD095)",
+    "value": [
+      {
+        "key": "pix_key_mismatch",
+        "title": "Chave Pix divergente do CNPJ",
+        "body": "Olá, {nome}! A chave Pix informada no cadastro não corresponde ao CNPJ {cnpj}. Envie uma chave Pix no mesmo CNPJ do cadastro em até {prazo}."
+      },
+      {
+        "key": "address_missing",
+        "title": "Endereço não informado",
+        "body": "Olá, {nome}! Não encontramos o endereço comercial do CNPJ {cnpj} no seu cadastro. Informe o endereço em até {prazo}."
+      }
+    ]
   }
 }

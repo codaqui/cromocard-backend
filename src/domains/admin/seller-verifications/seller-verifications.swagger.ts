@@ -6,6 +6,7 @@ import {
   listSellerVerificationsQuerySchema,
   rejectSchema,
 } from './seller-verifications.validator';
+import { sendPendingNoticeSchema } from './pending-notice.validator';
 
 const tags = ['Credenciamento de Vendedores'];
 const security = [{ bearerAuth: [] }];
@@ -96,6 +97,32 @@ const sellerVerificationsPaths: RouteConfig[] = [
     responses: {
       200: { description: 'Credenciamento rejeitado' },
       400: { description: 'Motivo obrigatório' },
+      403: { description: 'Apenas administradores' },
+      404: { description: 'Credenciamento não encontrado' },
+      409: { description: 'Credenciamento já foi decidido' },
+    },
+  },
+  {
+    method: 'get',
+    path: '/admin/seller-verifications/pending-templates',
+    tags,
+    security,
+    summary: 'Lista os modelos de mensagem da pendência cadastral (seller.pending_templates)',
+    responses: {
+      200: { description: 'Modelos com key, title e body' },
+      403: { description: 'Apenas administradores' },
+    },
+  },
+  {
+    method: 'post',
+    path: '/admin/seller-verifications/{id}/pending-notice',
+    tags,
+    security,
+    summary: 'Avisa o vendedor de uma pendência no cadastro, no site e por e-mail, com prazo',
+    request: { body: { content: { 'application/json': { schema: sendPendingNoticeSchema } } } },
+    responses: {
+      200: { description: 'Pendência enviada; emailDelivered diz se o e-mail saiu' },
+      400: { description: 'Mensagem vazia ou prazo inválido' },
       403: { description: 'Apenas administradores' },
       404: { description: 'Credenciamento não encontrado' },
       409: { description: 'Credenciamento já foi decidido' },
