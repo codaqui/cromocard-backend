@@ -25,6 +25,7 @@ function setup(delivered: (range: DateRange) => DeliveredTotals = () => ({ cents
       Promise.resolve(ids.map((id) => ({ id, averagePriceCents: 15000, prices: 2 }))),
     ),
     groupStats: vi.fn(() => Promise.resolve([])),
+    dailyVolume: vi.fn(() => Promise.resolve({ rows: [], total: 0 })),
   };
   const repository: FinanceRepository = spies;
   const service = new FinanceService({ repository, now: () => NOW });
@@ -128,6 +129,15 @@ describe('FinanceService', () => {
 
       expect(spies.sellerStats).toHaveBeenCalledWith(['vendedor']);
       expect(spies.groupStats).toHaveBeenCalledWith(['grupo']);
+    });
+
+    it('R11: repassa o período e o limite do relatório de volume ao repository', async () => {
+      const { service, spies } = setup();
+      const range = { from: new Date(NOW.getTime() - 7 * DAY), to: NOW };
+
+      await service.dailyVolume(range, 10);
+
+      expect(spies.dailyVolume).toHaveBeenCalledWith(range, 10);
     });
   });
 

@@ -9,6 +9,7 @@ import {
 
 import type {
   CardStats,
+  DailyVolumePage,
   FinanceRepository,
   GroupStats,
   LedgerEntry,
@@ -104,6 +105,10 @@ export class FinanceService {
 
   groupStats(ids: string[]): Promise<GroupStats[]> {
     return this.deps.repository.groupStats(ids);
+  }
+
+  dailyVolume(range: DateRange, limit?: number): Promise<DailyVolumePage> {
+    return this.deps.repository.dailyVolume(range, limit);
   }
 
   private dayOf(date: string | undefined): DateRange {

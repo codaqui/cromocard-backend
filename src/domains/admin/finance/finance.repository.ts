@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@/generated/prisma/client';
 import { type PaginationQuery, toSkipTake } from '@/shared/utils/pagination';
-import type { DateRange } from '@/shared/utils/time-zone';
+import { BRASILIA_TIME_ZONE, type DateRange } from '@/shared/utils/time-zone';
 
 export type MovementType = 'PAYMENT' | 'RELEASE';
 
@@ -45,6 +45,18 @@ export interface GroupStats {
   activeNegotiations: number;
 }
 
+export interface DailyVolume {
+  day: string;
+  receivedCents: number;
+  releasedCents: number;
+  releasedOrders: number;
+}
+
+export interface DailyVolumePage {
+  rows: DailyVolume[];
+  total: number;
+}
+
 export interface FinanceRepository {
   custodyCents(): Promise<number>;
   deliveredTotals(range: DateRange): Promise<DeliveredTotals>;
@@ -52,6 +64,7 @@ export interface FinanceRepository {
   sellerStats(ids: string[]): Promise<SellerStats[]>;
   cardStats(ids: string[], since: Date): Promise<CardStats[]>;
   groupStats(ids: string[]): Promise<GroupStats[]>;
+  dailyVolume(range: DateRange, limit?: number): Promise<DailyVolumePage>;
 }
 
 const approvedPaymentOf = Prisma.sql`
@@ -67,6 +80,14 @@ const movementsOf = ({ from, to }: DateRange) => Prisma.sql`
     SELECT o.updated_at, 'RELEASE', o.id, o.buyer_id, o.seller_id, p.value
     ${approvedPaymentOf} AND o.status = 'DELIVERED' AND o.updated_at >= ${from} AND o.updated_at < ${to}
   )`;
+
+const dailyVolumeOf = (range: DateRange, limit?: number) => Prisma.sql`${movementsOf(range)}
+  SELECT to_char(at AT TIME ZONE ${BRASILIA_TIME_ZONE}, 'YYYY-MM-DD') AS day,
+    (COALESCE(SUM(value) FILTER (WHERE type = 'PAYMENT'), 0) * 100)::bigint AS received,
+    (COALESCE(SUM(value) FILTER (WHERE type = 'RELEASE'), 0) * 100)::bigint AS released,
+    (COUNT(*) FILTER (WHERE type = 'RELEASE'))::int AS orders,
+    (COUNT(*) OVER ())::int AS total
+  FROM movements GROUP BY 1 ORDER BY 1 LIMIT ${limit ?? null}`;
 
 type CentsRow = { cents: bigint };
 type DeliveredRow = CentsRow & { orders: number };
@@ -88,6 +109,20 @@ type SellerRow = {
 };
 type CardRow = { id: string; average: bigint | null; prices: number };
 type GroupRow = { id: string; volume: bigint; active: number };
+type DailyVolumeRow = {
+  day: string;
+  received: bigint;
+  released: bigint;
+  orders: number;
+  total: number;
+};
+
+const toDailyVolume = ({ day, received, released, orders }: DailyVolumeRow): DailyVolume => ({
+  day,
+  receivedCents: Number(received),
+  releasedCents: Number(released),
+  releasedOrders: orders,
+});
 
 const toLedgerEntry = ({ cents, ...entry }: LedgerRow): LedgerEntry => ({
   ...entry,
@@ -184,5 +219,10 @@ export class PrismaFinanceRepository implements FinanceRepository {
       negotiatedVolumeCents: Number(volume),
       activeNegotiations: active,
     }));
+  }
+
+  async dailyVolume(range: DateRange, limit?: number): Promise<DailyVolumePage> {
+    const rows = await this.prisma.$queryRaw<DailyVolumeRow[]>(dailyVolumeOf(range, limit));
+    return { rows: rows.map(toDailyVolume), total: rows[0]?.total ?? 0 };
   }
 }

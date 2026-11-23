@@ -240,6 +240,31 @@ describe('GET /api/v1/admin/finance/ledger', () => {
   });
 });
 
+describe('GET /api/v1/admin/reports/volume', () => {
+  it('CA7: o relatório traz o recebido em custódia e o liquidado por dia', async () => {
+    const res = await request(createApp())
+      .get('/api/v1/admin/reports/volume')
+      .query({ from: `${DAY}T00:00:00-03:00`, to: `${DAY}T23:59:59-03:00` })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      data: {
+        title: 'Volume Transacionado & Custódia',
+        rows: [
+          {
+            day: '10/06/2003',
+            received: 'R$ 80,00',
+            released: 'R$ 80,00',
+            releasedOrders: '1',
+          },
+        ],
+      },
+      meta: { total: 1 },
+    });
+  });
+});
+
 describe('estatísticas por vendedor, carta e grupo', () => {
   it('CA5: volume anunciado dos anúncios ativos e média das notas do vendedor', async () => {
     await createListing('50.00', 'ACTIVE', 2);
