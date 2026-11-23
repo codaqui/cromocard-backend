@@ -1,6 +1,10 @@
 import { AppError, type ErrorDetail } from '@/shared/errors/app-error';
 import { BusinessRuleError, ConflictError, NotFoundError } from '@/shared/errors/http-errors';
-import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
+import {
+  isUniqueConstraintError,
+  uniqueConstraintFields,
+  type UniqueIndexFields,
+} from '@/shared/errors/unique-constraint';
 
 export class AlbumNotFoundError extends NotFoundError {
   constructor() {
@@ -99,6 +103,27 @@ export class CardCategoryMismatchError extends BusinessRuleError {
 export function rejectDuplicateNumber(error: unknown): never {
   if (isUniqueConstraintError(error)) throw new CardNumberTakenError();
   throw error;
+}
+
+export class CardCodeTakenError extends ConflictError {
+  constructor(ownerName?: string) {
+    const owner = ownerName ?? 'outra carta';
+    super('Já existe uma carta com este código', 'CARD_CODE_TAKEN', [
+      { field: 'code', message: `Este código já está em uso por ${owner}.` },
+    ]);
+  }
+}
+
+const CARDS_UNIQUE_INDEXES: UniqueIndexFields = {
+  cards_code_key: ['code'],
+  cards_album_id_number_key: ['albumId', 'number'],
+};
+
+export function rejectDuplicateCard(error: unknown): never {
+  if (uniqueConstraintFields(error, CARDS_UNIQUE_INDEXES).includes('code')) {
+    throw new CardCodeTakenError();
+  }
+  return rejectDuplicateNumber(error);
 }
 
 export class CsvInvalidError extends AppError {

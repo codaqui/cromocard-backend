@@ -1,5 +1,5 @@
 import { CsvInvalidError, rejectDuplicateNumber } from './catalog.errors';
-import type { CatalogAuditLog } from './catalog.service';
+import type { CatalogAuditLog } from './catalog.ports';
 import { type CardImportRow, parseCardImport } from './catalog-import.parser';
 import type { CatalogImportRepository } from './catalog-import.repository';
 import {

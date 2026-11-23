@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RecordAuditLogInput } from '@/domains/admin/audit-logs/audit-logs.validator';
 import { Prisma } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 import { slugify } from '@/lib/slug';
 
 import type { Album, AlbumsPage, AlbumsRepository } from './catalog-albums.repository';
 import type {
   AlbumCardNumber,
   Card,
+  CardCodeOwner,
+  CardIdentity,
   CardNumberOwner,
   CardsPage,
   CardsRepository,
@@ -16,6 +19,7 @@ import {
   AlbumHasCardsError,
   AlbumNotFoundError,
   CardCategoryMismatchError,
+  CardCodeTakenError,
   CardInUseError,
   CardNotFoundError,
   CardNumberOfDeletedCardError,
@@ -27,7 +31,9 @@ import {
   RarityNotFoundError,
   SlugTakenError,
 } from './catalog.errors';
-import { CatalogService, type CardUsage } from './catalog.service';
+import type { CatalogSummary, CatalogSummaryRepository } from './catalog-summary.repository';
+import { type CardUsage, noCollectionsYet } from './catalog.ports';
+import { CatalogService } from './catalog.service';
 import type {
   CreateAlbumInput,
   CreateCardInput,
@@ -76,6 +82,8 @@ function buildCard(input: CreateCardInput): Stored<Card> {
     id: crypto.randomUUID(),
     name: input.name,
     number: input.number ?? null,
+    code: input.code ?? null,
+    variants: input.variants ?? null,
     description: input.description ?? null,
     frontImageUrl: input.frontImageUrl,
     backImageUrl: input.backImageUrl ?? null,
@@ -142,6 +150,7 @@ class InMemoryAlbumsRepository implements AlbumsRepository {
 
 class InMemoryCardsRepository implements CardsRepository {
   cards: Stored<Card>[] = [];
+  transactions: Transaction[] = [];
 
   findPage(): Promise<CardsPage> {
     const active = this.cards.filter((card) => !card.deletedAt);
@@ -158,6 +167,11 @@ class InMemoryCardsRepository implements CardsRepository {
   }: AlbumCardNumber): Promise<CardNumberOwner | null> {
     const owner = this.cards.find((card) => card.albumId === albumId && card.number === number);
     return Promise.resolve(owner ? { id: owner.id, deletedAt: owner.deletedAt } : null);
+  }
+
+  findActiveByCode(code: string): Promise<CardCodeOwner | null> {
+    const owner = this.cards.find((card) => card.code === code && !card.deletedAt);
+    return Promise.resolve(owner ? { id: owner.id, name: owner.name } : null);
   }
 
   create(input: CreateCardInput): Promise<Card> {
@@ -178,6 +192,19 @@ class InMemoryCardsRepository implements CardsRepository {
 
   softDelete(id: string): Promise<void> {
     findStored(this.cards, id).deletedAt = new Date();
+    return Promise.resolve();
+  }
+
+  findActiveIdentities(ids: string[]): Promise<CardIdentity[]> {
+    const found = this.cards.filter((card) => ids.includes(card.id) && !card.deletedAt);
+    return Promise.resolve(found.map(({ id, name, number }) => ({ id, name, number })));
+  }
+
+  softDeleteMany(ids: string[], tx: Transaction): Promise<void> {
+    this.transactions.push(tx);
+    this.cards
+      .filter((card) => ids.includes(card.id) && !card.deletedAt)
+      .forEach((card) => (card.deletedAt = new Date()));
     return Promise.resolve();
   }
 
@@ -268,9 +295,11 @@ class InMemoryReferencesRepository implements ReferencesRepository {
 
 class InMemoryAuditLog {
   entries: RecordAuditLogInput[] = [];
+  transactions: (Transaction | undefined)[] = [];
 
-  record(input: RecordAuditLogInput): Promise<void> {
+  record(input: RecordAuditLogInput, tx?: Transaction): Promise<void> {
     this.entries.push(input);
+    this.transactions.push(tx);
     return Promise.resolve();
   }
 
@@ -281,11 +310,28 @@ class InMemoryAuditLog {
 
 class InMemoryCardUsage implements CardUsage {
   usedCardIds = new Set<string>();
+  calls: string[][] = [];
 
-  isCardInCollections(cardId: string): Promise<boolean> {
-    return Promise.resolve(this.usedCardIds.has(cardId));
+  cardIdsInCollections(cardIds: string[]): Promise<string[]> {
+    this.calls.push(cardIds);
+    return Promise.resolve(cardIds.filter((id) => this.usedCardIds.has(id)));
   }
 }
+
+class FixedCatalogSummary implements CatalogSummaryRepository {
+  constructor(private readonly summary: CatalogSummary) {}
+
+  summarize(): Promise<CatalogSummary> {
+    return Promise.resolve(this.summary);
+  }
+}
+
+const SUMMARY: CatalogSummary = {
+  albums: 142,
+  licensedAlbums: 128,
+  pendingAlbumRequests: 14,
+  albumYears: [2026, 1999],
+};
 
 describe('CatalogService', () => {
   let albums: InMemoryAlbumsRepository;
@@ -313,6 +359,7 @@ describe('CatalogService', () => {
       cardCounts,
       references,
       auditLog,
+      summary: new FixedCatalogSummary(SUMMARY),
       cardUsage,
     });
     franchise = buildCategory({ name: 'Pokémon' });
@@ -486,6 +533,72 @@ describe('CatalogService', () => {
       await expect(newCard({ number: '1' })).rejects.toThrow(CardNumberTakenError);
     });
 
+    it('CA2: cadastra a carta duplicada com código e variantes', async () => {
+      const album = await newAlbum();
+      const source = await newCard({ albumId: album.id, number: '4', code: 'CRD-POK-0004' });
+
+      const copy = await newCard({
+        albumId: source.albumId,
+        number: '5',
+        code: 'CRD-POK-0005',
+        variants: 'Shadowless, Holofoil',
+      });
+
+      expect(copy).toMatchObject({ code: 'CRD-POK-0005', variants: 'Shadowless, Holofoil' });
+      expect(auditLog.entries.at(-1)).toMatchObject({ action: 'CARD_CREATED', entityId: copy.id });
+    });
+
+    it('CA5: recusa outro cadastro com um código em uso e diz de qual carta ele é', async () => {
+      await newCard({ name: 'Charizard', code: 'CRD-POK-0004' });
+
+      const error = await newCard({ code: 'CRD-POK-0004' }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CardCodeTakenError);
+      expect(error).toMatchObject({
+        code: 'CARD_CODE_TAKEN',
+        details: [{ field: 'code', message: 'Este código já está em uso por Charizard.' }],
+      });
+      expect(cards.cards).toHaveLength(1);
+    });
+
+    it('CA5: na edição recusa o código de outra carta e aceita manter o próprio', async () => {
+      const card = await newCard({ code: 'CRD-POK-0001' });
+      await newCard({ name: 'Blastoise', code: 'CRD-POK-0002' });
+
+      await expect(
+        service.updateCard(ADMIN_ID, card.id, { code: 'CRD-POK-0002' }),
+      ).rejects.toMatchObject({
+        details: [{ field: 'code', message: 'Este código já está em uso por Blastoise.' }],
+      });
+      await expect(
+        service.updateCard(ADMIN_ID, card.id, { code: 'CRD-POK-0001', name: 'Raichu' }),
+      ).resolves.toMatchObject({ code: 'CRD-POK-0001', name: 'Raichu' });
+    });
+
+    it('L7: o código de uma carta excluída pode ser usado de novo', async () => {
+      const removed = await newCard({ name: 'Antiga', code: 'CRD-POK-0009' });
+      await service.deleteCard(ADMIN_ID, removed.id);
+
+      const card = await newCard({ name: 'Nova', code: 'CRD-POK-0009' });
+
+      expect(card).toMatchObject({ name: 'Nova', code: 'CRD-POK-0009' });
+      expect(card.id).not.toBe(removed.id);
+    });
+
+    it('CA5: cadastro simultâneo barrado pelo índice do código responde CARD_CODE_TAKEN', async () => {
+      const duplicate = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'teste',
+        meta: { target: ['code'] },
+      });
+      vi.spyOn(cards, 'create').mockRejectedValueOnce(duplicate);
+
+      await expect(newCard({ code: 'CRD-POK-0001' })).rejects.toMatchObject({
+        code: 'CARD_CODE_TAKEN',
+        details: [{ field: 'code', message: 'Este código já está em uso por outra carta.' }],
+      });
+    });
+
     it('R7: erro do banco que não é de valor único continua subindo', async () => {
       vi.spyOn(cards, 'create').mockRejectedValueOnce(new Error('banco fora do ar'));
 
@@ -589,7 +702,7 @@ describe('CatalogService', () => {
       expect(auditLog.actions()).toContain('CARD_DELETED');
     });
 
-    it('R11: sem a checagem de coleções ligada, a carta é excluída', async () => {
+    it('L14: antes da CCD014, sem coleções, a carta é excluída', async () => {
       const withoutUsage = new CatalogService({
         albums,
         cards,
@@ -597,12 +710,20 @@ describe('CatalogService', () => {
         cardCounts,
         references,
         auditLog,
+        summary: new FixedCatalogSummary(SUMMARY),
+        cardUsage: noCollectionsYet,
       });
       const card = await newCard();
 
       await withoutUsage.deleteCard(ADMIN_ID, card.id);
 
       await expect(service.findCard(card.id)).rejects.toThrow(CardNotFoundError);
+    });
+  });
+
+  describe('resumo do catálogo', () => {
+    it('CA4: devolve o total de álbuns, os licenciados e as solicitações pendentes', async () => {
+      await expect(service.getSummary()).resolves.toEqual(SUMMARY);
     });
   });
 

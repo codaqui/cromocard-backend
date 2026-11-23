@@ -26,6 +26,13 @@ interface ListBody {
   meta: { total: number };
 }
 
+interface CatalogSummaryBody {
+  albums: number;
+  licensedAlbums: number;
+  pendingAlbumRequests: number;
+  albumYears: number[];
+}
+
 interface ErrorBody {
   error: string;
   details?: { field: string; message: string }[];
@@ -105,6 +112,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.catalogRequest.deleteMany({ where: { requesterId: adminId } });
   await prisma.auditLog.deleteMany({ where: { adminId } });
   await prisma.card.deleteMany({ where: { name: { startsWith: MARKER } } });
   await prisma.album.deleteMany({ where: { title: { startsWith: MARKER } } });
@@ -186,6 +194,34 @@ describe('cartas', () => {
     expect(removal.status).toBe(204);
     expect(again.status).toBe(201);
     expect((again.body as Created).data.id).toBe(card.data.id);
+  });
+
+  it('L7: a carta restaurada pela numeração grava o código novo do formulário', async () => {
+    const album = await createAlbum();
+    const code = `${MARKER}-rest`;
+    const original = (
+      await asAdmin().post('/cards', {
+        name: `${MARKER} original`,
+        number: '9',
+        albumId: album.id,
+        code: `${code}-a`,
+        frontImageUrl: FRONT_IMAGE_URL,
+        ...publishable,
+      })
+    ).body as Created;
+    await asAdmin().delete(`/cards/${original.data.id}`);
+
+    const restored = await asAdmin().post('/cards', {
+      name: `${MARKER} restaurada`,
+      number: '9',
+      albumId: album.id,
+      code: `${code}-b`,
+      frontImageUrl: FRONT_IMAGE_URL,
+      ...publishable,
+    });
+
+    expect(restored.status).toBe(201);
+    expect(restored.body).toMatchObject({ data: { id: original.data.id, code: `${code}-b` } });
   });
 
   it('R6: raridade inexistente responde 404 em vez de erro do banco', async () => {
@@ -495,6 +531,171 @@ describe('importação CSV', () => {
       '4.name',
     ]);
     await expect(prisma.card.count({ where: { albumId: album.id } })).resolves.toBe(0);
+  });
+});
+
+describe('CCD105: código, variantes, resumo e exclusão em lote', () => {
+  const codeOf = (suffix: string) => `${MARKER}-${suffix}`;
+
+  function createCardWith(fields: object) {
+    return asAdmin().post('/cards', {
+      name: `${MARKER} carta ${crypto.randomUUID().slice(0, 6)}`,
+      frontImageUrl: FRONT_IMAGE_URL,
+      ...publishable,
+      ...fields,
+    });
+  }
+
+  it('CA5: código de uma carta ativa responde 409 no campo code com o nome dela', async () => {
+    const owner = await createCardWith({ name: `${MARKER} Charizard`, code: codeOf('c5') });
+
+    const duplicate = await createCardWith({ code: codeOf('c5') });
+
+    expect(owner.status).toBe(201);
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body).toMatchObject({
+      error: 'CARD_CODE_TAKEN',
+      details: [{ field: 'code', message: `Este código já está em uso por ${MARKER} Charizard.` }],
+    });
+  });
+
+  it('L7: o índice parcial aceita o código de uma carta excluída', async () => {
+    const removed = (await createCardWith({ code: codeOf('l7') })).body as Created;
+    await asAdmin().delete(`/cards/${removed.data.id}`);
+
+    const reused = await createCardWith({ code: codeOf('l7'), variants: 'Shadowless, Holofoil' });
+
+    expect(reused.status).toBe(201);
+    expect(reused.body).toMatchObject({
+      data: { code: codeOf('l7'), variants: 'Shadowless, Holofoil' },
+    });
+    expect((reused.body as Created).data.id).not.toBe(removed.data.id);
+  });
+
+  it('CA10: a busca encontra a carta pelo código', async () => {
+    const card = (await createCardWith({ code: codeOf('c10') })).body as Created;
+
+    const res = await asAdmin().get(`/cards?q=${encodeURIComponent(`${MARKER.slice(-8)}-C10`)}`);
+
+    expect((res.body as ListBody).data.map(({ id }) => id)).toEqual([card.data.id]);
+  });
+
+  it('R9: o filtro por ano usa o ano do álbum', async () => {
+    const year = 1901 + Math.floor(Math.random() * 90);
+    const album = (await asAdmin().post('/albums', { title: `${MARKER} ano ${year}`, year }))
+      .body as Created;
+    const inYear = (await createCardWith({ albumId: album.data.id, number: '1' })).body as Created;
+    await createCardWith({});
+
+    const res = await asAdmin().get(`/cards?year=${year}&q=${encodeURIComponent(MARKER)}`);
+
+    expect((res.body as ListBody).data.map(({ id }) => id)).toEqual([inYear.data.id]);
+  });
+
+  it('R9: os filtros de franquia e raridade se somam ao de ano', async () => {
+    const otherFranchise = await createCategory(
+      `${MARKER} outra franquia ${crypto.randomUUID().slice(0, 6)}`,
+    );
+    const kept = (await createCardWith({ code: codeOf('r9') })).body as Created;
+    await createCardWith({ categoryId: otherFranchise.id });
+    const { categoryId, rarityId } = publishable;
+
+    const res = await asAdmin().get(
+      `/cards?categoryId=${categoryId}&rarityId=${rarityId}&q=${encodeURIComponent(codeOf('r9'))}`,
+    );
+    const otherRes = await asAdmin().get(
+      `/cards?categoryId=${otherFranchise.id}&q=${encodeURIComponent(MARKER)}`,
+    );
+
+    expect((res.body as ListBody).data.map(({ id }) => id)).toEqual([kept.data.id]);
+    expect((otherRes.body as ListBody).meta.total).toBe(1);
+  });
+
+  it('CA4: o resumo conta os álbuns não excluídos, os ACTIVE e as solicitações de álbum pendentes', async () => {
+    const summaryNow = async () =>
+      ((await asAdmin().get('/summary')).body as { data: CatalogSummaryBody }).data;
+    const before = await summaryNow();
+    const year = 1800 + Math.floor(Math.random() * 90);
+
+    await asAdmin().post('/albums', { title: `${MARKER} licenciado`, status: 'ACTIVE', year });
+    await asAdmin().post('/albums', { title: `${MARKER} mesmo ano`, status: 'ACTIVE', year });
+    await asAdmin().post('/albums', { title: `${MARKER} inativo`, status: 'INACTIVE' });
+    const removed = (await asAdmin().post('/albums', { title: `${MARKER} removido` }))
+      .body as Created;
+    await asAdmin().delete(`/albums/${removed.data.id}`);
+    await prisma.catalogRequest.createMany({
+      data: [
+        { requesterId: adminId, type: 'ALBUM', status: 'PENDING', data: { title: MARKER } },
+        { requesterId: adminId, type: 'ALBUM', status: 'APPROVED', data: { title: MARKER } },
+        { requesterId: adminId, type: 'CARD', status: 'PENDING', data: { title: MARKER } },
+      ],
+    });
+
+    const after = await summaryNow();
+
+    expect(after).toMatchObject({
+      albums: before.albums + 3,
+      licensedAlbums: before.licensedAlbums + 2,
+      pendingAlbumRequests: before.pendingAlbumRequests + 1,
+    });
+    expect(after.albumYears.filter((albumYear) => albumYear === year)).toEqual([year]);
+    expect(after.albumYears).toEqual([...after.albumYears].sort((first, second) => second - first));
+  });
+
+  it('CA7: a exclusão em lote marca deleted_at em cada carta e audita com o motivo', async () => {
+    const album = await createAlbum();
+    const created = await Promise.all(
+      ['1', '2', '3'].map(async (number) => (await createCard(album.id, number)).body as Created),
+    );
+    const ids = created.map(({ data }) => data.id);
+    const reason = 'Cartas duplicadas na importação';
+
+    const res = await asAdmin().post('/cards/bulk-delete', { ids, reason });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ data: { deleted: ids, skipped: [] } });
+    const stored = await prisma.card.findMany({ where: { id: { in: ids } } });
+    expect(stored.every(({ deletedAt }) => deletedAt !== null)).toBe(true);
+    const logs = await prisma.auditLog.findMany({
+      where: { adminId, action: 'CARD_DELETED', entityId: { in: ids } },
+    });
+    expect(logs.map(({ details }) => details)).toEqual([{ reason }, { reason }, { reason }]);
+    await expect(totalCardsOf(album.id)).resolves.toBe(0);
+  });
+
+  it('R10: se a auditoria falha, nenhuma carta do lote é excluída', async () => {
+    const album = await createAlbum();
+    const first = (await createCard(album.id, '1')).body as Created;
+    const second = (await createCard(album.id, '2')).body as Created;
+    const ids = [first.data.id, second.data.id];
+    const totalBefore = await totalCardsOf(album.id);
+    const unknownAdmin = signAccessToken({ id: crypto.randomUUID(), role: 'ADMIN' });
+
+    const res = await request(app)
+      .post(`${BASE}/cards/bulk-delete`)
+      .set('Authorization', `Bearer ${unknownAdmin}`)
+      .send({ ids, reason: 'Teste de transação' });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    const stored = await prisma.card.findMany({ where: { id: { in: ids } } });
+    expect(stored.map(({ deletedAt }) => deletedAt)).toEqual([null, null]);
+    await expect(totalCardsOf(album.id)).resolves.toBe(totalBefore);
+  });
+
+  it('CA8: CUSTOMER no resumo e na exclusão em lote responde 403', async () => {
+    const customer = {
+      Authorization: `Bearer ${signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' })}`,
+    };
+
+    const responses = await Promise.all([
+      request(app).get(`${BASE}/summary`).set(customer),
+      request(app)
+        .post(`${BASE}/cards/bulk-delete`)
+        .set(customer)
+        .send({ ids: [crypto.randomUUID()], reason: 'Duplicadas' }),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([403, 403]);
   });
 });
 
