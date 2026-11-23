@@ -51,7 +51,7 @@ export default tseslint.config(
     rules: { 'max-params': 'off' },
   },
   {
-    files: ['**/*.spec.ts', '**/*.doubles.ts'],
+    files: ['**/*.spec.ts'],
     rules: { 'max-lines-per-function': 'off' },
   },
   {

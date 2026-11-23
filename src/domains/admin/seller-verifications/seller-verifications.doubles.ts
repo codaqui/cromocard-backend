@@ -10,17 +10,15 @@ import type {
   SellerVerificationsRepository,
   StatusCounts,
 } from './seller-verifications.repository';
-import type { AdminAuditLog, SellerNotifier } from './seller-verifications.service';
+import type { AdminAuditLog, SellerNotifier } from './seller-verifications.ports';
 import type { ListSellerVerificationsQuery } from './seller-verifications.validator';
 
 export interface StoredVerification extends SellerVerificationDetail {
   deletedAt: Date | null;
 }
 
-export function buildDetail(overrides: Partial<StoredVerification> = {}): StoredVerification {
+function buildCompany() {
   return {
-    id: crypto.randomUUID(),
-    status: 'UNDER_REVIEW',
     legalName: 'Cards Kanto Colecionáveis e Acessórios Ltda',
     tradeName: 'Cards Kanto BR',
     cnpj: '45.291.802/0001-93',
@@ -35,6 +33,14 @@ export function buildDetail(overrides: Partial<StoredVerification> = {}): Stored
     bankBranch: null,
     bankAccount: null,
     pixKey: null,
+  };
+}
+
+export function buildDetail(overrides: Partial<StoredVerification> = {}): StoredVerification {
+  return {
+    id: crypto.randomUUID(),
+    status: 'UNDER_REVIEW',
+    ...buildCompany(),
     rejectionReason: null,
     reviewedAt: null,
     createdAt: new Date(),

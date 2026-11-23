@@ -20,7 +20,7 @@ import type {
   SellerVerificationDetail,
   SellerVerificationsRepository,
 } from './seller-verifications.repository';
-import type { AdminAuditLog, SellerNotifier } from './seller-verifications.service';
+import type { AdminAuditLog, SellerNotifier } from './seller-verifications.ports';
 
 const SELLER_PENDING_NOTIFICATION_TYPE = 'SELLER_PENDING';
 const HOUR_IN_MS = 60 * 60 * 1000;
@@ -63,6 +63,7 @@ interface PendingNotice {
   detail: SellerVerificationDetail;
   adminId: string;
   input: SendPendingNoticeInput;
+  sentAt: Date;
 }
 
 export class PendingNoticeService {
@@ -81,7 +82,10 @@ export class PendingNoticeService {
     const detail = await this.deps.repository.findDetailById(id);
     if (!detail) throw new SellerVerificationNotFoundError();
 
-    await this.deps.runInTransaction((tx) => this.markPending({ detail, adminId, input }, tx));
+    const sentAt = this.deps.now();
+    await this.deps.runInTransaction((tx) =>
+      this.markPending({ detail, adminId, input, sentAt }, tx),
+    );
     const emailDelivered = await this.sendEmail({
       to: detail.seller.email,
       name: detail.seller.name,
@@ -89,12 +93,12 @@ export class PendingNoticeService {
       deadline: DEADLINE_LABELS[input.deadlineHours],
     });
 
-    return { sentAt: this.deps.now().toISOString(), channels: ['SITE', 'EMAIL'], emailDelivered };
+    return { sentAt: sentAt.toISOString(), channels: ['SITE', 'EMAIL'], emailDelivered };
   }
 
   private async markPending(notice: PendingNotice, tx: Transaction): Promise<void> {
-    const { detail, input } = notice;
-    const deadline = new Date(this.deps.now().getTime() + input.deadlineHours * HOUR_IN_MS);
+    const { detail, input, sentAt } = notice;
+    const deadline = new Date(sentAt.getTime() + input.deadlineHours * HOUR_IN_MS);
     const marked = await this.deps.repository.markPendingIfUndecided(detail.id, deadline, tx);
     if (!marked) throw new VerificationAlreadyDecidedError();
 

@@ -5,7 +5,10 @@ import type { JsonValue } from '@/domains/admin/settings/setting-schemas';
 import type { MailMessage, MailProvider } from '@/providers/mail/mail.provider';
 
 import { PendingNoticeService, type PendingTemplatesSource } from './pending-notice.service';
-import { sendPendingNoticeSchema } from './pending-notice.validator';
+import {
+  PENDING_NOTICE_MESSAGE_MAX_LENGTH,
+  sendPendingNoticeSchema,
+} from './pending-notice.validator';
 import {
   buildDetail,
   FakeAuditLog,
@@ -181,6 +184,26 @@ describe('PendingNoticeService', () => {
       expect(mailer.sent[0]?.text).toContain('Você tem 7 dias para regularizar o cadastro.');
     });
 
+    it('R9: o horário da confirmação é o mesmo instante que originou o prazo', async () => {
+      const verification = seedVerification('UNDER_REVIEW');
+      let tick = NOW.getTime();
+      const service = new PendingNoticeService({
+        repository,
+        auditLogService: auditLog,
+        notifier,
+        settings: new FakeSettings(templates),
+        mailer,
+        logger,
+        runInTransaction: (work) => work(transaction),
+        now: () => new Date((tick += 1000)),
+      });
+
+      const result = await service.send(verification.id, adminId, input);
+      const deadline = repository.pendingDeadlines.get(verification.id);
+
+      expect(deadline?.getTime()).toBe(new Date(result.sentAt).getTime() + 48 * HOUR_IN_MS);
+    });
+
     it('sem modelo escolhido, a auditoria grava templateKey nulo', async () => {
       const verification = seedVerification('UNDER_REVIEW');
 
@@ -239,6 +262,14 @@ describe('sendPendingNoticeSchema', () => {
     const result = sendPendingNoticeSchema.safeParse({ message: '   ', deadlineHours: 48 });
 
     expect(result.success).toBe(false);
+  });
+
+  it('a mensagem cabe na notificação: 500 caracteres passam e 501 são recusados', () => {
+    const parse = (length: number) =>
+      sendPendingNoticeSchema.safeParse({ message: 'a'.repeat(length), deadlineHours: 48 });
+
+    expect(parse(PENDING_NOTICE_MESSAGE_MAX_LENGTH).success).toBe(true);
+    expect(parse(PENDING_NOTICE_MESSAGE_MAX_LENGTH + 1).success).toBe(false);
   });
 
   it('L1: aceita só os prazos de 24, 48, 72 e 168 horas', () => {
