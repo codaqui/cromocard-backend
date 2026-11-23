@@ -15,6 +15,7 @@ import type {
 import {
   AlbumHasCardsError,
   AlbumNotFoundError,
+  CardCategoryMismatchError,
   CardInUseError,
   CardNotFoundError,
   CardNumberOfDeletedCardError,
@@ -22,7 +23,6 @@ import {
   CategoryInUseError,
   CategoryNotFoundError,
   CategoryParentInvalidError,
-  CategoryTypeMismatchError,
   LanguageNotFoundError,
   RarityNotFoundError,
   SlugTakenError,
@@ -95,7 +95,6 @@ function buildCategory(input: CreateCategoryInput & { slug?: string }): Stored<C
   return {
     id: crypto.randomUUID(),
     name: input.name,
-    type: input.type,
     slug: input.slug ?? slugify(input.name),
     badge: input.badge ?? null,
     description: input.description ?? null,
@@ -316,12 +315,11 @@ describe('CatalogService', () => {
       auditLog,
       cardUsage,
     });
-    franchise = buildCategory({ name: 'Pokémon', type: 'CARD' });
+    franchise = buildCategory({ name: 'Pokémon' });
   });
 
   const newAlbum = () => service.createAlbum(ADMIN_ID, { title: 'Copa 2026' });
-  const categoryOfType = (type: CreateCategoryInput['type']) =>
-    service.createCategory(ADMIN_ID, { name: `Categoria ${type}`, type });
+  const newFranchise = (name: string) => service.createCategory(ADMIN_ID, { name });
   /** Grava a franquia só quando um teste de carta precisa dela, para não aparecer nas listas de categorias. */
   const franchiseId = () => {
     if (!categories.categories.includes(franchise)) categories.categories.push(franchise);
@@ -365,17 +363,16 @@ describe('CatalogService', () => {
       await expect(service.createAlbum(ADMIN_ID, input)).rejects.toThrow(CategoryNotFoundError);
     });
 
-    it('L9: álbum só aceita categoria de álbum', async () => {
-      const cardCategory = await categoryOfType('CARD');
-      const albumCategory = await categoryOfType('ALBUM');
+    it('L11: álbum aceita a mesma franquia usada pelas cartas', async () => {
+      await newCard();
       const album = await newAlbum();
 
       await expect(
-        service.createAlbum(ADMIN_ID, { title: 'Copa', categoryId: cardCategory.id }),
-      ).rejects.toThrow(CategoryTypeMismatchError);
+        service.createAlbum(ADMIN_ID, { title: 'Base Set', categoryId: franchiseId() }),
+      ).resolves.toMatchObject({ categoryId: franchise.id });
       await expect(
-        service.updateAlbum(ADMIN_ID, album.id, { categoryId: albumCategory.id }),
-      ).resolves.toMatchObject({ categoryId: albumCategory.id });
+        service.updateAlbum(ADMIN_ID, album.id, { categoryId: franchise.id }),
+      ).resolves.toMatchObject({ categoryId: franchise.id });
     });
 
     it('R4: responde 404 para álbum inexistente', async () => {
@@ -504,16 +501,41 @@ describe('CatalogService', () => {
       await expect(newCard({ languageId: missing })).rejects.toThrow(LanguageNotFoundError);
     });
 
-    it('L9: carta só aceita categoria de carta', async () => {
-      const albumCategory = await categoryOfType('ALBUM');
-      const cardCategory = await categoryOfType('CARD');
+    it('L11: carta com álbum precisa ter a franquia do álbum', async () => {
+      const football = await newFranchise('Futebol');
+      const album = await service.createAlbum(ADMIN_ID, { title: 'Copa', categoryId: football.id });
 
-      await expect(newCard({ categoryId: albumCategory.id })).rejects.toThrow(
-        CategoryTypeMismatchError,
-      );
-      await expect(newCard({ categoryId: cardCategory.id })).resolves.toMatchObject({
-        categoryId: cardCategory.id,
+      await expect(newCard({ albumId: album.id })).rejects.toThrow(CardCategoryMismatchError);
+      await expect(newCard({ albumId: album.id, categoryId: football.id })).resolves.toMatchObject({
+        albumId: album.id,
+        categoryId: football.id,
       });
+    });
+
+    it('L11: carta avulsa ou de álbum sem franquia aceita qualquer franquia', async () => {
+      const album = await newAlbum();
+
+      await expect(newCard()).resolves.toMatchObject({ categoryId: franchise.id });
+      await expect(newCard({ albumId: album.id })).resolves.toMatchObject({
+        categoryId: franchise.id,
+      });
+    });
+
+    it('L11: na edição confere a franquia contra o álbum que a carta vai ter', async () => {
+      const football = await newFranchise('Futebol');
+      const album = await service.createAlbum(ADMIN_ID, { title: 'Copa', categoryId: football.id });
+      const card = await newCard({ albumId: album.id, categoryId: football.id });
+      const loose = await newCard();
+
+      await expect(
+        service.updateCard(ADMIN_ID, card.id, { categoryId: franchiseId() }),
+      ).rejects.toThrow(CardCategoryMismatchError);
+      await expect(service.updateCard(ADMIN_ID, loose.id, { albumId: album.id })).rejects.toThrow(
+        CardCategoryMismatchError,
+      );
+      await expect(
+        service.updateCard(ADMIN_ID, card.id, { albumId: null, categoryId: franchise.id }),
+      ).resolves.toMatchObject({ albumId: null, categoryId: franchise.id });
     });
 
     it('conta as cartas ativas do catálogo para o dashboard', async () => {
@@ -586,7 +608,7 @@ describe('CatalogService', () => {
 
   describe('categorias', () => {
     const newCategory = (input: Partial<CreateCategoryInput> = {}) =>
-      service.createCategory(ADMIN_ID, { name: 'Futebol', type: 'ALBUM', ...input });
+      service.createCategory(ADMIN_ID, { name: 'Futebol', ...input });
 
     it('R15: cadastra, edita e lista categorias com auditoria', async () => {
       const category = await newCategory();
@@ -601,7 +623,7 @@ describe('CatalogService', () => {
 
     it('CA1: lista as categorias com a quantidade de cartas de cada uma', async () => {
       const football = await newCategory();
-      const empty = await newCategory({ name: 'Magic', type: 'CARD' });
+      const empty = await newCategory({ name: 'Magic' });
       cardCounts.totals.set(football.id, 7300);
 
       const page = await service.listCategories(PAGE);
@@ -623,7 +645,7 @@ describe('CatalogService', () => {
     });
 
     it('CA6: gera o slug one-piece ao cadastrar "One Piece"', async () => {
-      const category = await newCategory({ name: 'One Piece', type: 'CARD' });
+      const category = await newCategory({ name: 'One Piece' });
 
       expect(category.slug).toBe('one-piece');
     });
@@ -636,7 +658,7 @@ describe('CatalogService', () => {
     });
 
     it('CA12: refaz o slug quando o nome muda', async () => {
-      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+      const category = await newCategory({ name: 'Yu-Gi-Oh!' });
       const before = category.slug;
 
       const renamed = await service.updateCategory(ADMIN_ID, category.id, {
@@ -647,7 +669,7 @@ describe('CatalogService', () => {
     });
 
     it('CA12: mantém o slug quando a edição não muda o nome', async () => {
-      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+      const category = await newCategory({ name: 'Yu-Gi-Oh!' });
 
       const edited = await service.updateCategory(ADMIN_ID, category.id, { description: 'Cartas' });
 
@@ -655,7 +677,7 @@ describe('CatalogService', () => {
     });
 
     it('R9: editar só o selo muda o selo e não refaz o slug', async () => {
-      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+      const category = await newCategory({ name: 'Yu-Gi-Oh!' });
       const findBySlug = vi.spyOn(categories, 'findActiveBySlug');
 
       const edited = await service.updateCategory(ADMIN_ID, category.id, { badge: 'TRENDING' });
@@ -665,7 +687,7 @@ describe('CatalogService', () => {
     });
 
     it('CA12: renomear só a pontuação não conflita com o próprio slug', async () => {
-      const category = await newCategory({ name: 'Yu-Gi-Oh!', type: 'CARD' });
+      const category = await newCategory({ name: 'Yu-Gi-Oh!' });
 
       const renamed = await service.updateCategory(ADMIN_ID, category.id, { name: 'Yu Gi Oh' });
 
@@ -673,9 +695,9 @@ describe('CatalogService', () => {
     });
 
     it('CA13: recusa com SLUG_TAKEN o nome que gera o slug de uma categoria ativa', async () => {
-      await newCategory({ name: 'Pokémon', type: 'CARD' });
+      await newCategory({ name: 'Pokémon' });
 
-      const error = await newCategory({ name: 'Pokemon', type: 'CARD' }).catch((e: unknown) => e);
+      const error = await newCategory({ name: 'Pokemon' }).catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(SlugTakenError);
       expect(error).toMatchObject({ statusCode: 409, code: 'SLUG_TAKEN' });
@@ -685,8 +707,8 @@ describe('CatalogService', () => {
     });
 
     it('CA13: recusa renomear para o slug de outra categoria ativa', async () => {
-      await newCategory({ name: 'Pokémon', type: 'CARD' });
-      const other = await newCategory({ name: 'Magic', type: 'CARD' });
+      await newCategory({ name: 'Pokémon' });
+      const other = await newCategory({ name: 'Magic' });
 
       await expect(service.updateCategory(ADMIN_ID, other.id, { name: 'Pokemon' })).rejects.toThrow(
         SlugTakenError,
@@ -694,10 +716,10 @@ describe('CatalogService', () => {
     });
 
     it('CA13: cria "One Piece" com uma excluída de mesmo slug, sem restaurá-la', async () => {
-      const deleted = await newCategory({ name: 'One Piece', type: 'CARD' });
+      const deleted = await newCategory({ name: 'One Piece' });
       await service.deleteCategory(ADMIN_ID, deleted.id);
 
-      const created = await newCategory({ name: 'One Piece', type: 'CARD' });
+      const created = await newCategory({ name: 'One Piece' });
 
       expect(created.id).not.toBe(deleted.id);
       await expect(service.findCategory(deleted.id)).rejects.toThrow(CategoryNotFoundError);
@@ -707,7 +729,7 @@ describe('CatalogService', () => {
       const failure = new Error('banco fora do ar');
       vi.spyOn(categories, 'create').mockRejectedValueOnce(failure);
 
-      await expect(newCategory({ name: 'Pokémon', type: 'CARD' })).rejects.toBe(failure);
+      await expect(newCategory({ name: 'Pokémon' })).rejects.toBe(failure);
     });
 
     it('CA13: traduz a violação do índice único, quando duas criações disputam o slug', async () => {
@@ -717,7 +739,7 @@ describe('CatalogService', () => {
       });
       vi.spyOn(categories, 'create').mockRejectedValueOnce(raced);
 
-      await expect(newCategory({ name: 'Pokémon', type: 'CARD' })).rejects.toThrow(SlugTakenError);
+      await expect(newCategory({ name: 'Pokémon' })).rejects.toThrow(SlugTakenError);
     });
 
     it('R15: recusa a categoria como pai dela mesma', async () => {
@@ -750,33 +772,16 @@ describe('CatalogService', () => {
       expect(moved.parentCategoryId).toBe(games.id);
     });
 
-    it('L7, L9: a categoria pai precisa ser do mesmo tipo', async () => {
-      const albumRoot = await newCategory({ name: 'Esportes' });
-      const cardRoot = await newCategory({ name: 'Jogadores', type: 'CARD' });
+    it('L10: a categoria pai pode ser qualquer categoria', async () => {
+      const sports = await newCategory({ name: 'Esportes' });
+      const games = await newCategory({ name: 'Jogos' });
 
       await expect(
-        newCategory({ name: 'Atacantes', type: 'CARD', parentCategoryId: albumRoot.id }),
-      ).rejects.toThrow(CategoryTypeMismatchError);
+        newCategory({ name: 'Atacantes', parentCategoryId: sports.id }),
+      ).resolves.toMatchObject({ parentCategoryId: sports.id });
       await expect(
-        service.updateCategory(ADMIN_ID, cardRoot.id, { parentCategoryId: albumRoot.id }),
-      ).rejects.toThrow(CategoryTypeMismatchError);
-    });
-
-    it('L9: trocar o tipo confere a categoria pai e o uso da categoria', async () => {
-      const root = await newCategory({ name: 'Esportes' });
-      const child = await newCategory({ name: 'Futebol', parentCategoryId: root.id });
-      const free = await newCategory({ name: 'Livre' });
-      categories.inUse.add(root.id);
-
-      await expect(service.updateCategory(ADMIN_ID, child.id, { type: 'CARD' })).rejects.toThrow(
-        CategoryTypeMismatchError,
-      );
-      await expect(service.updateCategory(ADMIN_ID, root.id, { type: 'CARD' })).rejects.toThrow(
-        CategoryTypeMismatchError,
-      );
-      await expect(
-        service.updateCategory(ADMIN_ID, free.id, { type: 'CARD' }),
-      ).resolves.toMatchObject({ type: 'CARD' });
+        service.updateCategory(ADMIN_ID, games.id, { parentCategoryId: sports.id }),
+      ).resolves.toMatchObject({ parentCategoryId: sports.id });
     });
 
     it('R15: recusa categoria pai inexistente', async () => {

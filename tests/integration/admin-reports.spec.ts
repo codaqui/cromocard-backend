@@ -41,7 +41,7 @@ async function createUser(key: string, overrides: Record<string, unknown> = {}) 
 
 async function createCatalog() {
   const category = await prisma.category.create({
-    data: { name: `Franquia ${RUN_ID}`, type: 'CARD' },
+    data: { name: `Franquia ${RUN_ID}` },
   });
   created.categoryId = category.id;
   const album = await prisma.album.create({

@@ -54,7 +54,7 @@
     "requester": "bruno",
     "type": "ALBUM",
     "data": {
-      "category": "pokemon-tcg",
+      "category": "pokemon",
       "title": "Pokémon Jungle",
       "publisher": "Wizards of the Coast",
       "year": 1999,
@@ -118,7 +118,6 @@
     "type": "CATEGORY",
     "data": {
       "name": "Fórmula 1",
-      "type": "ALBUM",
       "description": "Cards e figurinhas oficiais da Fórmula 1, com pilotos, equipes e circuitos de cada temporada."
     }
   },
@@ -128,7 +127,6 @@
     "type": "CATEGORY",
     "data": {
       "name": "Disney Lorcana TCG",
-      "type": "CARD",
       "publisher": "Ravensburger",
       "description": "Card game da Disney publicado pela Ravensburger, com coleções desde 2023. Muitos colecionadores pedem para organizar as cartas no CromoCard.",
       "subcategories": [
@@ -147,7 +145,6 @@
     "type": "CATEGORY",
     "data": {
       "name": "Gundam Card Game",
-      "type": "CARD",
       "publisher": "Bandai",
       "description": "Novo card game oficial de Gundam lançado pela Bandai em 2025, com coleções em japonês e inglês.",
       "subcategories": ["Newtype Rising", "Dual Impact"]

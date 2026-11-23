@@ -69,7 +69,6 @@ async function createSubcategories(
   for (const subcategory of tree.subcategories) {
     const created = await catalog.createCategory(adminId, {
       name: subcategory,
-      type: tree.input.type,
       parentCategoryId: parent,
     });
     createdIds.push(created.id);

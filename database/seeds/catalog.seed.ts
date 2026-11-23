@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@/generated/prisma/client';
-import { AlbumStatus, CategoryType } from '@/generated/prisma/enums';
+import { AlbumStatus } from '@/generated/prisma/enums';
 import { slugify } from '@/lib/slug';
 import { z } from '@/lib/zod';
 
@@ -19,7 +19,6 @@ const categoriesSchema = z.array(
     key: seedKey,
     parent: seedKey.optional(),
     name: z.string().max(90),
-    type: z.enum(CategoryType),
     description: z.string().max(255).optional(),
     isDefault: z.boolean().default(false),
   }),

@@ -5,7 +5,6 @@ import { notDeleted } from '@/shared/utils/soft-delete';
 const defaultCategorySelect = {
   id: true,
   name: true,
-  type: true,
   slug: true,
   badge: true,
   displayOrder: true,

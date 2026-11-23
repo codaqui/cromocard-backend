@@ -279,7 +279,7 @@ describe('CatalogRequestsService', () => {
     });
 
     it('não procura nomes de referências que a sugestão não tem', async () => {
-      store({ type: 'CATEGORY', data: { name: 'Fórmula 1', type: 'ALBUM' } });
+      store({ type: 'CATEGORY', data: { name: 'Fórmula 1' } });
 
       const { items } = await service.list(QUERY);
 
@@ -290,7 +290,7 @@ describe('CatalogRequestsService', () => {
 
   describe('quórum e checklist (CCD103)', () => {
     it('CA4: meta de 200 e 340 votos mostra 340/200 (170%) e a divisão dos votos', async () => {
-      store({ type: 'CATEGORY', data: { name: 'Disney Lorcana TCG', type: 'CARD' } });
+      store({ type: 'CATEGORY', data: { name: 'Disney Lorcana TCG' } });
       votes.counts.set(REQUEST_ID, { FOR: 331, NEUTRAL: 6, AGAINST: 3 });
 
       const { items } = await service.list(QUERY);
@@ -307,7 +307,7 @@ describe('CatalogRequestsService', () => {
     });
 
     it('categoria sem votos mostra zero, sem dividir por zero', async () => {
-      store({ type: 'CATEGORY', data: { name: 'Fórmula 1', type: 'ALBUM' } });
+      store({ type: 'CATEGORY', data: { name: 'Fórmula 1' } });
       votes.counts.set(REQUEST_ID, { FOR: 0, NEUTRAL: 0, AGAINST: 0 });
 
       const view = await service.find(REQUEST_ID);
@@ -464,31 +464,30 @@ describe('CatalogRequestsService', () => {
     });
 
     it('aprovar uma categoria cria a categoria e guarda o id em data.createdCategoryId', async () => {
-      store({ type: 'CATEGORY', data: { name: 'Fórmula 1', type: 'ALBUM' } });
+      store({ type: 'CATEGORY', data: { name: 'Fórmula 1' } });
 
       await service.approve(REQUEST_ID, ADMIN_ID);
 
-      expect(catalog.categories).toEqual([{ name: 'Fórmula 1', type: 'ALBUM' }]);
+      expect(catalog.categories).toEqual([{ name: 'Fórmula 1' }]);
       expect(stored().data).toEqual({
         name: 'Fórmula 1',
-        type: 'ALBUM',
         createdCategoryId: CREATED_ID,
         createdSubcategoryIds: [],
       });
     });
 
-    it('CA5 (CCD103): aprovar a categoria cria as 3 subcategorias, do mesmo tipo e ligadas a ela', async () => {
+    it('CA5 (CCD103): aprovar a categoria cria as 3 subcategorias ligadas a ela', async () => {
       const subcategories = ['The First Chapter', 'Rise of the Floodborn', 'Into the Inklands'];
       store({
         type: 'CATEGORY',
-        data: { name: 'Disney Lorcana TCG', type: 'CARD', subcategories },
+        data: { name: 'Disney Lorcana TCG', subcategories },
       });
 
       const result = await service.approve(REQUEST_ID, ADMIN_ID);
 
       expect(catalog.categories).toEqual([
-        { name: 'Disney Lorcana TCG', type: 'CARD' },
-        ...subcategories.map((name) => ({ name, type: 'CARD', parentCategoryId: CREATED_ID })),
+        { name: 'Disney Lorcana TCG' },
+        ...subcategories.map((name) => ({ name, parentCategoryId: CREATED_ID })),
       ]);
       expect(result.createdItem.subcategoryIds).toHaveLength(3);
       expect(stored().data).toMatchObject({
@@ -503,7 +502,7 @@ describe('CatalogRequestsService', () => {
       catalog.failCategoryAt = 2;
       store({
         type: 'CATEGORY',
-        data: { name: 'Disney Lorcana TCG', type: 'CARD', subcategories: ['Ursula', 'Mickey'] },
+        data: { name: 'Disney Lorcana TCG', subcategories: ['Ursula', 'Mickey'] },
       });
 
       await expect(service.approve(REQUEST_ID, ADMIN_ID)).rejects.toThrow(
@@ -518,7 +517,7 @@ describe('CatalogRequestsService', () => {
     it('subcategorias repetidas tornam a sugestão incompleta e nada é criado', async () => {
       store({
         type: 'CATEGORY',
-        data: { name: 'Disney Lorcana TCG', type: 'CARD', subcategories: ['Ursula', 'ursula'] },
+        data: { name: 'Disney Lorcana TCG', subcategories: ['Ursula', 'ursula'] },
       });
 
       await expect(service.approve(REQUEST_ID, ADMIN_ID)).rejects.toMatchObject({

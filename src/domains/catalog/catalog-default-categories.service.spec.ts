@@ -25,7 +25,6 @@ function category(n: number, name: string, extra: Partial<StoredCategory> = {}):
   return {
     id: id(n),
     name,
-    type: 'CARD',
     slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     badge: null,
     displayOrder: 0,
@@ -95,8 +94,8 @@ describe('DefaultCategoriesService', () => {
     repository = new InMemoryDefaultCategories([
       category(1, 'Pokémon', { isDefault: true }),
       category(2, 'Magic: The Gathering'),
-      category(3, 'Futebol', { type: 'ALBUM' }),
-      category(4, 'Copa do Mundo', { type: 'ALBUM', parentCategoryId: id(3) }),
+      category(3, 'Futebol'),
+      category(4, 'Copa do Mundo', { parentCategoryId: id(3) }),
       category(5, 'Excluída', { deletedAt: new Date('2026-11-01') }),
     ]);
     cardCounts = new InMemoryCardCounts();
