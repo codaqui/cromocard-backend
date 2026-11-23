@@ -123,6 +123,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const orderIds = { in: created.orders };
+  await prisma.auditLog.deleteMany({ where: { adminId: { in: created.users } } });
+  await prisma.reportExport.deleteMany({ where: { adminId: { in: created.users } } });
   await prisma.groupMessage.deleteMany({ where: { groupId: created.groupId } });
   await prisma.group.deleteMany({ where: { id: created.groupId } });
   await prisma.review.deleteMany({ where: { orderId: orderIds } });
@@ -262,6 +264,27 @@ describe('GET /api/v1/admin/reports/volume', () => {
       },
       meta: { total: 1 },
     });
+  });
+
+  it('CA7: exporta o CSV do volume com todos os dias do período', async () => {
+    const res = await request(createApp())
+      .get('/api/v1/admin/reports/volume/export')
+      .query({ from: `${DAY}T00:00:00-03:00`, to: `${DAY}T23:59:59-03:00`, format: 'csv' })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('text/csv; charset=utf-8');
+    expect(res.text).toContain('10/06/2003');
+  });
+
+  it('CA4: período sem movimentação devolve o relatório de volume vazio', async () => {
+    const res = await request(createApp())
+      .get('/api/v1/admin/reports/volume')
+      .query({ from: '1990-01-01T00:00:00-03:00', to: '1990-01-31T23:59:59-03:00' })
+      .set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ data: { rows: [] }, meta: { total: 0 } });
   });
 });
 
