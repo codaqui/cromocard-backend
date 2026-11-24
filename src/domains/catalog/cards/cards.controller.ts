@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 
-import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.module';
+import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.contract';
 import { ok, paginated } from '@/shared/utils/http-response';
 
 import type { CardsService } from './cards.service';

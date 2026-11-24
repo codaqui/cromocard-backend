@@ -1,6 +1,6 @@
 import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
-import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.module';
+import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.contract';
 import { z } from '@/lib/zod';
 
 import { cardIdParamSchema, cardListingsParamSchema } from './cards.validator';

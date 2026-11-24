@@ -3,7 +3,7 @@ import type {
   ListCardListingsQuery,
   ListingsService,
   ListingSummary,
-} from '@/domains/marketplace/listings/listings.module';
+} from '@/domains/marketplace/listings/listings.contract';
 import type { Paginated } from '@/shared/utils/pagination';
 
 import type { CardsRepository } from './cards.repository';

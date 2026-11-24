@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CardNotFoundError } from '@/domains/catalog/catalog.errors';
-import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.module';
+import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.contract';
 import { Prisma } from '@/generated/prisma/client';
 
 import type { CardsRepository, PublicCardRecord } from './cards.repository';

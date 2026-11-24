@@ -1,4 +1,4 @@
-import type { CardListingsSummary } from '@/domains/marketplace/listings/listings.module';
+import type { CardListingsSummary } from '@/domains/marketplace/listings/listings.contract';
 import type { Prisma } from '@/generated/prisma/client';
 
 import type { PublicCardRecord } from './cards.repository';
