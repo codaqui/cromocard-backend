@@ -29,8 +29,6 @@ export interface SellerStats {
   id: string;
   listedVolumeCents: number;
   activeListings: number;
-  rating: number | null;
-  reviews: number;
 }
 
 export interface CardStats {
@@ -104,8 +102,6 @@ type SellerRow = {
   id: string;
   volume: bigint;
   active: number;
-  rating: number | null;
-  reviews: number;
 };
 type CardRow = { id: string; average: bigint | null; prices: number };
 type GroupRow = { id: string; volume: bigint; active: number };
@@ -170,24 +166,17 @@ export class PrismaFinanceRepository implements FinanceRepository {
 
   async sellerStats(ids: string[]): Promise<SellerStats[]> {
     const rows = await this.prisma.$queryRaw<SellerRow[]>`
-      SELECT u.id::text AS id, COALESCE(l.volume, 0)::bigint AS volume, COALESCE(l.active, 0)::int AS active,
-             r.rating, COALESCE(r.reviews, 0)::int AS reviews
+      SELECT u.id::text AS id, COALESCE(l.volume, 0)::bigint AS volume, COALESCE(l.active, 0)::int AS active
       FROM unnest(${ids}::uuid[]) WITH ORDINALITY AS u(id, position)
       LEFT JOIN (
         SELECT seller_id, SUM(price * available_quantity) * 100 AS volume, COUNT(*) AS active
         FROM listings WHERE status = 'ACTIVE' AND deleted_at IS NULL GROUP BY seller_id
       ) l ON l.seller_id = u.id
-      LEFT JOIN (
-        SELECT seller_id, ROUND(AVG(rating)::numeric, 1)::float AS rating, COUNT(*) AS reviews
-        FROM reviews WHERE deleted_at IS NULL GROUP BY seller_id
-      ) r ON r.seller_id = u.id
       ORDER BY u.position`;
-    return rows.map(({ id, volume, active, rating, reviews }) => ({
+    return rows.map(({ id, volume, active }) => ({
       id,
       listedVolumeCents: Number(volume),
       activeListings: active,
-      rating,
-      reviews,
     }));
   }
 

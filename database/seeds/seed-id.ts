@@ -22,7 +22,6 @@ export const SeedNamespace = {
   listings: 31,
   orders: 32,
   payments: 33,
-  reviews: 34,
   priceHistory: 35,
   listingMessages: 36,
 } as const;

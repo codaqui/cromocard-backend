@@ -54,7 +54,6 @@ const marketplaceSchema = z.object({
       payment: z.enum(PaymentStatus),
       paidHoursAgo: z.number().int().min(0),
       changedHoursAgo: z.number().int().min(0),
-      rating: z.number().int().min(1).max(5).optional(),
     }),
   ),
   priceHistory: z.array(
@@ -137,15 +136,6 @@ const toPaymentData = (order: SeedOrder, total: Prisma.Decimal) => ({
   updatedAt: hoursAgo(order.paidHoursAgo),
 });
 
-const toReviewData = (order: SeedOrder, rating: number) => ({
-  id: seedId(SeedNamespace.reviews, order.key),
-  orderId: orderIdOf(order.key),
-  authorId: userIdOf(order.buyer),
-  sellerId: userIdOf(listingOf(order.listing).seller),
-  rating,
-  createdAt: hoursAgo(order.changedHoursAgo),
-});
-
 const toPriceData = ({
   key,
   card,
@@ -177,9 +167,6 @@ async function seedOrder(prisma: PrismaClient, order: SeedOrder): Promise<void> 
   await prisma.order.upsert({ where: { id: data.id }, create: data, update: data });
   const payment = toPaymentData(order, data.totalAmount);
   await prisma.payment.upsert({ where: { id: payment.id }, create: payment, update: payment });
-  if (order.rating === undefined) return;
-  const review = toReviewData(order, order.rating);
-  await prisma.review.upsert({ where: { id: review.id }, create: review, update: review });
 }
 
 async function seedOrders(prisma: PrismaClient): Promise<void> {

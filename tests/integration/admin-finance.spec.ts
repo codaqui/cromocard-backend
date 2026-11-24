@@ -127,7 +127,6 @@ afterAll(async () => {
   await prisma.reportExport.deleteMany({ where: { adminId: { in: created.users } } });
   await prisma.groupMessage.deleteMany({ where: { groupId: created.groupId } });
   await prisma.group.deleteMany({ where: { id: created.groupId } });
-  await prisma.review.deleteMany({ where: { orderId: orderIds } });
   await prisma.payment.deleteMany({ where: { orderId: orderIds } });
   await prisma.order.deleteMany({ where: { id: orderIds } });
   await prisma.listing.deleteMany({ where: { id: { in: created.listings } } });
@@ -289,22 +288,15 @@ describe('GET /api/v1/admin/reports/volume', () => {
 });
 
 describe('estatísticas por vendedor, carta e grupo', () => {
-  it('CA5: volume anunciado dos anúncios ativos e média das notas do vendedor', async () => {
+  it('CA5: volume anunciado dos anúncios ativos do vendedor', async () => {
     await createListing('50.00', 'ACTIVE', 2);
-    const [first, second] = created.orders;
-    await prisma.review.createMany({
-      data: [
-        { orderId: first!, authorId: ids.buyer, sellerId: ids.seller, rating: 5 },
-        { orderId: second!, authorId: ids.buyer, sellerId: ids.seller, rating: 4 },
-      ],
-    });
     const unknownId = crypto.randomUUID();
 
     const res = await getAsAdmin('/sellers', { ids: `${ids.seller},${unknownId}` });
 
     expect(dataOf(res)).toEqual([
-      { id: ids.seller, listedVolumeCents: 20000, activeListings: 2, rating: 4.5, reviews: 2 },
-      { id: unknownId, listedVolumeCents: 0, activeListings: 0, rating: null, reviews: 0 },
+      { id: ids.seller, listedVolumeCents: 20000, activeListings: 2 },
+      { id: unknownId, listedVolumeCents: 0, activeListings: 0 },
     ]);
   });
 

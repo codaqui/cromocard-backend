@@ -58,8 +58,6 @@ const sellerStats = z.object({
   id: z.uuid(),
   listedVolumeCents: cents,
   activeListings: count,
-  rating: z.number().nullable().openapi({ description: 'Média das notas de 1 a 5, com uma casa' }),
-  reviews: count,
 });
 const cardStats = z.object({
   id: z.uuid(),
@@ -108,7 +106,7 @@ const financePaths: RouteConfig[] = [
   }),
   route({
     path: '/admin/finance/sellers',
-    summary: 'Volume anunciado e reputação dos vendedores (CCD097)',
+    summary: 'Volume anunciado dos vendedores (CCD097)',
     query: idsQuerySchema,
     schema: statsResponse(sellerStats),
   }),

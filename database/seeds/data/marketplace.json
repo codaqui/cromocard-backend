@@ -124,8 +124,7 @@
       "method": "PIX",
       "payment": "APPROVED",
       "paidHoursAgo": 96,
-      "changedHoursAgo": 1,
-      "rating": 5
+      "changedHoursAgo": 1
     },
     {
       "key": "entregue-3d-neymar",
@@ -137,8 +136,7 @@
       "method": "BOLETO",
       "payment": "APPROVED",
       "paidHoursAgo": 144,
-      "changedHoursAgo": 72,
-      "rating": 4
+      "changedHoursAgo": 72
     },
     {
       "key": "entregue-10d-vinicius",
@@ -150,8 +148,7 @@
       "method": "CREDIT_CARD",
       "payment": "APPROVED",
       "paidHoursAgo": 336,
-      "changedHoursAgo": 240,
-      "rating": 3
+      "changedHoursAgo": 240
     },
     {
       "key": "aguardando-pikachu",

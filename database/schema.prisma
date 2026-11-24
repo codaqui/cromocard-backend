@@ -72,8 +72,6 @@ model User {
   listings                        Listing[]
   purchases                       Order[]                  @relation("OrderBuyer")
   sales                           Order[]                  @relation("OrderSeller")
-  reviewsWritten                  Review[]                 @relation("ReviewAuthor")
-  reviewsReceived                 Review[]                 @relation("ReviewSeller")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -742,7 +740,6 @@ model Order {
   seller          User     @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_seller_id")
   shippingAddress Address  @relation(fields: [shippingAddressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_shipping_address_id")
   payment         Payment?
-  review          Review?
 
   @@map("orders")
 }
@@ -761,24 +758,6 @@ model Payment {
   order Order @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_payments_order_id")
 
   @@map("payments")
-}
-
-model Review {
-  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  orderId   String    @unique @map("order_id") @db.Uuid
-  authorId  String    @map("author_id") @db.Uuid
-  sellerId  String    @map("seller_id") @db.Uuid
-  rating    Int       @db.SmallInt
-  comment   String?   @db.VarChar(500)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
-
-  order  Order @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews_order_id")
-  author User  @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews_author_id")
-  seller User  @relation("ReviewSeller", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reviews_seller_id")
-
-  @@map("reviews")
 }
 
 model PriceHistory {
