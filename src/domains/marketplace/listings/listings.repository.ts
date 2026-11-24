@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
-import { ListingStatus } from '@/generated/prisma/enums';
+import { ListingStatus, UserStatus } from '@/generated/prisma/enums';
 import { notDeleted } from '@/shared/utils/soft-delete';
 import { toSkipTake } from '@/shared/utils/pagination';
 
@@ -17,11 +17,13 @@ export interface CardListingsSummaryRecord {
   lowestPrice: Prisma.Decimal | null;
 }
 
+export interface ListingSummaryPage {
+  items: ListingSummaryRecord[];
+  total: number;
+}
+
 export interface ListingsRepository {
-  findAvailableByCard(
-    cardId: string,
-    query: ListCardListingsQuery,
-  ): Promise<{ items: ListingSummaryRecord[]; total: number }>;
+  findAvailableByCard(cardId: string, query: ListCardListingsQuery): Promise<ListingSummaryPage>;
   summarizeAvailableByCard(cardId: string): Promise<CardListingsSummaryRecord>;
 }
 
@@ -31,6 +33,7 @@ function availableOf(cardId: string, excludeListingId?: string): Prisma.ListingW
     ...notDeleted,
     status: ListingStatus.ACTIVE,
     availableQuantity: { gt: 0 },
+    seller: { is: { ...notDeleted, status: UserStatus.ACTIVE } },
     ...(excludeListingId ? { id: { not: excludeListingId } } : {}),
   };
 }
@@ -45,7 +48,10 @@ const summarySelect = {
 export class PrismaListingsRepository implements ListingsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async findAvailableByCard(cardId: string, query: ListCardListingsQuery) {
+  async findAvailableByCard(
+    cardId: string,
+    query: ListCardListingsQuery,
+  ): Promise<ListingSummaryPage> {
     const where = availableOf(cardId, query.excludeListingId);
     const [items, total] = await this.prisma.$transaction([
       this.prisma.listing.findMany({

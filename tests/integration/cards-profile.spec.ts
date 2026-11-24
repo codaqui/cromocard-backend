@@ -48,11 +48,27 @@ async function createCard(suffix: string, extra: { status?: 'DRAFT'; deletedAt?:
 
 function listing(
   price: string,
-  extra: { status?: ListingStatus; availableQuantity?: number } = {},
+  extra: { status?: ListingStatus; availableQuantity?: number; sellerId?: string } = {},
 ) {
   return prisma.listing.create({
     data: { cardId: ids.card, sellerId: ids.seller, conditionId: ids.condition, price, ...extra },
   });
+}
+
+async function createSeller(
+  suffix: string,
+  extra: { status?: 'SUSPENDED'; deletedAt?: Date },
+): Promise<string> {
+  const seller = await prisma.user.create({
+    data: {
+      name: `Vendedor ${suffix}`,
+      email: `${MARKER}-${suffix}@cromocard.dev`,
+      username: `${MARKER}-${suffix}`.slice(0, 30),
+      role: 'SELLER',
+      ...extra,
+    },
+  });
+  return seller.id;
 }
 
 const history = (price: string, source: PriceSource, days: number) =>
@@ -85,6 +101,8 @@ beforeAll(async () => {
   await listing('1820.00');
   await listing('1500.00', { status: 'PAUSED' });
   await listing('1000.00', { availableQuantity: 0 });
+  await listing('900.00', { sellerId: await createSeller('suspenso', { status: 'SUSPENDED' }) });
+  await listing('950.00', { sellerId: await createSeller('excluido', { deletedAt: new Date() }) });
   await history('2000.00', 'SALE', 5);
   await history('2200.00', 'SALE', 10);
   await history('100.00', 'LISTING', 2);
@@ -150,6 +168,13 @@ describe('GET /api/v1/cards/:cardId/listings', () => {
     const items = dataOf<ListingItem[]>(res);
     expect(items.map((item) => item.price)).toEqual(['1750.00', '1820.00', '1980.00', '2390.00']);
     expect(items[0]).toMatchObject({ condition: { name: MARKER }, seller: { username: MARKER } });
+  });
+
+  it('CA2: esconde anúncios de vendedor suspenso ou excluído', async () => {
+    const res = await request(app).get(`${CARDS}/${ids.card}/listings`);
+    const usernames = dataOf<ListingItem[]>(res).map((item) => item.seller.username);
+
+    expect(usernames).toEqual([MARKER, MARKER, MARKER, MARKER]);
   });
 
   it('R18: pagina e informa o total; excludeListingId tira um anúncio', async () => {
