@@ -172,7 +172,7 @@ export class PrismaFinanceRepository implements FinanceRepository {
     const rows = await this.prisma.$queryRaw<SellerRow[]>`
       SELECT u.id::text AS id, COALESCE(l.volume, 0)::bigint AS volume, COALESCE(l.active, 0)::int AS active,
              r.rating, COALESCE(r.reviews, 0)::int AS reviews
-      FROM unnest(${ids}::uuid[]) AS u(id)
+      FROM unnest(${ids}::uuid[]) WITH ORDINALITY AS u(id, position)
       LEFT JOIN (
         SELECT seller_id, SUM(price * available_quantity) * 100 AS volume, COUNT(*) AS active
         FROM listings WHERE status = 'ACTIVE' AND deleted_at IS NULL GROUP BY seller_id
@@ -180,7 +180,8 @@ export class PrismaFinanceRepository implements FinanceRepository {
       LEFT JOIN (
         SELECT seller_id, ROUND(AVG(rating)::numeric, 1)::float AS rating, COUNT(*) AS reviews
         FROM reviews WHERE deleted_at IS NULL GROUP BY seller_id
-      ) r ON r.seller_id = u.id`;
+      ) r ON r.seller_id = u.id
+      ORDER BY u.position`;
     return rows.map(({ id, volume, active, rating, reviews }) => ({
       id,
       listedVolumeCents: Number(volume),
@@ -193,10 +194,10 @@ export class PrismaFinanceRepository implements FinanceRepository {
   async cardStats(ids: string[], since: Date): Promise<CardStats[]> {
     const rows = await this.prisma.$queryRaw<CardRow[]>`
       SELECT c.id::text AS id, ROUND(AVG(ph.price) * 100)::bigint AS average, COUNT(ph.id)::int AS prices
-      FROM unnest(${ids}::uuid[]) AS c(id)
+      FROM unnest(${ids}::uuid[]) WITH ORDINALITY AS c(id, position)
       LEFT JOIN price_history ph
         ON ph.card_id = c.id AND ph.deleted_at IS NULL AND ph.reference_date >= ${since}::date
-      GROUP BY c.id`;
+      GROUP BY c.id ORDER BY MIN(c.position)`;
     return rows.map(({ id, average, prices }) => ({
       id,
       averagePriceCents: average === null ? null : Number(average),
@@ -207,13 +208,13 @@ export class PrismaFinanceRepository implements FinanceRepository {
   async groupStats(ids: string[]): Promise<GroupStats[]> {
     const rows = await this.prisma.$queryRaw<GroupRow[]>`
       SELECT g.id::text AS id, (COALESCE(SUM(l.price), 0) * 100)::bigint AS volume, COUNT(l.id)::int AS active
-      FROM unnest(${ids}::uuid[]) AS g(id)
+      FROM unnest(${ids}::uuid[]) WITH ORDINALITY AS g(id, position)
       LEFT JOIN (
         SELECT DISTINCT group_id, listing_id FROM group_messages
         WHERE content_type = 'LISTING' AND listing_id IS NOT NULL AND deleted_at IS NULL
       ) gm ON gm.group_id = g.id
       LEFT JOIN listings l ON l.id = gm.listing_id AND l.status = 'ACTIVE' AND l.deleted_at IS NULL
-      GROUP BY g.id`;
+      GROUP BY g.id ORDER BY MIN(g.position)`;
     return rows.map(({ id, volume, active }) => ({
       id,
       negotiatedVolumeCents: Number(volume),

@@ -327,6 +327,19 @@ describe('estatísticas por vendedor, carta e grupo', () => {
     ]);
   });
 
+  it.each(['/sellers', '/cards', '/groups'])(
+    '%s devolve na ordem dos ids pedidos',
+    async (path) => {
+      const requested = Array.from({ length: 5 }, () => crypto.randomUUID());
+      const reversed = [...requested].reverse();
+
+      for (const ids of [requested, reversed]) {
+        const res = await getAsAdmin(path, { ids: ids.join(',') });
+        expect(dataOf<{ id: string }[]>(res).map(({ id }) => id)).toEqual(ids);
+      }
+    },
+  );
+
   it('R10: volume e negociações ativas dos anúncios compartilhados no grupo', async () => {
     const group = await prisma.group.create({
       data: { name: `Trocas ${RUN_ID}`, accessType: 'OPEN', creatorId: ids.seller },
