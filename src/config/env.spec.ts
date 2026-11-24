@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+/** Gateway e frete reais, que produção exige (CCD072 R22). */
+const REAL_MARKETPLACE = {
+  PAYMENT_DRIVER: 'stripe',
+  STRIPE_SECRET_KEY: 'sk_test_exemplo',
+  STRIPE_WEBHOOK_SECRET: 'whsec_exemplo',
+  SHIPPING_DRIVER: 'melhor-envio',
+  MELHOR_ENVIO_TOKEN: 'token-exemplo',
+};
+
 async function loadEnv(overrides: Record<string, string>) {
   Object.entries(overrides).forEach(([name, value]) => vi.stubEnv(name, value));
   vi.resetModules();
@@ -25,6 +34,7 @@ describe('env: e-mail em produção', () => {
 
   it('aceita SMTP com servidor em produção', async () => {
     const { env } = await loadEnv({
+      ...REAL_MARKETPLACE,
       APP_ENV: 'production',
       MAIL_DRIVER: 'smtp',
       MAIL_HOST: 'smtp.exemplo.com',
@@ -85,5 +95,65 @@ describe('env: pastas do storage', () => {
     });
 
     expect(env.STORAGE_LOCAL_PRIVATE_DIR).toBe('storage-private');
+  });
+});
+
+describe('env: pagamento e frete (CCD072 R22)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('usa as versões falsas por padrão, como nos testes e no PC (CA14)', async () => {
+    const { env } = await loadEnv({});
+
+    expect(env.PAYMENT_DRIVER).toBe('fake');
+    expect(env.SHIPPING_DRIVER).toBe('fake');
+    expect(env.MELHOR_ENVIO_BASE_URL).toBe('https://sandbox.melhorenvio.com.br');
+  });
+
+  it.each([
+    ['sem a chave', { STRIPE_WEBHOOK_SECRET: 'whsec_exemplo' }],
+    ['sem o segredo do webhook', { STRIPE_SECRET_KEY: 'sk_test_exemplo' }],
+  ])('recusa PAYMENT_DRIVER=stripe %s', async (_case, keys) => {
+    await expect(loadEnv({ PAYMENT_DRIVER: 'stripe', ...keys })).rejects.toThrow(
+      /STRIPE_SECRET_KEY/,
+    );
+  });
+
+  it('recusa SHIPPING_DRIVER=melhor-envio sem token', async () => {
+    await expect(loadEnv({ SHIPPING_DRIVER: 'melhor-envio' })).rejects.toThrow(
+      /MELHOR_ENVIO_TOKEN/,
+    );
+  });
+
+  it.each([
+    ['o pagamento falso', { PAYMENT_DRIVER: 'fake' }, /PAYMENT_DRIVER/],
+    ['o frete falso', { SHIPPING_DRIVER: 'fake' }, /SHIPPING_DRIVER/],
+  ])('recusa %s em produção', async (_case, driver, field) => {
+    await expect(
+      loadEnv({
+        ...REAL_MARKETPLACE,
+        ...driver,
+        APP_ENV: 'production',
+        MAIL_DRIVER: 'smtp',
+        MAIL_HOST: 'smtp.exemplo.com',
+      }),
+    ).rejects.toThrow(field);
+  });
+
+  it('aceita as versões falsas em homologação', async () => {
+    const { env } = await loadEnv({ APP_ENV: 'homolog' });
+
+    expect(env.PAYMENT_DRIVER).toBe('fake');
+  });
+
+  it('aceita Stripe e Melhor Envio e tira a barra final da URL', async () => {
+    const { env } = await loadEnv({
+      ...REAL_MARKETPLACE,
+      MELHOR_ENVIO_BASE_URL: 'https://melhorenvio.com.br/',
+    });
+
+    expect(env.PAYMENT_DRIVER).toBe('stripe');
+    expect(env.MELHOR_ENVIO_BASE_URL).toBe('https://melhorenvio.com.br');
   });
 });

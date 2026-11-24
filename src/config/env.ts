@@ -39,6 +39,12 @@ const envSchema = z.object({
   STORAGE_LOCAL_DIR: z.string().min(1).default('uploads'),
   STORAGE_LOCAL_PRIVATE_DIR: z.string().min(1).default('storage-private'),
   SEED_USER_PASSWORD: optionalText,
+  PAYMENT_DRIVER: z.enum(['fake', 'stripe']).default('fake'),
+  STRIPE_SECRET_KEY: optionalText,
+  STRIPE_WEBHOOK_SECRET: optionalText,
+  SHIPPING_DRIVER: z.enum(['fake', 'melhor-envio']).default('fake'),
+  MELHOR_ENVIO_TOKEN: optionalText,
+  MELHOR_ENVIO_BASE_URL: z.url().default('https://sandbox.melhorenvio.com.br'),
 });
 
 const DEVELOPMENT_API_PUBLIC_URL = 'http://localhost:3000';
@@ -66,6 +72,24 @@ const separateStorageDirs = ({
   !isInside(STORAGE_LOCAL_PRIVATE_DIR, STORAGE_LOCAL_DIR) &&
   !isInside(STORAGE_LOCAL_DIR, STORAGE_LOCAL_PRIVATE_DIR);
 
+type EnvInput = z.infer<typeof envSchema>;
+
+const requireStripeKeys = ({
+  PAYMENT_DRIVER,
+  STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET,
+}: EnvInput) =>
+  PAYMENT_DRIVER !== 'stripe' || (Boolean(STRIPE_SECRET_KEY) && Boolean(STRIPE_WEBHOOK_SECRET));
+
+const requireMelhorEnvioToken = ({ SHIPPING_DRIVER, MELHOR_ENVIO_TOKEN }: EnvInput) =>
+  SHIPPING_DRIVER !== 'melhor-envio' || Boolean(MELHOR_ENVIO_TOKEN);
+
+const requireRealPaymentInProduction = ({ APP_ENV, PAYMENT_DRIVER }: EnvInput) =>
+  APP_ENV !== 'production' || PAYMENT_DRIVER === 'stripe';
+
+const requireRealShippingInProduction = ({ APP_ENV, SHIPPING_DRIVER }: EnvInput) =>
+  APP_ENV !== 'production' || SHIPPING_DRIVER === 'melhor-envio';
+
 const envWithPublicUrlSchema = envSchema
   .refine(requirePublicUrlInProduction, {
     path: ['API_PUBLIC_URL'],
@@ -80,8 +104,25 @@ const envWithPublicUrlSchema = envSchema
     path: ['MAIL_DRIVER'],
     message: 'Em produção (APP_ENV=production) só smtp: o Ethereal não entrega os e-mails',
   })
+  .refine(requireStripeKeys, {
+    path: ['STRIPE_SECRET_KEY'],
+    message: 'STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENT_DRIVER=stripe',
+  })
+  .refine(requireMelhorEnvioToken, {
+    path: ['MELHOR_ENVIO_TOKEN'],
+    message: 'Obrigatório com SHIPPING_DRIVER=melhor-envio',
+  })
+  .refine(requireRealPaymentInProduction, {
+    path: ['PAYMENT_DRIVER'],
+    message: 'Em produção (APP_ENV=production) só stripe: o fake não cobra ninguém',
+  })
+  .refine(requireRealShippingInProduction, {
+    path: ['SHIPPING_DRIVER'],
+    message: 'Em produção (APP_ENV=production) só melhor-envio: o fake inventa o frete',
+  })
   .transform(({ API_PUBLIC_URL = DEVELOPMENT_API_PUBLIC_URL, FRONTEND_URL, ...rest }) => ({
     ...rest,
+    MELHOR_ENVIO_BASE_URL: withoutTrailingSlash(rest.MELHOR_ENVIO_BASE_URL),
     API_PUBLIC_URL: withoutTrailingSlash(API_PUBLIC_URL),
     FRONTEND_URL: withoutTrailingSlash(FRONTEND_URL ?? rest.CORS_ORIGIN[0] ?? ''),
   }));
