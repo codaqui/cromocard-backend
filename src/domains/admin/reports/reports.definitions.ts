@@ -43,6 +43,15 @@ export const REPORT_DEFINITIONS: Record<ReportType, ReportDefinition> = {
       { key: 'createdAt', label: 'Cadastro' },
     ],
   },
+  volume: {
+    title: 'Volume Transacionado & Custódia',
+    columns: [
+      { key: 'day', label: 'Dia' },
+      { key: 'received', label: 'Recebido em custódia' },
+      { key: 'released', label: 'Liquidado aos vendedores' },
+      { key: 'releasedOrders', label: 'Pedidos liquidados' },
+    ],
+  },
 };
 
 const VALUE_LABELS: Record<string, string> = {
@@ -70,6 +79,8 @@ const dateTimeFormatter = new Intl.DateTimeFormat('pt-BR', {
   timeStyle: 'short',
 });
 
+const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
 const isoDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: BRASILIA_TIME_ZONE });
 
 export function formatDate(date: Date): string {
@@ -82,6 +93,14 @@ export function formatDateTime(date: Date): string {
 
 export function formatIsoDate(date: Date): string {
   return isoDateFormatter.format(date);
+}
+
+export function formatCents(cents: number): string {
+  return currencyFormatter.format(cents / 100);
+}
+
+export function formatIsoDay(day: string): string {
+  return day.split('-').reverse().join('/');
 }
 
 export type CellValue = string | number | Date | null | undefined;

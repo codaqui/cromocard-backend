@@ -1,0 +1,209 @@
+{
+  "addresses": [
+    {
+      "key": "ana-casa",
+      "user": "ana",
+      "zipCode": "01310-100",
+      "street": "Avenida Paulista",
+      "number": "1000",
+      "neighborhood": "Bela Vista",
+      "city": "São Paulo",
+      "state": "SP"
+    },
+    {
+      "key": "bruno-casa",
+      "user": "bruno",
+      "zipCode": "20040-002",
+      "street": "Rua da Assembleia",
+      "number": "10",
+      "neighborhood": "Centro",
+      "city": "Rio de Janeiro",
+      "state": "RJ"
+    },
+    {
+      "key": "carla-casa",
+      "user": "carla",
+      "zipCode": "30130-010",
+      "street": "Avenida Afonso Pena",
+      "number": "500",
+      "neighborhood": "Centro",
+      "city": "Belo Horizonte",
+      "state": "MG"
+    },
+    {
+      "key": "gabriela-casa",
+      "user": "gabriela",
+      "zipCode": "80010-000",
+      "street": "Rua XV de Novembro",
+      "number": "250",
+      "neighborhood": "Centro",
+      "city": "Curitiba",
+      "state": "PR"
+    }
+  ],
+  "listings": [
+    {
+      "key": "elisa-pikachu",
+      "seller": "elisa",
+      "card": "pikachu",
+      "price": "1250.00",
+      "quantity": 2,
+      "status": "ACTIVE",
+      "sharedIn": "mestres-pokemon"
+    },
+    {
+      "key": "elisa-charizard",
+      "seller": "elisa",
+      "card": "charizard",
+      "price": "4800.00",
+      "status": "ACTIVE",
+      "sharedIn": "mestres-pokemon"
+    },
+    {
+      "key": "elisa-blastoise",
+      "seller": "elisa",
+      "card": "blastoise",
+      "price": "950.00",
+      "status": "PAUSED"
+    },
+    {
+      "key": "fabio-neymar",
+      "seller": "fabio",
+      "card": "neymar",
+      "price": "80.00",
+      "quantity": 3,
+      "status": "ACTIVE"
+    },
+    {
+      "key": "fabio-vinicius",
+      "seller": "fabio",
+      "card": "vinicius",
+      "price": "60.00",
+      "status": "CLOSED"
+    },
+    {
+      "key": "fabio-mbappe",
+      "seller": "fabio",
+      "card": "mbappe",
+      "price": "120.00",
+      "status": "ACTIVE"
+    }
+  ],
+  "orders": [
+    {
+      "key": "pago-charizard",
+      "listing": "elisa-charizard",
+      "buyer": "ana",
+      "address": "ana-casa",
+      "shipping": "20.00",
+      "status": "PAID",
+      "method": "PIX",
+      "payment": "APPROVED",
+      "paidHoursAgo": 30,
+      "changedHoursAgo": 30
+    },
+    {
+      "key": "enviado-mbappe",
+      "listing": "fabio-mbappe",
+      "buyer": "bruno",
+      "address": "bruno-casa",
+      "shipping": "20.00",
+      "status": "SHIPPED",
+      "method": "CREDIT_CARD",
+      "payment": "APPROVED",
+      "paidHoursAgo": 50,
+      "changedHoursAgo": 26
+    },
+    {
+      "key": "entregue-hoje-pikachu",
+      "listing": "elisa-pikachu",
+      "buyer": "carla",
+      "address": "carla-casa",
+      "shipping": "20.00",
+      "status": "DELIVERED",
+      "method": "PIX",
+      "payment": "APPROVED",
+      "paidHoursAgo": 96,
+      "changedHoursAgo": 1
+    },
+    {
+      "key": "entregue-3d-neymar",
+      "listing": "fabio-neymar",
+      "buyer": "gabriela",
+      "address": "gabriela-casa",
+      "shipping": "20.00",
+      "status": "DELIVERED",
+      "method": "BOLETO",
+      "payment": "APPROVED",
+      "paidHoursAgo": 144,
+      "changedHoursAgo": 72
+    },
+    {
+      "key": "entregue-10d-vinicius",
+      "listing": "fabio-vinicius",
+      "buyer": "ana",
+      "address": "ana-casa",
+      "shipping": "20.00",
+      "status": "DELIVERED",
+      "method": "CREDIT_CARD",
+      "payment": "APPROVED",
+      "paidHoursAgo": 336,
+      "changedHoursAgo": 240
+    },
+    {
+      "key": "aguardando-pikachu",
+      "listing": "elisa-pikachu",
+      "buyer": "bruno",
+      "address": "bruno-casa",
+      "shipping": "20.00",
+      "status": "AWAITING_PAYMENT",
+      "method": "BOLETO",
+      "payment": "PENDING",
+      "paidHoursAgo": 2,
+      "changedHoursAgo": 2
+    },
+    {
+      "key": "cancelado-mbappe",
+      "listing": "fabio-mbappe",
+      "buyer": "carla",
+      "address": "carla-casa",
+      "shipping": "20.00",
+      "status": "CANCELED",
+      "method": "CREDIT_CARD",
+      "payment": "REFUNDED",
+      "paidHoursAgo": 120,
+      "changedHoursAgo": 100
+    }
+  ],
+  "priceHistory": [
+    {
+      "key": "pikachu-venda-recente",
+      "card": "pikachu",
+      "price": "1200.00",
+      "daysAgo": 5,
+      "source": "SALE"
+    },
+    {
+      "key": "pikachu-anuncio",
+      "card": "pikachu",
+      "price": "1300.00",
+      "daysAgo": 20,
+      "source": "LISTING"
+    },
+    {
+      "key": "pikachu-venda-antiga",
+      "card": "pikachu",
+      "price": "900.00",
+      "daysAgo": 45,
+      "source": "SALE"
+    },
+    {
+      "key": "charizard-venda",
+      "card": "charizard",
+      "price": "4700.00",
+      "daysAgo": 3,
+      "source": "SALE"
+    },
+    { "key": "neymar-venda", "card": "neymar", "price": "75.00", "daysAgo": 10, "source": "SALE" }
+  ]
+}

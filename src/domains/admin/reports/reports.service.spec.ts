@@ -9,7 +9,7 @@ import type {
   SellerAuditRow,
   SignupRow,
 } from './reports.repository';
-import { type ReportsAuditLog, ReportsService } from './reports.service';
+import { type DailyVolume, type ReportsAuditLog, ReportsService } from './reports.service';
 
 const NOW = new Date('2026-11-16T15:00:00Z');
 const ADMIN_ID = '0198f0c2-7a3b-7c1d-8e2f-1a2b3c4d5e6f';
@@ -50,6 +50,11 @@ const sellerAudit: SellerAuditRow[] = [
   },
 ];
 
+const volume: DailyVolume[] = [
+  { day: '2026-11-14', receivedCents: 125050, releasedCents: 0, releasedOrders: 0 },
+  { day: '2026-11-15', receivedCents: 0, releasedCents: 80000, releasedOrders: 2 },
+];
+
 function fakeExporter(extension: string): ReportExporter & { tables: ReportTable[] } {
   const tables: ReportTable[] = [];
   return {
@@ -78,14 +83,25 @@ function setup(rows = { signups, catalog, sellerAudit }) {
   const repository: ReportsRepository = { findSignups, findCatalog, findSellerAudit };
   const auditLogService: ReportsAuditLog = { record };
   const exporters = { csv: fakeExporter('csv'), pdf: fakeExporter('pdf') };
+  const dailyVolume = vi.fn(() => Promise.resolve({ rows: volume, total: volume.length }));
   const service = new ReportsService({
     repository,
     auditLogService,
     archive: { archive },
+    finance: { dailyVolume },
     exporters,
     now: () => NOW,
   });
-  return { service, findSignups, findCatalog, findSellerAudit, record, archive, exporters };
+  return {
+    service,
+    findSignups,
+    findCatalog,
+    findSellerAudit,
+    dailyVolume,
+    record,
+    archive,
+    exporters,
+  };
 }
 
 describe('ReportsService', () => {
@@ -130,6 +146,28 @@ describe('ReportsService', () => {
       ).resolves.toMatchObject({
         rows: [],
         total: 0,
+      });
+    });
+  });
+
+  describe('volume transacionado e custódia (CCD097)', () => {
+    it('CA7: o relatório traz o recebido em custódia e o liquidado por dia', async () => {
+      const { service, dailyVolume, exporters } = setup();
+
+      await service.export({
+        type: 'volume',
+        query: { period: '7d', format: 'csv' },
+        adminId: ADMIN_ID,
+      });
+
+      expect(dailyVolume).toHaveBeenCalledWith(expect.objectContaining({ to: NOW }), undefined);
+      expect(exporters.csv.tables[0]).toMatchObject({
+        title: 'Volume Transacionado & Custódia',
+        headers: ['Dia', 'Recebido em custódia', 'Liquidado aos vendedores', 'Pedidos liquidados'],
+        rows: [
+          ['14/11/2026', 'R$ 1.250,50', 'R$ 0,00', '0'],
+          ['15/11/2026', 'R$ 0,00', 'R$ 800,00', '2'],
+        ],
       });
     });
   });
