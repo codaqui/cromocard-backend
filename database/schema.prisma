@@ -454,7 +454,7 @@ enum CatalogVote {
   @@map("catalog_vote")
 }
 
-/// Um voto por cliente em cada solicitação (CCD103, ADR-053).
+/// Um voto por cliente em cada solicitaÃ§Ã£o (CCD103, ADR-053).
 model CatalogRequestVote {
   catalogRequestId String      @map("catalog_request_id") @db.Uuid
   userId           String      @map("user_id") @db.Uuid
@@ -706,6 +706,7 @@ model Listing {
   card      Card           @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_card_id")
   condition CardCondition? @relation(fields: [conditionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_condition_id")
 
+  @@index([cardId, status, price], map: "idx_listings_card_id_status_price")
   @@map("listings")
 }
 
@@ -721,5 +722,6 @@ model PriceHistory {
 
   card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_price_history_card_id")
 
+  @@index([cardId, source, referenceDate], map: "idx_price_history_card_id_source_reference_date")
   @@map("price_history")
 }
