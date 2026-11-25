@@ -14,6 +14,10 @@ import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/s
 import { communityAdminModule } from '@/domains/community/community.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { globalNotificationsModule } from '@/domains/notifications/notifications.module';
+import {
+  connectedAccountsModule,
+  paymentsWebhookModule,
+} from '@/domains/marketplace/payments/payments.module';
 import { createUsersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
 import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
@@ -36,6 +40,8 @@ const sharedModules: DomainModule[] = [
   communityAdminModule,
   globalNotificationsModule,
   sellerVerificationsModule,
+  connectedAccountsModule,
+  paymentsWebhookModule,
 ];
 
 export interface RoutesOptions {
