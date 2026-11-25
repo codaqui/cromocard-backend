@@ -9,7 +9,7 @@ import {
 } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 
-import { cardIdOf } from './catalog.seed';
+import { cardConditionIdOf, cardIdOf } from './catalog.seed';
 import { groupIdOf } from './community.seed';
 import { daysAgo, loadSeedData, seedKey } from './load-seed-data';
 import { keyResolver, SeedNamespace, seedId } from './seed-id';
@@ -36,6 +36,7 @@ const marketplaceSchema = z.object({
       key: seedKey,
       seller: seedKey,
       card: seedKey,
+      condition: seedKey,
       price: money,
       quantity: z.number().int().min(1).default(1),
       status: z.enum(ListingStatus),
@@ -96,10 +97,11 @@ const toAddressData = ({ key, user, ...address }: (typeof marketplace.addresses)
   isPrimary: true,
 });
 
-const toListingData = ({ key, seller, card, price, quantity, status }: SeedListing) => ({
+const toListingData = ({ key, seller, card, condition, price, quantity, status }: SeedListing) => ({
   id: listingIdOf(key),
   sellerId: userIdOf(seller),
   cardId: cardIdOf(card),
+  conditionId: cardConditionIdOf(condition),
   price: new Prisma.Decimal(price),
   availableQuantity: quantity,
   status,
