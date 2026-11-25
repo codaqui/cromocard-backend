@@ -92,8 +92,8 @@ describe('FakePaymentProvider: conta conectada (CCD108)', () => {
       refreshUrl: 'http://localhost:5173/vendedor/stripe/renovar',
     });
 
-    expect(id).toBe('acct_fake_1');
-    expect(other.id).toBe('acct_fake_2');
+    expect(id).toMatch(/^acct_fake_/);
+    expect(other.id).not.toBe(id);
     expect(url).toBe('http://localhost:5173/vendedor/stripe/retorno');
     await expect(provider.getConnectedAccount(id)).resolves.toMatchObject({
       detailsSubmitted: true,

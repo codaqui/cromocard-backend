@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { InvalidSignatureError, PaymentProviderError } from './payment.errors';
 import type {
   CheckoutSession,
@@ -67,8 +69,7 @@ export class FakePaymentProvider implements PaymentProvider {
   }
 
   createConnectedAccount(): Promise<{ id: string }> {
-    this.sequence += 1;
-    const { id } = this.updateAccount(`acct_fake_${this.sequence}`, {});
+    const { id } = this.updateAccount(`acct_fake_${randomUUID()}`, {});
     return Promise.resolve({ id });
   }
 
@@ -104,7 +105,7 @@ export class FakePaymentProvider implements PaymentProvider {
     changes: Partial<Omit<ConnectedAccount, 'id'>>,
   ): FakeWebhook {
     const event: PaymentEvent = {
-      id: `evt_fake_${accountId}_updated_${this.sequence}`,
+      id: `evt_fake_${randomUUID()}`,
       type: 'account-updated',
       account: this.updateAccount(accountId, changes),
     };

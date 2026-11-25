@@ -118,7 +118,7 @@ describe('createOnboardingLink', () => {
 
     await expect(service.createOnboardingLink(SELLER)).resolves.toEqual({ url: urls.returnUrl });
     expect(repository.sellers.get(SELLER)).toMatchObject({
-      stripeAccountId: 'acct_fake_1',
+      stripeAccountId: [...provider.accounts.keys()][0],
       stripeAccountStatus: 'PENDING',
     });
   });
@@ -126,11 +126,12 @@ describe('createOnboardingLink', () => {
   it('CA6: retoma o cadastro na mesma conta conectada, sem criar outra', async () => {
     givenSeller();
     await service.createOnboardingLink(SELLER);
+    const first = repository.sellers.get(SELLER)?.stripeAccountId;
 
     await service.createOnboardingLink(SELLER);
 
     expect(provider.accounts.size).toBe(1);
-    expect(repository.sellers.get(SELLER)?.stripeAccountId).toBe('acct_fake_1');
+    expect(repository.sellers.get(SELLER)?.stripeAccountId).toBe(first);
   });
 
   it('CA9: com a Stripe fora do ar, lança PAYMENT_PROVIDER_ERROR e não grava nada', async () => {
