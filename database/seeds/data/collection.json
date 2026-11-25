@@ -1,0 +1,94 @@
+{
+  "owner": "elisa",
+  "albums": [
+    {
+      "album": "copa-2026",
+      "category": "copa-do-mundo",
+      "isFavorite": true,
+      "cards": [
+        {
+          "card": "messi",
+          "status": "OWNED"
+        },
+        {
+          "card": "neymar",
+          "status": "DUPLICATE"
+        },
+        {
+          "card": "vinicius",
+          "status": "OWNED"
+        },
+        {
+          "card": "alisson",
+          "status": "OWNED"
+        },
+        {
+          "card": "mbappe",
+          "status": "DUPLICATE"
+        },
+        {
+          "card": "escudo-selecao",
+          "status": "OWNED"
+        }
+      ],
+      "generated": {
+        "total": 48,
+        "single": 33,
+        "duplicates": 5,
+        "missing": 2
+      }
+    },
+    {
+      "album": "destinos-brilhantes",
+      "category": "pokemon",
+      "cards": [
+        {
+          "card": "charizard-vmax-sv107",
+          "status": "MISSING"
+        },
+        {
+          "card": "charizard-vmax-shiny",
+          "status": "DUPLICATE"
+        }
+      ],
+      "generated": {
+        "total": 71,
+        "single": 43,
+        "duplicates": 6,
+        "missing": 1
+      }
+    },
+    {
+      "album": "magic-vintage",
+      "category": "magic",
+      "cards": [
+        {
+          "card": "mox-diamond",
+          "status": "OWNED"
+        }
+      ],
+      "generated": {
+        "total": 59,
+        "single": 34,
+        "duplicates": 7,
+        "missing": 2
+      }
+    },
+    {
+      "album": "yugioh-classico",
+      "category": "yugioh",
+      "cards": [
+        {
+          "card": "mago-negro",
+          "status": "DUPLICATE"
+        }
+      ],
+      "generated": {
+        "total": 76,
+        "single": 41,
+        "duplicates": 6,
+        "missing": 2
+      }
+    }
+  ]
+}
