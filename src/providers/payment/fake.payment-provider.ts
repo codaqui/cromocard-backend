@@ -1,7 +1,9 @@
-import { InvalidSignatureError } from './payment.errors';
+import { InvalidSignatureError, PaymentProviderError } from './payment.errors';
 import type {
   CheckoutSession,
+  ConnectedAccount,
   CreateCheckoutSessionInput,
+  OnboardingLinkInput,
   PaymentEvent,
   PaymentProvider,
 } from './payment.provider';
@@ -25,6 +27,7 @@ export interface FakeWebhook {
  */
 export class FakePaymentProvider implements PaymentProvider {
   readonly sessions = new Map<string, FakeCheckoutSession>();
+  readonly accounts = new Map<string, ConnectedAccount>();
   private sequence = 0;
 
   createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession> {
@@ -61,5 +64,50 @@ export class FakePaymentProvider implements PaymentProvider {
     } catch {
       throw new InvalidSignatureError();
     }
+  }
+
+  createConnectedAccount(): Promise<{ id: string }> {
+    this.sequence += 1;
+    const { id } = this.updateAccount(`acct_fake_${this.sequence}`, {});
+    return Promise.resolve({ id });
+  }
+
+  createOnboardingLink({ accountId, returnUrl }: OnboardingLinkInput): Promise<string> {
+    this.updateAccount(accountId, { detailsSubmitted: true });
+    return Promise.resolve(returnUrl);
+  }
+
+  getConnectedAccount(accountId: string): Promise<ConnectedAccount> {
+    const account = this.accounts.get(accountId);
+    return account ? Promise.resolve({ ...account }) : Promise.reject(new PaymentProviderError());
+  }
+
+  updateAccount(
+    accountId: string,
+    changes: Partial<Omit<ConnectedAccount, 'id'>>,
+  ): ConnectedAccount {
+    const account: ConnectedAccount = {
+      id: accountId,
+      detailsSubmitted: false,
+      transfersEnabled: false,
+      requirementsDue: 0,
+      disabledReason: null,
+      ...this.accounts.get(accountId),
+      ...changes,
+    };
+    this.accounts.set(accountId, account);
+    return account;
+  }
+
+  accountUpdatedWebhook(
+    accountId: string,
+    changes: Partial<Omit<ConnectedAccount, 'id'>>,
+  ): FakeWebhook {
+    const event: PaymentEvent = {
+      id: `evt_fake_${accountId}_updated_${this.sequence}`,
+      type: 'account-updated',
+      account: this.updateAccount(accountId, changes),
+    };
+    return { rawBody: Buffer.from(JSON.stringify(event)), signature: FAKE_WEBHOOK_SIGNATURE };
   }
 }

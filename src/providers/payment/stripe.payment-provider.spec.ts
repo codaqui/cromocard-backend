@@ -200,3 +200,135 @@ describe('StripePaymentProvider.parseWebhookEvent', () => {
     expect(() => provider.parseWebhookEvent(rawBody, signature)).toThrow(InvalidSignatureError);
   });
 });
+
+describe('StripePaymentProvider: conta conectada Express (CCD108)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('cria a conta Express no Brasil, com o e-mail e pedindo transferências', async () => {
+    const create = vi
+      .spyOn(stripe.accounts, 'create')
+      .mockResolvedValue({ id: 'acct_123' } as never);
+
+    await expect(
+      provider.createConnectedAccount({ email: 'elisa@cromocard.dev' }),
+    ).resolves.toEqual({ id: 'acct_123' });
+    expect(create).toHaveBeenCalledWith({
+      type: 'express',
+      country: 'BR',
+      email: 'elisa@cromocard.dev',
+      capabilities: { transfers: { requested: true } },
+    });
+  });
+
+  it('cria o link de cadastro com a volta, a renovação e todos os dados de uma vez', async () => {
+    const create = vi
+      .spyOn(stripe.accountLinks, 'create')
+      .mockResolvedValue({ url: 'https://connect.stripe.com/setup/e/acct_123' } as never);
+
+    const url = await provider.createOnboardingLink({
+      accountId: 'acct_123',
+      returnUrl: 'https://cromocard.dev/vendedor/stripe/retorno',
+      refreshUrl: 'https://cromocard.dev/vendedor/stripe/renovar',
+    });
+
+    expect(url).toBe('https://connect.stripe.com/setup/e/acct_123');
+    expect(create).toHaveBeenCalledWith({
+      account: 'acct_123',
+      type: 'account_onboarding',
+      return_url: 'https://cromocard.dev/vendedor/stripe/retorno',
+      refresh_url: 'https://cromocard.dev/vendedor/stripe/renovar',
+      collection_options: { fields: 'eventually_due' },
+    });
+  });
+
+  it('lê a conta: cadastro enviado, transferências liberadas, pendências e motivo do bloqueio', async () => {
+    vi.spyOn(stripe.accounts, 'retrieve').mockResolvedValue({
+      id: 'acct_123',
+      details_submitted: true,
+      capabilities: { transfers: 'active' },
+      requirements: {
+        currently_due: ['individual.id_number'],
+        disabled_reason: 'requirements.past_due',
+      },
+    } as never);
+
+    await expect(provider.getConnectedAccount('acct_123')).resolves.toEqual({
+      id: 'acct_123',
+      detailsSubmitted: true,
+      transfersEnabled: true,
+      requirementsDue: 1,
+      disabledReason: 'requirements.past_due',
+    });
+  });
+
+  it('lê a conta recém-criada, ainda sem cadastro, capacidades nem pendências', async () => {
+    vi.spyOn(stripe.accounts, 'retrieve').mockResolvedValue({ id: 'acct_novo' } as never);
+
+    await expect(provider.getConnectedAccount('acct_novo')).resolves.toEqual({
+      id: 'acct_novo',
+      detailsSubmitted: false,
+      transfersEnabled: false,
+      requirementsDue: 0,
+      disabledReason: null,
+    });
+  });
+
+  it.each([
+    [
+      'criar a conta',
+      () => vi.spyOn(stripe.accounts, 'create'),
+      () => provider.createConnectedAccount({ email: 'a@b.c' }),
+    ],
+    [
+      'criar o link',
+      () => vi.spyOn(stripe.accountLinks, 'create'),
+      () =>
+        provider.createOnboardingLink({
+          accountId: 'acct_1',
+          returnUrl: 'https://x',
+          refreshUrl: 'https://y',
+        }),
+    ],
+    [
+      'ler a conta',
+      () => vi.spyOn(stripe.accounts, 'retrieve'),
+      () => provider.getConnectedAccount('acct_1'),
+    ],
+  ])('lança PAYMENT_PROVIDER_ERROR quando a Stripe falha ao %s', async (_case, spy, call) => {
+    spy().mockRejectedValue(new Error('Stripe fora do ar'));
+
+    await expect(call()).rejects.toBeInstanceOf(PaymentProviderError);
+  });
+
+  it('traduz o account.updated com o estado atual da conta', () => {
+    const payload = JSON.stringify({
+      id: 'evt_account',
+      object: 'event',
+      type: 'account.updated',
+      data: {
+        object: {
+          id: 'acct_123',
+          object: 'account',
+          details_submitted: true,
+          capabilities: { transfers: 'active' },
+          requirements: { currently_due: [], disabled_reason: null },
+        },
+      },
+    });
+    const signature = stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET });
+
+    expect(provider.parseWebhookEvent(Buffer.from(payload), signature)).toEqual({
+      id: 'evt_account',
+      type: 'account-updated',
+      account: {
+        id: 'acct_123',
+        detailsSubmitted: true,
+        transfersEnabled: true,
+        requirementsDue: 0,
+        disabledReason: null,
+      },
+    });
+  });
+});

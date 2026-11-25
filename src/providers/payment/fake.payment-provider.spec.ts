@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { FAKE_WEBHOOK_SIGNATURE, FakePaymentProvider } from './fake.payment-provider';
-import { InvalidSignatureError } from './payment.errors';
+import { InvalidSignatureError, PaymentProviderError } from './payment.errors';
 
 const input = {
   orderId: 'pedido-1',
@@ -77,5 +77,51 @@ describe('FakePaymentProvider', () => {
     expect(() =>
       provider.parseWebhookEvent(Buffer.from('não é json'), FAKE_WEBHOOK_SIGNATURE),
     ).toThrow(InvalidSignatureError);
+  });
+});
+
+describe('FakePaymentProvider: conta conectada (CCD108)', () => {
+  it('cria contas novas sem cadastro e o link leva direto à volta, com o cadastro enviado', async () => {
+    const provider = new FakePaymentProvider();
+
+    const { id } = await provider.createConnectedAccount();
+    const other = await provider.createConnectedAccount();
+    const url = await provider.createOnboardingLink({
+      accountId: id,
+      returnUrl: 'http://localhost:5173/vendedor/stripe/retorno',
+      refreshUrl: 'http://localhost:5173/vendedor/stripe/renovar',
+    });
+
+    expect(id).toBe('acct_fake_1');
+    expect(other.id).toBe('acct_fake_2');
+    expect(url).toBe('http://localhost:5173/vendedor/stripe/retorno');
+    await expect(provider.getConnectedAccount(id)).resolves.toMatchObject({
+      detailsSubmitted: true,
+      transfersEnabled: false,
+    });
+    await expect(provider.getConnectedAccount(other.id)).resolves.toMatchObject({
+      detailsSubmitted: false,
+    });
+  });
+
+  it('recusa ler uma conta que não existe, como a Stripe', async () => {
+    await expect(new FakePaymentProvider().getConnectedAccount('acct_x')).rejects.toBeInstanceOf(
+      PaymentProviderError,
+    );
+  });
+
+  it('monta o account.updated com o estado novo, que o parseWebhookEvent lê', async () => {
+    const provider = new FakePaymentProvider();
+    const { id } = await provider.createConnectedAccount();
+
+    const { rawBody, signature } = provider.accountUpdatedWebhook(id, {
+      detailsSubmitted: true,
+      transfersEnabled: true,
+    });
+
+    expect(provider.parseWebhookEvent(rawBody, signature)).toMatchObject({
+      type: 'account-updated',
+      account: { id, detailsSubmitted: true, transfersEnabled: true, requirementsDue: 0 },
+    });
   });
 });

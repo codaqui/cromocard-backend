@@ -24,7 +24,21 @@ export interface CheckoutSession {
  * Evento do webhook já traduzido: `completed` (pago), `expired` (sessão expirou ou o pagamento assíncrono falhou)
  * e `ignored` para o que o marketplace não trata (ex.: boleto ainda não pago).
  */
-export type PaymentEventType = 'completed' | 'expired' | 'ignored';
+export type PaymentEventType = 'completed' | 'expired' | 'account-updated' | 'ignored';
+
+export interface ConnectedAccount {
+  id: string;
+  detailsSubmitted: boolean;
+  transfersEnabled: boolean;
+  requirementsDue: number;
+  disabledReason: string | null;
+}
+
+export interface OnboardingLinkInput {
+  accountId: string;
+  returnUrl: string;
+  refreshUrl: string;
+}
 
 export interface PaymentEvent {
   id: string;
@@ -32,6 +46,7 @@ export interface PaymentEvent {
   sessionId?: string;
   orderId?: string;
   chargeId?: string;
+  account?: ConnectedAccount;
 }
 
 /** Gateway de pagamento (ADR-009, ADR-066): Stripe Checkout em homologação e produção, versão falsa no PC e nos testes. */
@@ -40,4 +55,7 @@ export interface PaymentProvider {
   expireCheckoutSession(sessionId: string): Promise<void>;
   /** Confere a assinatura do webhook; assinatura inválida lança `InvalidSignatureError`. */
   parseWebhookEvent(rawBody: Buffer, signature: string | undefined): PaymentEvent;
+  createConnectedAccount(input: { email: string }): Promise<{ id: string }>;
+  createOnboardingLink(input: OnboardingLinkInput): Promise<string>;
+  getConnectedAccount(accountId: string): Promise<ConnectedAccount>;
 }

@@ -3,14 +3,17 @@ import type Stripe from 'stripe';
 import { InvalidSignatureError, PaymentProviderError } from './payment.errors';
 import type {
   CheckoutSession,
+  ConnectedAccount,
   CreateCheckoutSessionInput,
+  OnboardingLinkInput,
   PaymentEvent,
   PaymentProvider,
 } from './payment.provider';
 
 const CURRENCY = 'brl';
+const CONNECTED_ACCOUNT_COUNTRY = 'BR';
 
-type StripeClient = Pick<Stripe, 'checkout' | 'webhooks'>;
+type StripeClient = Pick<Stripe, 'checkout' | 'webhooks' | 'accounts' | 'accountLinks'>;
 type StripeSession = Stripe.Checkout.Session;
 
 function chargeIdOf(session: StripeSession): string | undefined {
@@ -30,6 +33,20 @@ function sessionEvent(event: Stripe.Event, type: PaymentEvent['type']): PaymentE
   };
 }
 
+function toConnectedAccount(account: Stripe.Account): ConnectedAccount {
+  return {
+    id: account.id,
+    detailsSubmitted: account.details_submitted ?? false,
+    transfersEnabled: account.capabilities?.transfers === 'active',
+    requirementsDue: account.requirements?.currently_due?.length ?? 0,
+    disabledReason: account.requirements?.disabled_reason ?? null,
+  };
+}
+
+const rejectAsProviderError = (): never => {
+  throw new PaymentProviderError();
+};
+
 /**
  * Pago no checkout (cartão) ou depois (pagamento assíncrono). `completed` com `payment_status` diferente de `paid`
  * ainda espera o pagamento e é ignorado; o `async_payment_succeeded` chega depois.
@@ -42,6 +59,12 @@ function toPaymentEvent(event: Stripe.Event): PaymentEvent {
         : sessionEvent(event, 'ignored');
     case 'checkout.session.async_payment_succeeded':
       return sessionEvent(event, 'completed');
+    case 'account.updated':
+      return {
+        id: event.id,
+        type: 'account-updated',
+        account: toConnectedAccount(event.data.object),
+      };
     case 'checkout.session.expired':
     case 'checkout.session.async_payment_failed':
       return sessionEvent(event, 'expired');
@@ -94,5 +117,39 @@ export class StripePaymentProvider implements PaymentProvider {
     } catch {
       throw new InvalidSignatureError();
     }
+  }
+
+  async createConnectedAccount({ email }: { email: string }): Promise<{ id: string }> {
+    const account = await this.stripe.accounts
+      .create({
+        type: 'express',
+        country: CONNECTED_ACCOUNT_COUNTRY,
+        email,
+        capabilities: { transfers: { requested: true } },
+      })
+      .catch(rejectAsProviderError);
+    return { id: account.id };
+  }
+
+  async createOnboardingLink({
+    accountId,
+    returnUrl,
+    refreshUrl,
+  }: OnboardingLinkInput): Promise<string> {
+    const link = await this.stripe.accountLinks
+      .create({
+        account: accountId,
+        type: 'account_onboarding',
+        return_url: returnUrl,
+        refresh_url: refreshUrl,
+        collection_options: { fields: 'eventually_due' },
+      })
+      .catch(rejectAsProviderError);
+    return link.url;
+  }
+
+  async getConnectedAccount(accountId: string): Promise<ConnectedAccount> {
+    const account = await this.stripe.accounts.retrieve(accountId).catch(rejectAsProviderError);
+    return toConnectedAccount(account);
   }
 }
