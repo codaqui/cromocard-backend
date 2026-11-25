@@ -1,5 +1,3 @@
-// Serviço de tempo real (imagem cromocard-ws, ADR-012): o Socket.IO autenticado por JWT no mesmo
-// http.Server do /health e /health/db. Os handlers dos domínios ficam em src/socket/socket-handlers.ts.
 // Em homologação e produção o Compose define PORT=3001. Localmente: PORT=3001 npm run dev:ws
 import { createServer } from 'node:http';
 

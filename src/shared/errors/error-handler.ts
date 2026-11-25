@@ -11,7 +11,6 @@ function toValidationError(error: ZodError): ValidationError {
   );
 }
 
-/** Traduz o erro para o envelope do ADR-011; `undefined` é erro inesperado. O Socket.IO usa o mesmo. */
 export function toAppError(error: unknown): AppError | undefined {
   if (error instanceof AppError) return error;
   if (error instanceof ZodError) return toValidationError(error);

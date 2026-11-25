@@ -18,7 +18,6 @@ const BOB = { id: '01a13d1f-6c97-7e27-a6d2-d05ec95d3261', role: 'SELLER' } as co
 
 const echoSchema = z.object({ text: z.string().min(1) });
 
-/** Handlers de teste, no formato que os domínios usam: valida, chama o serviço e responde pelo ack. */
 const testHandlers: SocketHandlers = (_io, socket) => {
   socket.on(
     'test:whoami',

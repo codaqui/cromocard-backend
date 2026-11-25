@@ -9,11 +9,9 @@ import { userRoom } from './socket-rooms';
 import type { AppSocketServer, SocketHandlers } from './socket.types';
 
 export interface SocketServerOptions {
-  /** Handlers dos domínios, registrados em cada conexão já autenticada. */
   handlers?: readonly SocketHandlers[];
 }
 
-/** Sobe o Socket.IO no `http.Server` do processo ws (ADR-012): JWT no handshake e room `user:<id>`. */
 export function createSocketServer(
   httpServer: HttpServer,
   { handlers = [] }: SocketServerOptions = {},

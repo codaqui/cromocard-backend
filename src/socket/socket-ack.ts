@@ -8,7 +8,6 @@ const INTERNAL_ERROR = {
   message: 'Erro inesperado. Tente novamente mais tarde.',
 } as const;
 
-/** Converte qualquer erro no ack de falha, com o mesmo mapeamento do `errorHandler` do REST. */
 export function toAckError(error: unknown): AckResponse<never> {
   const appError = toAppError(error);
   if (!appError) {
@@ -18,10 +17,6 @@ export function toAckError(error: unknown): AckResponse<never> {
   return { error: appError.code, message: appError.message, details: appError.details };
 }
 
-/**
- * Envolve o handler de um evento: responde `{ data }` com o resultado ou o erro no formato do ADR-011.
- * Sem callback de ack, o resultado é descartado e o erro só vai para o log.
- */
 export function withAck<TPayload, TResult>(handler: (payload: TPayload) => Promise<TResult>) {
   return async (payload: TPayload, ack?: Ack<TResult>): Promise<void> => {
     const response = await handler(payload).then(

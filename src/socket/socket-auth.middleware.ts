@@ -17,10 +17,6 @@ function tokenOf(socket: AppSocket): string | undefined {
   return typeof token === 'string' && token.length > 0 ? token : undefined;
 }
 
-/**
- * `io.use` do handshake: aceita só o access token válido (o mesmo do `authenticate` do REST, ADR-012).
- * O cliente recebe `connect_error` com `message = 'UNAUTHORIZED'` para renovar o token e reconectar.
- */
 export function authenticateSocket(socket: AppSocket, next: (error?: ExtendedError) => void): void {
   const token = tokenOf(socket);
   if (!token) {
