@@ -10,9 +10,11 @@ import {
   type ReportColumn,
   REPORT_DEFINITIONS,
   formatCell,
+  formatCents,
   formatDate,
   formatDateTime,
   formatIsoDate,
+  formatIsoDay,
 } from './reports.definitions';
 import { ReportEmptyError } from './reports.errors';
 import type { ReportRows, ReportsRepository } from './reports.repository';
@@ -33,10 +35,22 @@ export interface ReportsArchive {
   archive(entry: ReportArchiveEntry): Promise<unknown>;
 }
 
+export interface DailyVolume {
+  day: string;
+  receivedCents: number;
+  releasedCents: number;
+  releasedOrders: number;
+}
+
+export interface ReportsFinance {
+  dailyVolume(range: DateRange, limit?: number): Promise<ReportRows<DailyVolume>>;
+}
+
 export interface ReportsServiceDeps {
   repository: ReportsRepository;
   auditLogService: ReportsAuditLog;
   archive: ReportsArchive;
+  finance: ReportsFinance;
   exporters: Record<ExportFormat, ReportExporter>;
   now: () => Date;
 }
@@ -60,6 +74,15 @@ export interface ExportRequest {
   type: ReportType;
   query: ExportQuery;
   adminId: string;
+}
+
+function toVolumeRow({ day, receivedCents, releasedCents, releasedOrders }: DailyVolume) {
+  return {
+    day: formatIsoDay(day),
+    received: formatCents(receivedCents),
+    released: formatCents(releasedCents),
+    releasedOrders: String(releasedOrders),
+  };
 }
 
 function periodLabel({ from, to }: DateRange): string {
@@ -111,8 +134,14 @@ export class ReportsService {
       signups: () => repository.findSignups(period, limit),
       catalog: () => repository.findCatalog(period, limit),
       'seller-audit': () => repository.findSellerAudit(period, limit),
+      volume: () => this.findVolume(period, limit),
     };
     return sources[type]();
+  }
+
+  private async findVolume(period: DateRange, limit?: number): Promise<ReportRows<ReportRow>> {
+    const { rows, total } = await this.deps.finance.dailyVolume(period, limit);
+    return { rows: rows.map(toVolumeRow), total };
   }
 
   private toTable(type: ReportType, period: DateRange, rows: ReportRow[]): ReportTable {
