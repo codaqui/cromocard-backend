@@ -27,7 +27,7 @@ const previewResponse = z.object({
     columns: z.array(z.object({ key: z.string(), label: z.string() })),
     rows: z.array(z.record(z.string(), z.unknown())).openapi({
       description:
-        'Primeiras linhas. signups: name, email, role, createdAt. catalog: kind (CARD ou ALBUM), name, number, album, franchise, createdAt. seller-audit: legalName, cnpj, email, status, createdAt',
+        'Primeiras linhas. signups: name, email, role, createdAt. catalog: kind (CARD ou ALBUM), name, number, album, franchise, createdAt. seller-audit: legalName, cnpj, email, status, createdAt. volume: day, received, released, releasedOrders (um por dia, valores em reais)',
     }),
   }),
   meta: z.object({ total: z.number().int().min(0) }),

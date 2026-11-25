@@ -1,0 +1,7 @@
+[
+  { "key": "mint", "name": "Mint", "sortOrder": 1 },
+  { "key": "near-mint", "name": "Near Mint", "sortOrder": 2 },
+  { "key": "otimo", "name": "Ótimo", "sortOrder": 3 },
+  { "key": "bom", "name": "Bom", "sortOrder": 4 },
+  { "key": "regular", "name": "Regular", "sortOrder": 5 }
+]
