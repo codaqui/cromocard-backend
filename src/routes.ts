@@ -14,6 +14,7 @@ import { financeModule } from '@/domains/admin/finance/finance.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/settings.module';
 import { communityAdminModule } from '@/domains/community/community.module';
+import { sellerListingsModule } from '@/domains/marketplace/listings/seller-listings.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { globalNotificationsModule } from '@/domains/notifications/notifications.module';
 import {
@@ -44,6 +45,7 @@ const sharedModules: DomainModule[] = [
   sellerVerificationsModule,
   connectedAccountsModule,
   paymentsWebhookModule,
+  sellerListingsModule,
 ];
 
 export interface RoutesOptions {
