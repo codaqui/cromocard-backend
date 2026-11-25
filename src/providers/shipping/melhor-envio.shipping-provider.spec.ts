@@ -11,7 +11,6 @@ const input: ShippingQuoteInput = {
   declaredValue: 150,
 };
 
-/** Resposta no formato do `POST /api/v2/me/shipment/calculate` (sandbox do Melhor Envio). */
 const calculateResponse = [
   {
     id: 1,

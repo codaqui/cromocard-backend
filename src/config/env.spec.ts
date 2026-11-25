@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-/** Gateway e frete reais, que produção exige (CCD072 R22). */
 const REAL_MARKETPLACE = {
   PAYMENT_DRIVER: 'stripe',
   STRIPE_SECRET_KEY: 'sk_test_exemplo',
