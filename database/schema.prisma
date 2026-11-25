@@ -59,12 +59,12 @@ model User {
   createdGroups                   Group[]
   groupMemberships                GroupMember[]
   authoredGroupMessages           GroupMessage[]
-  reportsFiled                    Report[]                 @relation("ReportReporter")
-  reportsModerated                Report[]                 @relation("ReportModerator")
-  reportsReceived                 Report[]                 @relation("ReportTargetUser")
-  catalogRequests                 CatalogRequest[]         @relation("CatalogRequestRequester")
+  reportsFiled                    Report[]                  @relation("ReportReporter")
+  reportsModerated                Report[]                  @relation("ReportModerator")
+  reportsReceived                 Report[]                  @relation("ReportTargetUser")
+  catalogRequests                 CatalogRequest[]          @relation("CatalogRequestRequester")
   catalogRequestVotes             CatalogRequestVote[]
-  reviewedCatalogRequests         CatalogRequest[]         @relation("CatalogRequestReviewer")
+  reviewedCatalogRequests         CatalogRequest[]          @relation("CatalogRequestReviewer")
   performedAuditLogs              AuditLog[]
   updatedSettings                 GlobalSetting[]
   sentGlobalNotifications         GlobalNotification[]
@@ -72,16 +72,20 @@ model User {
   notifications                   Notification[]
   refreshTokens                   RefreshToken[]
   passwordResetTokens             PasswordResetToken[]
-  sellerVerification              SellerVerification?      @relation("SellerVerificationSeller")
-  reviewedVerifications           SellerVerification[]     @relation("SellerVerificationReviewer")
-  validatedSellerDocuments        SellerDocument[]         @relation("SellerDocumentValidator")
-  authoredSellerVerificationNotes SellerVerificationNote[] @relation("SellerVerificationNoteAuthor")
+  sellerVerification              SellerVerification?       @relation("SellerVerificationSeller")
+  reviewedVerifications           SellerVerification[]      @relation("SellerVerificationReviewer")
+  validatedSellerDocuments        SellerDocument[]          @relation("SellerDocumentValidator")
+  authoredSellerVerificationNotes SellerVerificationNote[]  @relation("SellerVerificationNoteAuthor")
   addresses                       Address[]
-  warningsReceived                UserWarning[]            @relation("UserWarningTarget")
-  warningsGiven                   UserWarning[]            @relation("UserWarningAdmin")
+  warningsReceived                UserWarning[]             @relation("UserWarningTarget")
+  warningsGiven                   UserWarning[]             @relation("UserWarningAdmin")
+  blocksReceived                  UserBlock[]               @relation("UserBlockBlocked")
+  blocksMade                      UserBlock[]               @relation("UserBlockBlocker")
+  authoredMessages                Message[]
+  conversationParticipations      ConversationParticipant[]
   listings                        Listing[]
-  purchases                       Order[]                  @relation("OrderBuyer")
-  sales                           Order[]                  @relation("OrderSeller")
+  purchases                       Order[]                   @relation("OrderBuyer")
+  sales                           Order[]                   @relation("OrderSeller")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -731,6 +735,7 @@ model Listing {
   orders        Order[]
   groupMessages GroupMessage[]
   reports       Report[]
+  conversations Conversation[]
 
   @@map("listings")
 }
@@ -832,4 +837,68 @@ model PriceHistory {
   card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_price_history_card_id")
 
   @@map("price_history")
+}
+
+model Conversation {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  listingId String?   @map("listing_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  listing      Listing?                  @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_conversations_listing_id")
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  conversationId String    @map("conversation_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_conversation_participants_conversation_id")
+  user         User         @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_conversation_participants_user_id")
+
+  @@id([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  authorId       String    @map("author_id") @db.Uuid
+  replyToId      String?   @map("reply_to_id") @db.Uuid
+  content        String?
+  attachmentUrl  String?   @map("attachment_url") @db.VarChar(255)
+  isRead         Boolean   @default(false) @map("is_read")
+  readAt         DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages_conversation_id")
+  author       User         @relation(fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages_author_id")
+  replyTo      Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages_reply_to_id")
+  replies      Message[]    @relation("MessageReplies")
+
+  @@map("messages")
+}
+
+model UserBlock {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  blockerId String    @map("blocker_id") @db.Uuid
+  blockedId String    @map("blocked_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  blocker User @relation("UserBlockBlocker", fields: [blockerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_blocks_blocker_id")
+  blocked User @relation("UserBlockBlocked", fields: [blockedId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_blocks_blocked_id")
+
+  @@unique([blockerId, blockedId])
+  @@map("user_blocks")
 }
