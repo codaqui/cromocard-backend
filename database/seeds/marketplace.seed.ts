@@ -8,10 +8,12 @@ import {
   PriceSource,
 } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
+import type { StorageProvider } from '@/providers/storage/storage.provider';
 
 import { cardConditionIdOf, cardIdOf } from './catalog.seed';
 import { groupIdOf } from './community.seed';
 import { daysAgo, loadSeedData, seedKey } from './load-seed-data';
+import { solidColorPng } from './sample-image';
 import { keyResolver, SeedNamespace, seedId } from './seed-id';
 import { userIdOf } from './users.seed';
 
@@ -39,6 +41,7 @@ const marketplaceSchema = z.object({
       condition: seedKey,
       price: money,
       quantity: z.number().int().min(1).default(1),
+      photos: z.number().int().min(0).max(4).default(0),
       status: z.enum(ListingStatus),
       sharedIn: seedKey.optional(),
     }),
@@ -82,6 +85,32 @@ const listingIdOf = keyResolver(SeedNamespace.listings, marketplace.listings, 'm
 const orderIdOf = keyResolver(SeedNamespace.orders, marketplace.orders, 'marketplace.json');
 
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * HOUR_IN_MS);
+
+const sampleListingPhotos = [
+  { name: 'front', rgb: [214, 92, 62] },
+  { name: 'back', rgb: [44, 88, 170] },
+] as const;
+
+export async function uploadListingPhotos(storage: StorageProvider): Promise<string[]> {
+  const stored = await Promise.all(
+    sampleListingPhotos.map(({ name, rgb }) =>
+      storage.upload({
+        key: `listings/seed-listing-${name}.png`,
+        content: solidColorPng({ width: 480, height: 670, rgb: [...rgb] }),
+        contentType: 'image/png',
+      }),
+    ),
+  );
+  return stored.map(({ url }) => url);
+}
+
+const toListingPhotosData = (photoUrls: string[]) => (listing: SeedListing) =>
+  Array.from({ length: photoUrls.length === 0 ? 0 : listing.photos }, (_, sortOrder) => ({
+    id: seedId(SeedNamespace.listingPhotos, `${listing.key}-${sortOrder}`),
+    listingId: listingIdOf(listing.key),
+    url: photoUrls[sortOrder % photoUrls.length] ?? '',
+    sortOrder,
+  }));
 
 function listingOf(key: string): SeedListing {
   const listing = marketplace.listings.find((candidate) => candidate.key === key);
@@ -175,12 +204,18 @@ async function seedOrders(prisma: PrismaClient): Promise<void> {
   for (const order of marketplace.orders) await seedOrder(prisma, order);
 }
 
-export async function seedMarketplace(prisma: PrismaClient): Promise<void> {
+export async function seedMarketplace(
+  prisma: PrismaClient,
+  photoUrls: string[] = [],
+): Promise<void> {
   for (const data of marketplace.addresses.map(toAddressData)) {
     await prisma.address.upsert({ where: { id: data.id }, create: data, update: data });
   }
   for (const data of marketplace.listings.map(toListingData)) {
     await prisma.listing.upsert({ where: { id: data.id }, create: data, update: data });
+  }
+  for (const data of marketplace.listings.flatMap(toListingPhotosData(photoUrls))) {
+    await prisma.listingPhoto.upsert({ where: { id: data.id }, create: data, update: data });
   }
   await seedOrders(prisma);
   for (const data of marketplace.priceHistory.map(toPriceData)) {

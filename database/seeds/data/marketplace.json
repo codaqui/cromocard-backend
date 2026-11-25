@@ -57,6 +57,7 @@
       "seller": "elisa",
       "card": "charizard",
       "condition": "mint",
+      "photos": 2,
       "price": "4800.00",
       "status": "ACTIVE",
       "sharedIn": "mestres-pokemon"
@@ -74,6 +75,7 @@
       "seller": "fabio",
       "card": "neymar",
       "condition": "near-mint",
+      "photos": 1,
       "price": "80.00",
       "quantity": 3,
       "status": "ACTIVE"
