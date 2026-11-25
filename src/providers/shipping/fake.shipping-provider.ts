@@ -1,7 +1,6 @@
 import type { ShippingOption, ShippingProvider, ShippingQuoteInput } from './shipping.provider';
 import { digitsOfZipCode } from './zip-code';
 
-/** CEP de teste sem nenhuma transportadora (CCD072 CA10): a tela mostra o aviso e não deixa seguir. */
 export const FAKE_ZIP_CODE_WITHOUT_SHIPPING = '99999999';
 
 const FAKE_OPTIONS: readonly ShippingOption[] = [
@@ -10,7 +9,6 @@ const FAKE_OPTIONS: readonly ShippingOption[] = [
   { serviceId: '3', carrier: 'Jadlog', service: '.Package', price: 21.4, deliveryDays: 6 },
 ];
 
-/** Frete fixo de Correios e Jadlog para o PC e os testes (CCD072 R22), sem chamar o Melhor Envio. */
 export class FakeShippingProvider implements ShippingProvider {
   quote({ toZipCode }: ShippingQuoteInput): Promise<ShippingOption[]> {
     const withoutShipping = digitsOfZipCode(toZipCode) === FAKE_ZIP_CODE_WITHOUT_SHIPPING;

@@ -4,7 +4,6 @@ import { FakeShippingProvider } from './fake.shipping-provider';
 import { MelhorEnvioShippingProvider } from './melhor-envio.shipping-provider';
 import type { ShippingProvider } from './shipping.provider';
 
-// Com SHIPPING_DRIVER=melhor-envio o env.ts já recusou subir sem o token.
 const shippingProviderByDriver: Record<typeof env.SHIPPING_DRIVER, () => ShippingProvider> = {
   fake: () => new FakeShippingProvider(),
   'melhor-envio': () =>
@@ -14,7 +13,6 @@ const shippingProviderByDriver: Record<typeof env.SHIPPING_DRIVER, () => Shippin
     }),
 };
 
-/** Escolhe a cotação pelo `SHIPPING_DRIVER` (`fake` ou `melhor-envio`); o `env.ts` recusa o `fake` em produção. */
 export function createShippingProvider(): ShippingProvider {
   return shippingProviderByDriver[env.SHIPPING_DRIVER]();
 }

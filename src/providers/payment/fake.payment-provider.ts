@@ -6,7 +6,6 @@ import type {
   PaymentProvider,
 } from './payment.provider';
 
-/** Assinatura aceita pela versão falsa; qualquer outra é recusada como na Stripe. */
 export const FAKE_WEBHOOK_SIGNATURE = 'fake-signature';
 
 export interface FakeCheckoutSession extends CreateCheckoutSessionInput {
@@ -19,10 +18,6 @@ export interface FakeWebhook {
   signature: string;
 }
 
-/**
- * Gateway falso do PC e dos testes (CCD072 R22): guarda as sessões em memória e a página de pagamento é a própria
- * `successUrl`. O evento do webhook sai de `webhookFor`, no mesmo formato que o `parseWebhookEvent` lê.
- */
 export class FakePaymentProvider implements PaymentProvider {
   readonly sessions = new Map<string, FakeCheckoutSession>();
   private sequence = 0;
@@ -40,7 +35,6 @@ export class FakePaymentProvider implements PaymentProvider {
     return Promise.resolve();
   }
 
-  /** Monta o webhook que a Stripe mandaria para a sessão: `completed` (pago) ou `expired`. */
   webhookFor(sessionId: string, type: 'completed' | 'expired'): FakeWebhook {
     const session = this.sessions.get(sessionId);
     if (session) session.status = type === 'completed' ? 'complete' : 'expired';

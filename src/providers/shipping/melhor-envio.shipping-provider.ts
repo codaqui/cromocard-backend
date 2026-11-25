@@ -11,7 +11,6 @@ import { digitsOfZipCode } from './zip-code';
 
 const CALCULATE_PATH = '/api/v2/me/shipment/calculate';
 const CARRIERS: readonly Carrier[] = ['Correios', 'Jadlog'];
-/** O Melhor Envio exige um User-Agent com o nome da aplicação. */
 const USER_AGENT = 'CromoCard';
 
 const money = z.union([z.string(), z.number()]).transform(Number).pipe(z.number().nonnegative());
@@ -41,7 +40,6 @@ function isCarrier(name: string): name is Carrier {
   return (CARRIERS as readonly string[]).includes(name);
 }
 
-/** Serviço cotado sem erro, de Correios ou Jadlog, com preço e prazo; o resto é descartado (CCD072 R8, R18). */
 function toOption(service: QuotedService): ShippingOption[] {
   const price = service.custom_price ?? service.price;
   const deliveryDays = service.custom_delivery_time ?? service.delivery_time;
@@ -51,7 +49,6 @@ function toOption(service: QuotedService): ShippingOption[] {
   return [{ serviceId: service.id, carrier, service: service.name, price, deliveryDays }];
 }
 
-/** Corpo do `POST /shipment/calculate`: CEPs só com dígitos, caixa em cm e kg e o valor declarado como seguro. */
 function calculateBodyOf({
   fromZipCode,
   toZipCode,
@@ -71,7 +68,6 @@ function calculateBodyOf({
   };
 }
 
-/** Cotação pelo Melhor Envio (ADR-067): sandbox em homologação, produção com o token do ambiente. */
 export class MelhorEnvioShippingProvider implements ShippingProvider {
   private readonly fetch: typeof fetch;
 

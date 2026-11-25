@@ -30,10 +30,6 @@ function sessionEvent(event: Stripe.Event, type: PaymentEvent['type']): PaymentE
   };
 }
 
-/**
- * Pago no checkout (cartão) ou depois (pagamento assíncrono). `completed` com `payment_status` diferente de `paid`
- * ainda espera o pagamento e é ignorado; o `async_payment_succeeded` chega depois.
- */
 function toPaymentEvent(event: Stripe.Event): PaymentEvent {
   switch (event.type) {
     case 'checkout.session.completed':
@@ -50,7 +46,6 @@ function toPaymentEvent(event: Stripe.Event): PaymentEvent {
   }
 }
 
-/** Stripe Checkout (ADR-066), com a chave e o segredo do webhook do ambiente. */
 export class StripePaymentProvider implements PaymentProvider {
   constructor(
     private readonly stripe: StripeClient,

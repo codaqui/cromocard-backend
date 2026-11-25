@@ -21,7 +21,6 @@ const input: CreateCheckoutSessionInput = {
   customerEmail: 'comprador@exemplo.com',
 };
 
-/** Webhook assinado de verdade com o segredo de teste, para passar pelo `constructEvent` do SDK. */
 function signedWebhook(type: string, session: Record<string, unknown>) {
   const payload = JSON.stringify({
     id: `evt_${type}`,
