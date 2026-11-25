@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@/generated/prisma/client';
-import { UserRole, UserStatus } from '@/generated/prisma/enums';
+import { StripeAccountStatus, UserRole, UserStatus } from '@/generated/prisma/enums';
 import { hashPassword } from '@/lib/password';
 import { z } from '@/lib/zod';
 
@@ -18,6 +18,8 @@ const usersSchema = z.array(
     username: z.string().optional(),
     cpf: z.string().optional(),
     phone: z.string().optional(),
+    stripeAccountId: z.string().startsWith('acct_').optional(),
+    stripeAccountStatus: z.enum(StripeAccountStatus).optional(),
   }),
 );
 
