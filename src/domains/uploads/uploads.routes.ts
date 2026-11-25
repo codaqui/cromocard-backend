@@ -9,7 +9,13 @@ import { parseSingleFile } from './uploads.middleware';
 export function createUploadsRoutes(controller: UploadsController): Router {
   const router = Router();
 
-  router.post('/', authenticate, authorize('ADMIN'), parseSingleFile, controller.uploadImage);
+  router.post(
+    '/',
+    authenticate,
+    authorize('ADMIN', 'SELLER'),
+    parseSingleFile,
+    controller.uploadImage,
+  );
 
   return router;
 }

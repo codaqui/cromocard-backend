@@ -6,7 +6,7 @@ import type {
   StoredFile,
 } from '@/providers/storage/storage.provider';
 
-import { InvalidImageTypeError } from './uploads.errors';
+import { InvalidImageTypeError, UploadFolderForbiddenError } from './uploads.errors';
 import { UploadsService } from './uploads.service';
 
 const pngImage = () => Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
@@ -47,7 +47,11 @@ describe('UploadsService', () => {
   });
 
   it('guarda um PNG na pasta pedida e devolve a URL e a chave', async () => {
-    const result = await service.uploadImage({ folder: 'cards', content: pngImage() });
+    const result = await service.uploadImage({
+      folder: 'cards',
+      content: pngImage(),
+      uploaderRole: 'ADMIN',
+    });
 
     expect(result.key).toMatch(/^cards\/[0-9a-f-]{36}\.png$/);
     expect(result.url).toBe(`http://storage.test/${result.key}`);
@@ -55,17 +59,46 @@ describe('UploadsService', () => {
   });
 
   it('usa a extensão do conteúdo do arquivo para JPG e WEBP', async () => {
-    const jpg = await service.uploadImage({ folder: 'albums', content: jpegImage() });
-    const webp = await service.uploadImage({ folder: 'banners', content: webpImage() });
+    const jpg = await service.uploadImage({
+      folder: 'albums',
+      content: jpegImage(),
+      uploaderRole: 'ADMIN',
+    });
+    const webp = await service.uploadImage({
+      folder: 'banners',
+      content: webpImage(),
+      uploaderRole: 'ADMIN',
+    });
 
     expect(jpg.key).toMatch(/^albums\/.+\.jpg$/);
     expect(webp.key).toMatch(/^banners\/.+\.webp$/);
   });
 
+  it('CA6: o vendedor guarda a foto do anúncio na pasta listings', async () => {
+    const result = await service.uploadImage({
+      folder: 'listings',
+      content: pngImage(),
+      uploaderRole: 'SELLER',
+    });
+
+    expect(result.key).toMatch(/^listings\/.+\.png$/);
+  });
+
+  it('recusa o vendedor em outra pasta sem guardar o arquivo', async () => {
+    const upload = {
+      folder: 'cards' as const,
+      content: pngImage(),
+      uploaderRole: 'SELLER' as const,
+    };
+
+    await expect(service.uploadImage(upload)).rejects.toThrow(UploadFolderForbiddenError);
+    expect(storage.files).toHaveLength(0);
+  });
+
   it('recusa um arquivo que não é PNG, JPG nem WEBP', async () => {
-    await expect(service.uploadImage({ folder: 'cards', content: textFile() })).rejects.toThrow(
-      InvalidImageTypeError,
-    );
+    await expect(
+      service.uploadImage({ folder: 'cards', content: textFile(), uploaderRole: 'ADMIN' }),
+    ).rejects.toThrow(InvalidImageTypeError);
     expect(storage.files).toHaveLength(0);
   });
 });

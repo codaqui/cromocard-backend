@@ -28,6 +28,7 @@ function textFile(): Buffer {
 
 const adminToken = signAccessToken({ id: crypto.randomUUID(), role: 'ADMIN' });
 const customerToken = signAccessToken({ id: crypto.randomUUID(), role: 'CUSTOMER' });
+const sellerToken = signAccessToken({ id: crypto.randomUUID(), role: 'SELLER' });
 
 function postUpload(token?: string) {
   const req = request(createApp({ withUploads: true })).post('/api/v1/uploads');
@@ -118,7 +119,28 @@ describe('POST /api/v1/uploads', () => {
     expect(res.status).toBe(401);
   });
 
-  it('aceita só administradores', async () => {
+  it('CA6: o vendedor envia a foto do anúncio, mas o arquivo acima de 4 MB é recusado', async () => {
+    const photo = await postUpload(sellerToken)
+      .field('folder', 'listings')
+      .attach('file', pngImage(), 'frente.png');
+    const tooLarge = await postUpload(sellerToken)
+      .field('folder', 'listings')
+      .attach('file', pngImage(FOUR_MEGABYTES + 1), 'grande.png');
+
+    expect(photo.status).toBe(201);
+    expect((photo.body as UploadResponse).data.key).toMatch(/^listings\/.+\.png$/);
+    expect(tooLarge.status).toBe(413);
+  });
+
+  it('recusa o vendedor fora da pasta listings com 403', async () => {
+    const res = await postUpload(sellerToken)
+      .field('folder', 'cards')
+      .attach('file', pngImage(), 'c.png');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('recusa o cliente com 403', async () => {
     const res = await postUpload(customerToken)
       .field('folder', 'cards')
       .attach('file', pngImage(), 'c.png');

@@ -8,13 +8,14 @@ const uploadsPaths: RouteConfig[] = [
     path: '/uploads',
     tags: ['Uploads'],
     security: [{ bearerAuth: [] }],
-    summary: 'Envia uma imagem de carta, capa de álbum ou banner (administrador)',
+    summary:
+      'Envia uma imagem de carta, capa de álbum, banner (administrador) ou foto de anúncio (vendedor)',
     request: { body: { content: { 'multipart/form-data': { schema: uploadImageFormSchema } } } },
     responses: {
       201: { description: 'Imagem guardada; devolve `{ data: { url, key } }`' },
       400: { description: 'Tipo de arquivo, pasta ou arquivo ausente' },
       401: { description: 'Autenticação necessária' },
-      403: { description: 'Apenas administradores' },
+      403: { description: 'Apenas administradores; o vendedor só envia para a pasta listings' },
       413: { description: `Arquivo acima de ${MAX_UPLOAD_SIZE_IN_MEGABYTES} MB` },
     },
   },
