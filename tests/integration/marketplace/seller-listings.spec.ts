@@ -242,4 +242,14 @@ describe('GET /api/v1/me/listings/eligibility', () => {
     expect(noAccount.body).toMatchObject({ data: { canCreate: false, stripeAccountReady: false } });
     expect(noAddress.body).toMatchObject({ data: { canCreate: false, hasPrimaryAddress: false } });
   });
+
+  it('não deixa anunciar com o token de um vendedor que não existe mais', async () => {
+    const removed = signAccessToken({ id: crypto.randomUUID(), role: 'SELLER' });
+
+    const res = await getEligibility(removed);
+
+    expect(res.body).toEqual({
+      data: { canCreate: false, stripeAccountReady: false, hasPrimaryAddress: false },
+    });
+  });
 });
