@@ -1,7 +1,7 @@
-import type { CardPrices } from './collection-prices';
+import type { CardPricesInCents } from './collection-prices';
 
 export interface ListingPrices {
-  lowestActivePrice(cardIds: string[]): Promise<CardPrices>;
+  lowestActivePrice(cardIds: string[]): Promise<CardPricesInCents>;
 }
 
 export const noListingsYet: ListingPrices = {

@@ -1,10 +1,9 @@
-import type { Prisma } from '@/generated/prisma/client';
 import type { DateRange } from '@/shared/utils/time-zone';
 
-export type CardPrices = Map<string, Prisma.Decimal>;
+export type CardPricesInCents = Map<string, number>;
 
 export interface CollectionPrices {
-  averagePrices(cardIds: string[], range: DateRange): Promise<CardPrices>;
+  averagePrices(cardIds: string[], range: DateRange): Promise<CardPricesInCents>;
 }
 
 export const noPriceHistoryYet: CollectionPrices = {
