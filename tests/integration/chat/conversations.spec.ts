@@ -201,6 +201,33 @@ describe('mensagens da conversa', () => {
     expect(dataOf<Msg[]>(older).map(({ content }) => content)).toEqual(['Olá Ana!']);
   });
 
+  it('R4: a ordem segue a data de envio, mesmo quando o id não acompanha', async () => {
+    const outro = await fx.createUser('ordem');
+    const id = await fx.createConversation(ana, outro);
+    await fx.say({ conversationId: id, author: outro, content: 'Terceira', minutesAgo: 1 });
+    await fx.say({ conversationId: id, author: outro, content: 'Primeira', minutesAgo: 30 });
+    await fx.say({ conversationId: id, author: ana, content: 'Segunda', minutesAgo: 10 });
+
+    const all = await request(app).get(`${BASE}/${id}/messages`).set(as(ana));
+    const recent = await request(app)
+      .get(`${BASE}/${id}/messages`)
+      .set(as(ana))
+      .query({ limit: 2 });
+    const cursor = metaOf<{ nextCursor: string }>(recent).nextCursor;
+    const older = await request(app)
+      .get(`${BASE}/${id}/messages`)
+      .set(as(ana))
+      .query({ limit: 2, cursor });
+
+    expect(dataOf<Msg[]>(all).map(({ content }) => content)).toEqual([
+      'Primeira',
+      'Segunda',
+      'Terceira',
+    ]);
+    expect(dataOf<Msg[]>(recent).map(({ content }) => content)).toEqual(['Segunda', 'Terceira']);
+    expect(dataOf<Msg[]>(older).map(({ content }) => content)).toEqual(['Primeira']);
+  });
+
   it('CA3: abrir a conversa marca as recebidas como lidas e zera o contador', async () => {
     const read = await request(app).post(`${BASE}/${withBruno}/read`).set(as(ana));
     const items = dataOf<Summary[]>(await request(app).get(BASE).set(as(ana)));

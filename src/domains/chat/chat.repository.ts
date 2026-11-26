@@ -121,8 +121,9 @@ export class ChatRepository {
 
   async listMessages(conversationId: string, { cursor, limit }: MessagesQuery) {
     const rows = await this.prisma.message.findMany({
-      where: { conversationId, ...notDeleted, ...(cursor && { id: { lt: cursor } }) },
-      orderBy: { id: 'desc' },
+      where: { conversationId, ...notDeleted },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       take: limit + 1,
       select: messageSelect,
     });
