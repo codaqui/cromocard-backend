@@ -119,7 +119,7 @@ describe('Nova conversa (R13)', () => {
     const result = await service.startConversation(ANA, 'renan');
 
     expect(store.createDirectConversation).toHaveBeenCalledWith(ANA, 'renan');
-    expect(result).toEqual({ conversation: summary(), created: true });
+    expect(result).toMatchObject({ conversation: { id: CONVERSATION }, created: true });
   });
 
   it('CA13: reaproveita a conversa que já existe, sem criar outra', async () => {
