@@ -20,7 +20,7 @@ const singleFileMessages: MulterMessages = {
 
 const DEFAULT_UPLOAD_MESSAGE = 'Não foi possível ler o arquivo enviado';
 
-const toUploadError = (messages: MulterMessages) => (error: unknown) => {
+export const toUploadError = (messages: MulterMessages) => (error: unknown) => {
   if (!(error instanceof multer.MulterError)) return error;
   if (error.code === 'LIMIT_FILE_SIZE') return new FileTooLargeError();
   const message = messages[error.code] ?? DEFAULT_UPLOAD_MESSAGE;

@@ -121,6 +121,18 @@ describe('POST /me/contact-reports', () => {
     expect(await isBlocked(gabriel, nina)).toBe(false);
   });
 
+  it('CA4: recusa a denúncia enviada sem multipart, sem nenhum print', async () => {
+    const lara = await contactOfGabriel('lara');
+
+    const res = await request(app)
+      .post('/api/v1/me/contact-reports')
+      .set(as(gabriel))
+      .send({ userId: lara.id, reason: 'Spam' });
+
+    expect(res.status).toBe(400);
+    expect(await reportsAgainst(lara)).toHaveLength(0);
+  });
+
   it('CA15: recusa print acima de 4 MB com 413', async () => {
     const otto = await contactOfGabriel('otto');
 
