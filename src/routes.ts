@@ -3,6 +3,7 @@ import swaggerUi from 'swagger-ui-express';
 
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
+import { chatModule } from '@/domains/chat/chat.module';
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
 import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
@@ -36,6 +37,7 @@ const sharedModules: DomainModule[] = [
   communityAdminModule,
   globalNotificationsModule,
   sellerVerificationsModule,
+  chatModule,
 ];
 
 export interface RoutesOptions {
