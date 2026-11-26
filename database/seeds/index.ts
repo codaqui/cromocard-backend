@@ -5,7 +5,7 @@ import { createStorageProvider } from '@/providers/storage/storage.factory';
 
 import { seedAdmin, uploadSampleImages } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
-import { seedChat } from './chat.seed';
+import { seedChat, seedChatReports } from './chat.seed';
 import { seedCommunity } from './community.seed';
 import { seedMarketplace } from './marketplace.seed';
 import { seedProfiles } from './profiles.seed';
@@ -32,6 +32,7 @@ async function seed(): Promise<void> {
   await seedChat(prisma);
   const images = options.isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
   await seedAdmin(prisma, images);
+  await seedChatReports(prisma, images.bannerImageUrl);
   await seedProfiles(prisma, images.avatarUrl);
 
   logger.info(

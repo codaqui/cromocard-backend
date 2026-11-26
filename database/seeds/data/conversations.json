@@ -98,7 +98,40 @@
           "content": "Chegou certinho, obrigada!"
         }
       ]
+    },
+    {
+      "key": "ana-gabriela",
+      "participants": ["ana", "gabriela"],
+      "messages": [
+        {
+          "key": "ana-gabriela-1",
+          "author": "gabriela",
+          "minutesAgo": 2880,
+          "content": "Oi Ana! Tenho a figurinha que falta no seu álbum da Copa."
+        },
+        {
+          "key": "ana-gabriela-2",
+          "author": "gabriela",
+          "minutesAgo": 2870,
+          "content": "Me paga por Pix que eu mando hoje mesmo, sem passar pelo site."
+        }
+      ]
     }
   ],
-  "blocks": [{ "key": "ana-bloqueia-gabriela", "blocker": "ana", "blocked": "gabriela" }]
+  "blocks": [
+    {
+      "key": "ana-bloqueia-gabriela",
+      "blocker": "ana",
+      "blocked": "gabriela"
+    }
+  ],
+  "reports": [
+    {
+      "key": "ana-denuncia-carla",
+      "reporter": "ana",
+      "target": "carla",
+      "reason": "Spam",
+      "description": "Manda o mesmo link de grupo de vendas várias vezes por dia."
+    }
+  ]
 }

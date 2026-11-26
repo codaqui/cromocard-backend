@@ -428,8 +428,23 @@ model Report {
   groupMessage GroupMessage? @relation(fields: [groupMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_group_message_id")
   listing      Listing?      @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_listing_id")
   warnings     UserWarning[]
+  evidences    ReportEvidence[]
 
   @@map("reports")
+}
+
+model ReportEvidence {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  reportId  String    @map("report_id") @db.Uuid
+  url       String    @db.VarChar(255)
+  sortOrder Int       @default(0) @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_report_evidences_report_id")
+
+  @@map("report_evidences")
 }
 
 model UserWarning {
