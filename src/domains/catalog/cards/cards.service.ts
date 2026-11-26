@@ -5,12 +5,12 @@ import type {
   ListingSummary,
 } from '@/domains/marketplace/listings/listings.contract';
 import type { Paginated } from '@/shared/utils/pagination';
+import { daysBefore } from '@/shared/utils/time-zone';
 
 import type { CardsRepository } from './cards.repository';
 import { type CardProfile, toCardProfile } from './cards.view';
 
 export const MARKET_PRICE_WINDOW_DAYS = 30;
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 export type Clock = () => Date;
 
@@ -41,6 +41,6 @@ export class CardsService {
   }
 
   private marketWindowStart(): Date {
-    return new Date(this.now().getTime() - MARKET_PRICE_WINDOW_DAYS * DAY_IN_MS);
+    return daysBefore(this.now(), MARKET_PRICE_WINDOW_DAYS);
   }
 }
