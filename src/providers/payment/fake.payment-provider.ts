@@ -1,3 +1,5 @@
+import { z } from '@/lib/zod';
+
 import { InvalidSignatureError } from './payment.errors';
 import type {
   CheckoutSession,
@@ -18,9 +20,29 @@ export interface FakeWebhook {
   signature: string;
 }
 
+const paymentEventSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(['completed', 'expired', 'ignored']),
+  sessionId: z.string().optional(),
+  orderId: z.string().optional(),
+  chargeId: z.string().optional(),
+});
+
+function jsonOf(rawBody: Buffer): unknown {
+  try {
+    return JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
 export class FakePaymentProvider implements PaymentProvider {
-  readonly sessions = new Map<string, FakeCheckoutSession>();
+  private readonly sessions = new Map<string, FakeCheckoutSession>();
   private sequence = 0;
+
+  sessionById(sessionId: string): FakeCheckoutSession | undefined {
+    return this.sessions.get(sessionId);
+  }
 
   createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession> {
     this.sequence += 1;
@@ -43,17 +65,18 @@ export class FakePaymentProvider implements PaymentProvider {
       type,
       sessionId,
       orderId: session?.orderId,
-      chargeId: type === 'completed' ? `pi_fake_${sessionId}` : undefined,
+      chargeId: type === 'completed' ? `ch_fake_${sessionId}` : undefined,
     };
     return { rawBody: Buffer.from(JSON.stringify(event)), signature: FAKE_WEBHOOK_SIGNATURE };
   }
 
-  parseWebhookEvent(rawBody: Buffer, signature: string | undefined): PaymentEvent {
-    if (signature !== FAKE_WEBHOOK_SIGNATURE) throw new InvalidSignatureError();
-    try {
-      return JSON.parse(rawBody.toString('utf8')) as PaymentEvent;
-    } catch {
-      throw new InvalidSignatureError();
-    }
+  parseWebhookEvent(rawBody: Buffer, signature: string | undefined): Promise<PaymentEvent> {
+    const event =
+      signature === FAKE_WEBHOOK_SIGNATURE
+        ? paymentEventSchema.safeParse(jsonOf(rawBody))
+        : undefined;
+    return event?.success
+      ? Promise.resolve(event.data)
+      : Promise.reject(new InvalidSignatureError());
   }
 }

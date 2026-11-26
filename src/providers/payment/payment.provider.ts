@@ -31,5 +31,5 @@ export interface PaymentEvent {
 export interface PaymentProvider {
   createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession>;
   expireCheckoutSession(sessionId: string): Promise<void>;
-  parseWebhookEvent(rawBody: Buffer, signature: string | undefined): PaymentEvent;
+  parseWebhookEvent(rawBody: Buffer, signature: string | undefined): Promise<PaymentEvent>;
 }
