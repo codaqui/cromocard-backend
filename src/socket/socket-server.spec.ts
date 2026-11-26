@@ -11,6 +11,7 @@ import { signAccessToken } from '@/lib/jwt';
 import { NotFoundError } from '@/shared/errors/http-errors';
 
 import { withAck } from './socket-ack';
+import { socketHandlers } from './socket-handlers';
 import { userRoom } from './socket-rooms';
 import { createSocketServer } from './socket-server';
 import type { AckResponse, AppSocketServer, SocketHandlers } from './socket.types';
@@ -199,5 +200,27 @@ describe('withAck', () => {
     await expect(emitWithAck(socket, 'test:echo', { text: 'ainda conectado' })).resolves.toEqual({
       data: 'ainda conectado',
     });
+  });
+});
+
+describe('servidor do ws com os handlers de produção', () => {
+  it('aceita a conexão e entrega na room user:<id> com socketHandlers registrados', async () => {
+    const server = createServer();
+    const wsServer = createSocketServer(server, { handlers: socketHandlers });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const socket = connect(`http://localhost:${(server.address() as AddressInfo).port}`, {
+      auth: { token: signAccessToken(ALICE) },
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+    });
+    clients.push(socket);
+    await connected(socket);
+
+    const received = new Promise((resolve) => socket.once('notification:new', resolve));
+    wsServer.to(userRoom(ALICE.id)).emit('notification:new', { title: 'Olá' });
+
+    await expect(received).resolves.toEqual({ title: 'Olá' });
+    await new Promise<void>((resolve) => void wsServer.close(() => resolve()));
   });
 });
