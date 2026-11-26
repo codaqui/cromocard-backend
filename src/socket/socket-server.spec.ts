@@ -39,6 +39,12 @@ const testHandlers: SocketHandlers = (_io, socket) => {
     'test:crash',
     withAck(async () => Promise.reject(new Error('banco fora do ar'))),
   );
+  socket.on(
+    'test:sync-crash',
+    withAck((): Promise<never> => {
+      throw new Error('falha antes da Promise');
+    }),
+  );
 };
 
 let httpServer: HttpServer;
@@ -169,6 +175,16 @@ describe('withAck', () => {
     await connected(socket);
 
     await expect(emitWithAck(socket, 'test:crash')).resolves.toEqual({
+      error: 'INTERNAL_ERROR',
+      message: 'Erro inesperado. Tente novamente mais tarde.',
+    });
+  });
+
+  it('responde INTERNAL_ERROR quando o handler falha antes de devolver a Promise', async () => {
+    const socket = client({ token: signAccessToken(ALICE) });
+    await connected(socket);
+
+    await expect(emitWithAck(socket, 'test:sync-crash')).resolves.toEqual({
       error: 'INTERNAL_ERROR',
       message: 'Erro inesperado. Tente novamente mais tarde.',
     });
