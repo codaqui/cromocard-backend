@@ -1,3 +1,4 @@
+import { logger } from '@/config/logger';
 import { withAck } from '@/socket/socket-ack';
 import { userRoom } from '@/socket/socket-rooms';
 import type { AppSocket, AppSocketServer, SocketHandlers } from '@/socket/socket.types';
@@ -54,13 +55,21 @@ function registerMessages(io: AppSocketServer, socket: AppSocket, service: ChatS
   );
 }
 
-async function announce(
+type PresenceChange = { userId: string; online: boolean };
+
+async function emitPresence(
   io: AppSocketServer,
   service: ChatSocketService,
-  change: { userId: string; online: boolean },
+  change: PresenceChange,
 ) {
   const partners = await service.listPartnerIds(change.userId);
   if (partners.length > 0) io.to(partners.map(userRoom)).emit('presence:changed', change);
+}
+
+function announce(io: AppSocketServer, service: ChatSocketService, change: PresenceChange) {
+  return emitPresence(io, service, change).catch((error: unknown) => {
+    logger.warn({ err: error, userId: change.userId }, 'Não foi possível avisar a presença');
+  });
 }
 
 function registerPresence(io: AppSocketServer, socket: AppSocket, deps: ChatSocketDeps) {

@@ -49,7 +49,7 @@ beforeAll(async () => {
     },
   });
   groupId = group.id;
-  const card = await prisma.card.findFirstOrThrow();
+  const card = await prisma.card.create({ data: { name: `${MARKER} carta` } });
   const listing = await prisma.listing.create({
     data: { sellerId: ana.id, cardId: card.id, price: 10 },
   });
@@ -83,6 +83,7 @@ afterAll(async () => {
   await prisma.sellerVerification.deleteMany({ where: { userId: lojista.id } });
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
   await prisma.listing.deleteMany({ where: { sellerId: ana.id } });
+  await prisma.card.deleteMany({ where: { name: `${MARKER} carta` } });
   await prisma.address.deleteMany({ where: { userId: comprador.id } });
   await prisma.groupMember.deleteMany({ where: { groupId } });
   await prisma.group.deleteMany({ where: { id: groupId } });
