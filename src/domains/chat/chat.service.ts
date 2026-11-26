@@ -4,6 +4,8 @@ import {
   ContactBlockedError,
   ContactNotFoundError,
   ConversationNotFoundError,
+  ReplyTargetInvalidError,
+  ReplyTargetUnavailableError,
 } from './chat.errors';
 import type { ChatRepository } from './chat.repository';
 import type { ChatMessage, ConversationSummary } from './chat.types';
@@ -23,6 +25,7 @@ export type ChatStore = Pick<
   | 'listMessages'
   | 'markAsRead'
   | 'createMessage'
+  | 'findReplyTarget'
   | 'findDirectConversationId'
   | 'createDirectConversation'
   | 'listPartnerIds'
@@ -77,14 +80,18 @@ export class ChatService {
     await this.repository.markAsRead(conversationId, userId);
   }
 
-  async sendMessage(
-    userId: string,
-    { conversationId, content }: SendMessageInput,
-  ): Promise<SentMessage> {
-    const { contact, block } = await this.conversationOf(userId, conversationId);
+  async sendMessage(userId: string, input: SendMessageInput): Promise<SentMessage> {
+    const { contact, block } = await this.conversationOf(userId, input.conversationId);
     if (block) throw new ContactBlockedError();
-    const message = await this.repository.createMessage(conversationId, userId, content);
+    if (input.replyToId) await this.ensureReplyTarget(input.conversationId, input.replyToId);
+    const message = await this.repository.createMessage({ ...input, authorId: userId });
     return { message, recipientId: contact.id };
+  }
+
+  private async ensureReplyTarget(conversationId: string, replyToId: string): Promise<void> {
+    const target = await this.repository.findReplyTarget(replyToId);
+    if (target?.conversationId !== conversationId) throw new ReplyTargetInvalidError();
+    if (target.deletedAt) throw new ReplyTargetUnavailableError();
   }
 
   listPartnerIds(userId: string): Promise<string[]> {

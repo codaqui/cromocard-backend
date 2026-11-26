@@ -7,6 +7,9 @@ import type {
   ContactBlock,
   ConversationSummary,
   ConversationTotals,
+  NewMessage,
+  QuotedMessage,
+  ReplyTarget,
 } from './chat.types';
 
 export interface ConversationListOptions {
@@ -39,7 +42,23 @@ const messageSelect = {
   isRead: true,
   createdAt: true,
   author: { select: authorSelect },
+  replyTo: {
+    select: { id: true, content: true, deletedAt: true, author: { select: { username: true } } },
+  },
 } as const;
+
+type MessageRow = Prisma.MessageGetPayload<{ select: typeof messageSelect }>;
+type QuoteRow = NonNullable<MessageRow['replyTo']>;
+
+function toQuote({ id, content, deletedAt, author }: QuoteRow): QuotedMessage {
+  const authorUsername = author.username;
+  if (deletedAt) return { id, authorUsername, unavailable: true };
+  return { id, authorUsername, content: content ?? '', unavailable: false };
+}
+
+function toChatMessage({ replyTo, content, ...message }: MessageRow): ChatMessage {
+  return { ...message, content: content ?? '', replyTo: replyTo ? toQuote(replyTo) : null };
+}
 
 const blockOf = (userId: string) => Prisma.sql`
   CASE
@@ -144,7 +163,7 @@ export class ChatRepository {
       select: messageSelect,
     });
     const oldestInPage = rows.at(limit - 1) as { id: string };
-    const items = rows.slice(0, limit).reverse() as ChatMessage[];
+    const items = rows.slice(0, limit).reverse().map(toChatMessage);
     return { items, nextCursor: rows.length > limit ? oldestInPage.id : null };
   }
 
@@ -155,16 +174,16 @@ export class ChatRepository {
     });
   }
 
-  async createMessage(
-    conversationId: string,
-    authorId: string,
-    content: string,
-  ): Promise<ChatMessage> {
-    const message = await this.prisma.message.create({
-      data: { conversationId, authorId, content },
-      select: messageSelect,
+  async createMessage(data: NewMessage): Promise<ChatMessage> {
+    const message = await this.prisma.message.create({ data, select: messageSelect });
+    return toChatMessage(message);
+  }
+
+  findReplyTarget(id: string): Promise<ReplyTarget | null> {
+    return this.prisma.message.findUnique({
+      where: { id },
+      select: { conversationId: true, deletedAt: true },
     });
-    return message as ChatMessage;
   }
 
   async findDirectConversationId(userId: string, contactId: string): Promise<string | null> {

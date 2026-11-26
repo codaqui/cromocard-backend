@@ -4,6 +4,8 @@ import {
   ContactBlockedError,
   ContactNotFoundError,
   ConversationNotFoundError,
+  ReplyTargetInvalidError,
+  ReplyTargetUnavailableError,
 } from './chat.errors';
 import { ChatService, type ChatStore, type ContactsStore } from './chat.service';
 import type { ChatMessage, ConversationSummary } from './chat.types';
@@ -28,7 +30,9 @@ const message: ChatMessage = {
   content: 'Oi',
   isRead: false,
   createdAt: new Date(),
+  replyTo: null,
 };
+const QUOTED = '0199a000-0000-7000-8000-0000000000aa';
 
 let store: { [K in keyof ChatStore]: ReturnType<typeof vi.fn> };
 let contacts: { [K in keyof ContactsStore]: ReturnType<typeof vi.fn> };
@@ -42,6 +46,7 @@ beforeEach(() => {
     listMessages: vi.fn().mockResolvedValue({ items: [message], nextCursor: null }),
     markAsRead: vi.fn().mockResolvedValue(undefined),
     createMessage: vi.fn().mockResolvedValue(message),
+    findReplyTarget: vi.fn().mockResolvedValue({ conversationId: CONVERSATION, deletedAt: null }),
     findDirectConversationId: vi.fn().mockResolvedValue(null),
     createDirectConversation: vi.fn().mockResolvedValue(CONVERSATION),
     listPartnerIds: vi.fn().mockResolvedValue(['elisa']),
@@ -116,7 +121,12 @@ describe('mensagens', () => {
       message,
       recipientId: 'elisa',
     });
-    expect(store.createMessage).toHaveBeenCalledWith(CONVERSATION, ANA, 'Oi');
+    expect(store.createMessage).toHaveBeenCalledWith({
+      conversationId: CONVERSATION,
+      content: 'Oi',
+      authorId: ANA,
+    });
+    expect(store.findReplyTarget).not.toHaveBeenCalled();
   });
 
   it.each(['BY_ME', 'BY_CONTACT'] as const)(
@@ -130,6 +140,52 @@ describe('mensagens', () => {
       expect(store.createMessage).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('responder uma mensagem (CCD045)', () => {
+  const reply = { conversationId: CONVERSATION, content: 'Quero sim', replyToId: QUOTED };
+
+  it('CA1: grava a resposta com a mensagem citada', async () => {
+    await service.sendMessage(ANA, reply);
+
+    expect(store.findReplyTarget).toHaveBeenCalledWith(QUOTED);
+    expect(store.createMessage).toHaveBeenCalledWith({ ...reply, authorId: ANA });
+  });
+
+  it.each([
+    ['de outra conversa', { conversationId: 'outra', deletedAt: null }],
+    ['que não existe', null],
+  ])('CA5: recusa com 400 a citação %s, sem gravar', async (_case, target) => {
+    store.findReplyTarget.mockResolvedValue(target);
+
+    await expect(service.sendMessage(ANA, reply)).rejects.toBeInstanceOf(ReplyTargetInvalidError);
+    expect(store.createMessage).not.toHaveBeenCalled();
+  });
+
+  it('CA4: recusa com 422 a citação de uma mensagem excluída, sem gravar', async () => {
+    store.findReplyTarget.mockResolvedValue({
+      conversationId: CONVERSATION,
+      deletedAt: new Date(),
+    });
+
+    await expect(service.sendMessage(ANA, reply)).rejects.toBeInstanceOf(
+      ReplyTargetUnavailableError,
+    );
+    expect(store.createMessage).not.toHaveBeenCalled();
+  });
+
+  it('CA8: com bloqueio, recusa antes de olhar a citação', async () => {
+    store.findConversation.mockResolvedValue(summary({ block: 'BY_CONTACT' }));
+
+    await expect(service.sendMessage(ANA, reply)).rejects.toBeInstanceOf(ContactBlockedError);
+    expect(store.findReplyTarget).not.toHaveBeenCalled();
+  });
+
+  it('CA7: se a gravação falhar, o erro sobe e nada é devolvido para emitir', async () => {
+    store.createMessage.mockRejectedValue(new Error('banco fora do ar'));
+
+    await expect(service.sendMessage(ANA, reply)).rejects.toThrow('banco fora do ar');
+  });
 });
 
 describe('Nova conversa (R13)', () => {
