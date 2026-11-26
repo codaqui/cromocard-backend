@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { Transaction } from '@/lib/transaction';
+
 import {
   AlreadyBlockedError,
   AlreadySuspendedError,
@@ -10,6 +12,7 @@ import {
 } from './users.errors';
 import type {
   Address,
+  ContactReportResolution,
   MembersByRole,
   MonthlySignups,
   NewOauthAccount,
@@ -107,6 +110,13 @@ class InMemoryUsersRepository implements UsersRepository {
 
   softDelete(): Promise<void> {
     return Promise.reject(new Error('não usado neste teste'));
+  }
+
+  resolvedReports: { resolution: ContactReportResolution; tx: Transaction }[] = [];
+
+  resolveContactReport(resolution: ContactReportResolution, tx: Transaction): Promise<void> {
+    this.resolvedReports = [...this.resolvedReports, { resolution, tx }];
+    return Promise.resolve();
   }
 
   createWarning(warning: NewUserWarning): Promise<void> {
@@ -398,6 +408,45 @@ describe('UserSanctionsService', () => {
       await expect(
         service.block(lastAdmin.id, { reason: 'Golpe confirmado' }, adminId),
       ).rejects.toBeInstanceOf(LastAdminError);
+    });
+  });
+
+  describe('sanção a partir da denúncia do chat (CCD047, R19)', () => {
+    const reportId = crypto.randomUUID();
+    const sanctions = [
+      [
+        'advertência',
+        (id: string) => service.warn(id, { reason: 'Golpe no chat', reportId }, adminId),
+      ],
+      [
+        'suspensão',
+        (id: string) =>
+          service.suspend(id, { reason: 'Golpe no chat', days: 7, reportId }, adminId),
+      ],
+      [
+        'banimento',
+        (id: string) => service.block(id, { reason: 'Golpe no chat', reportId }, adminId),
+      ],
+    ] as const;
+
+    it.each(sanctions)('CA18: a %s resolve a denúncia na mesma transação', async (_case, apply) => {
+      const user = buildUser();
+      repository.users = [user];
+
+      await apply(user.id);
+
+      expect(repository.resolvedReports).toEqual([
+        { resolution: { reportId, userId: user.id, adminId }, tx: TRANSACTION },
+      ]);
+    });
+
+    it('sem a denúncia, a sanção não resolve nada', async () => {
+      const user = buildUser();
+      repository.users = [user];
+
+      await service.block(user.id, { reason: 'Golpe confirmado' }, adminId);
+
+      expect(repository.resolvedReports).toEqual([]);
     });
   });
 
