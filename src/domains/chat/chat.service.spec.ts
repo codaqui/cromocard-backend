@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ContactNotFoundError, ConversationNotFoundError } from './chat.errors';
+import {
+  ContactBlockedError,
+  ContactNotFoundError,
+  ConversationNotFoundError,
+} from './chat.errors';
 import { ChatService, type ChatStore, type ContactsStore } from './chat.service';
 import type { ChatMessage, ConversationSummary } from './chat.types';
 
@@ -10,6 +14,7 @@ const CONVERSATION = '0199a000-0000-7000-8000-000000000001';
 const summary = (changes: Partial<ConversationSummary> = {}): ConversationSummary => ({
   id: CONVERSATION,
   contact: { id: 'elisa', name: 'Elisa', username: 'elisa.raras', avatarUrl: null, verified: true },
+  block: null,
   lastMessage: { content: 'Combinado, compro pelo anúncio.', fromMe: true, createdAt: new Date() },
   unreadCount: 0,
   createdAt: new Date(),
@@ -113,6 +118,18 @@ describe('mensagens', () => {
     });
     expect(store.createMessage).toHaveBeenCalledWith(CONVERSATION, ANA, 'Oi');
   });
+
+  it.each(['BY_ME', 'BY_CONTACT'] as const)(
+    'CA5: recusa a mensagem com o contato bloqueado (%s), sem gravar',
+    async (block) => {
+      store.findConversation.mockResolvedValue(summary({ block }));
+
+      await expect(
+        service.sendMessage(ANA, { conversationId: CONVERSATION, content: 'Oi' }),
+      ).rejects.toBeInstanceOf(ContactBlockedError);
+      expect(store.createMessage).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('Nova conversa (R13)', () => {

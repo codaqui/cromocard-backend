@@ -117,6 +117,28 @@ describe('conversa em tempo real (R8, R18)', () => {
     expect(await quiet).toBe(true);
   });
 
+  it('CA5: com bloqueio, nenhum dos dois envia, e nada é gravado nem emitido', async () => {
+    const gabriel = await fx.createUser('gabriel');
+    const marcos = await fx.createUser('marcos');
+    const blockedConversation = await fx.createConversation(gabriel, marcos);
+    await fx.block(gabriel, marcos);
+    const gabrielSocket = await online(gabriel);
+    const marcosSocket = await online(marcos);
+    await emit(marcosSocket, 'conversation:join', { conversationId: blockedConversation });
+    const quiet = silence(marcosSocket, 'message:new');
+    const payload = { conversationId: blockedConversation, content: 'Oi' };
+
+    const fromBlocker = await emit(gabrielSocket, 'message:send', payload);
+    const fromBlocked = await emit(marcosSocket, 'message:send', payload);
+
+    expect(fromBlocker).toMatchObject({ error: 'CONTACT_BLOCKED' });
+    expect(fromBlocked).toMatchObject({ error: 'CONTACT_BLOCKED' });
+    expect(await quiet).toBe(true);
+    await expect(
+      prisma.message.count({ where: { conversationId: blockedConversation } }),
+    ).resolves.toBe(0);
+  });
+
   it('CA16: mensagem vazia volta como VALIDATION_ERROR, sem gravar', async () => {
     const anaSocket = await online(ana);
     const before = await prisma.message.count({ where: { conversationId } });

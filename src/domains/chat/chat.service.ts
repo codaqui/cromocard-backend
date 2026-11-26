@@ -1,6 +1,10 @@
 import { buildPaginationMeta, toSkipTake } from '@/shared/utils/pagination';
 
-import { ContactNotFoundError, ConversationNotFoundError } from './chat.errors';
+import {
+  ContactBlockedError,
+  ContactNotFoundError,
+  ConversationNotFoundError,
+} from './chat.errors';
 import type { ChatRepository } from './chat.repository';
 import type { ChatMessage, ConversationSummary } from './chat.types';
 import type {
@@ -77,7 +81,8 @@ export class ChatService {
     userId: string,
     { conversationId, content }: SendMessageInput,
   ): Promise<SentMessage> {
-    const { contact } = await this.conversationOf(userId, conversationId);
+    const { contact, block } = await this.conversationOf(userId, conversationId);
+    if (block) throw new ContactBlockedError();
     const message = await this.repository.createMessage(conversationId, userId, content);
     return { message, recipientId: contact.id };
   }

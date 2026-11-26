@@ -71,6 +71,10 @@ export class ChatFixtures {
     });
   }
 
+  block(blocker: TestUser, blocked: TestUser) {
+    return prisma.userBlock.create({ data: { blockerId: blocker.id, blockedId: blocked.id } });
+  }
+
   async cleanup() {
     const userIds = { in: this.userIds };
     const conversations = await prisma.conversation.findMany({
@@ -81,6 +85,9 @@ export class ChatFixtures {
     await prisma.message.deleteMany({ where: { conversationId: ids } });
     await prisma.conversationParticipant.deleteMany({ where: { conversationId: ids } });
     await prisma.conversation.deleteMany({ where: { id: ids } });
+    const reports = { OR: [{ reporterId: userIds }, { targetUserId: userIds }] };
+    await prisma.reportEvidence.deleteMany({ where: { report: reports } });
+    await prisma.report.deleteMany({ where: reports });
     await prisma.userBlock.deleteMany({
       where: { OR: [{ blockerId: userIds }, { blockedId: userIds }] },
     });

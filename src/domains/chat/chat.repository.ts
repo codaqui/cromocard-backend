@@ -2,7 +2,12 @@ import { Prisma, type PrismaClient } from '@/generated/prisma/client';
 import { notDeleted } from '@/shared/utils/soft-delete';
 
 import type { ConversationFilter, MessagesQuery } from './chat.validator';
-import type { ChatMessage, ConversationSummary, ConversationTotals } from './chat.types';
+import type {
+  ChatMessage,
+  ContactBlock,
+  ConversationSummary,
+  ConversationTotals,
+} from './chat.types';
 
 export interface ConversationListOptions {
   q?: string;
@@ -18,6 +23,7 @@ interface SummaryRow {
   contact_name: string;
   contact_username: string | null;
   verified: boolean;
+  block: ContactBlock;
   last_content: string | null;
   last_author_id: string | null;
   last_at: Date | null;
@@ -35,13 +41,22 @@ const messageSelect = {
   author: { select: authorSelect },
 } as const;
 
+const blockOf = (userId: string) => Prisma.sql`
+  CASE
+    WHEN EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocker_id = ${userId}::uuid AND b.blocked_id = u.id
+      AND b.deleted_at IS NULL) THEN 'BY_ME'
+    WHEN EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocker_id = u.id AND b.blocked_id = ${userId}::uuid
+      AND b.deleted_at IS NULL) THEN 'BY_CONTACT'
+  END AS block`;
+
 function myConversations(userId: string, conversationId?: string) {
   const onlyOne = conversationId ? Prisma.sql`AND c.id = ${conversationId}::uuid` : Prisma.empty;
   return Prisma.sql`
     WITH mine AS (
       SELECT c.id, c.created_at, u.id AS contact_id, u.name AS contact_name, u.username AS contact_username,
         EXISTS (SELECT 1 FROM seller_verifications sv WHERE sv.user_id = u.id AND sv.status = 'APPROVED'
-          AND sv.deleted_at IS NULL) AS verified
+          AND sv.deleted_at IS NULL) AS verified,
+        ${blockOf(userId)}
       FROM conversations c
       JOIN conversation_participants me ON me.conversation_id = c.id AND me.user_id = ${userId}::uuid
         AND me.deleted_at IS NULL
@@ -78,6 +93,7 @@ function toSummary(row: SummaryRow, userId: string): ConversationSummary {
       avatarUrl: null,
       verified: row.verified,
     },
+    block: row.block,
     lastMessage: row.last_at
       ? {
           content: row.last_content ?? '',
