@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CardNotFoundError } from '@/domains/catalog/catalog.errors';
 import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.contract';
@@ -7,7 +7,7 @@ import { Prisma } from '@/generated/prisma/client';
 import type { CardsRepository, PublicCardRecord } from './cards.repository';
 import type { CardListingsReader } from '@/domains/marketplace/listings/listings.contract';
 
-import { CardsService } from './cards.service';
+import { CardsService, MARKET_PRICE_WINDOW_DAYS } from './cards.service';
 
 const CARD_ID = '0199a000-0000-7000-8000-000000000010';
 const NOW = new Date('2026-11-23T12:00:00Z');
@@ -57,6 +57,35 @@ function setup({ card = messi(), average = '2100' }: Setup = {}) {
 }
 
 describe('CardsService.getProfile', () => {
+  it('L2: sem relógio injetado, a janela do preço médio termina agora', async () => {
+    vi.useFakeTimers({ now: NOW });
+    try {
+      const sinceCalls: Date[] = [];
+      const repository: CardsRepository = {
+        findPublicById: () => Promise.resolve(messi()),
+        existsPublic: () => Promise.resolve(true),
+        averageSalePriceSince: (_id, since) => {
+          sinceCalls.push(since);
+          return Promise.resolve(null);
+        },
+      };
+      const listings: CardListingsReader = {
+        summarizeByCard: () =>
+          Promise.resolve({ activeListingsCount: 0, lowestListingPrice: null }),
+        listAvailableByCard: () =>
+          Promise.resolve({ items: [], meta: { page: 1, pageSize: 10, total: 0, totalPages: 0 } }),
+      };
+
+      await new CardsService(repository, listings).getProfile(CARD_ID);
+
+      expect(sinceCalls).toEqual([
+        new Date(NOW.getTime() - MARKET_PRICE_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('CA1: monta imagens, identificação e mercado da carta', async () => {
     const profile = await setup().service.getProfile(CARD_ID);
 
