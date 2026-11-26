@@ -6,7 +6,7 @@ export function createCardsRoutes(controller: CardsController): Router {
   const router = Router();
 
   router.get('/:id', controller.getProfile);
-  router.get('/:cardId/listings', controller.listListings);
+  router.get('/:id/listings', controller.listListings);
 
   return router;
 }

@@ -3,7 +3,7 @@ import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openap
 import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/listings.contract';
 import { z } from '@/lib/zod';
 
-import { cardIdParamSchema, cardListingsParamSchema } from './cards.validator';
+import { cardIdParamSchema } from './cards.validator';
 
 const tags = ['Catálogo - Perfil público da carta'];
 const money = z.string().openapi({ example: '1750.00' });
@@ -60,10 +60,10 @@ const paths: RouteConfig[] = [
   },
   {
     method: 'get',
-    path: '/cards/{cardId}/listings',
+    path: '/cards/{id}/listings',
     tags,
     summary: 'Anúncios ativos com estoque da carta, do menor preço ao maior (CCD030, CCD079)',
-    request: { params: cardListingsParamSchema, query: listCardListingsQuerySchema },
+    request: { params: cardIdParamSchema, query: listCardListingsQuerySchema },
     responses: {
       200: { description: 'Lista paginada', ...json(z.object({ data: z.array(listing), meta })) },
       400: { description: 'VALIDATION_ERROR: id ou paginação inválidos' },

@@ -5,6 +5,10 @@ import { toSkipTake } from '@/shared/utils/pagination';
 
 import type { ListCardListingsQuery } from './listings.validator';
 
+const LISTING_ORDER = {
+  price: [{ price: 'asc' }, { createdAt: 'asc' }],
+} satisfies Record<ListCardListingsQuery['sort'], Prisma.ListingOrderByWithRelationInput[]>;
+
 export interface ListingSummaryRecord {
   id: string;
   price: Prisma.Decimal;
@@ -57,7 +61,7 @@ export class PrismaListingsRepository implements ListingsRepository {
       this.prisma.listing.findMany({
         where,
         select: summarySelect,
-        orderBy: [{ price: 'asc' }, { createdAt: 'asc' }],
+        orderBy: LISTING_ORDER[query.sort],
         ...toSkipTake(query),
       }),
       this.prisma.listing.count({ where }),

@@ -1,7 +1,7 @@
 import { CardNotFoundError } from '@/domains/catalog/catalog.errors';
 import type {
+  CardListingsReader,
   ListCardListingsQuery,
-  ListingsService,
   ListingSummary,
 } from '@/domains/marketplace/listings/listings.contract';
 import type { Paginated } from '@/shared/utils/pagination';
@@ -13,12 +13,11 @@ export const MARKET_PRICE_WINDOW_DAYS = 30;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 export type Clock = () => Date;
-export type CardListings = Pick<ListingsService, 'listAvailableByCard' | 'summarizeByCard'>;
 
 export class CardsService {
   constructor(
     private readonly repository: CardsRepository,
-    private readonly listings: CardListings,
+    private readonly listings: CardListingsReader,
     private readonly now: Clock = () => new Date(),
   ) {}
 

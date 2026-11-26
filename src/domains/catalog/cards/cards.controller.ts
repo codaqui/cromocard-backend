@@ -4,7 +4,7 @@ import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/list
 import { ok, paginated } from '@/shared/utils/http-response';
 
 import type { CardsService } from './cards.service';
-import { cardIdParamSchema, cardListingsParamSchema } from './cards.validator';
+import { cardIdParamSchema } from './cards.validator';
 
 export class CardsController {
   constructor(private readonly service: CardsService) {}
@@ -15,7 +15,7 @@ export class CardsController {
   };
 
   listListings = async (req: Request, res: Response): Promise<void> => {
-    const { cardId } = cardListingsParamSchema.parse(req.params);
+    const { id: cardId } = cardIdParamSchema.parse(req.params);
     const query = listCardListingsQuerySchema.parse(req.query);
     const { items, meta } = await this.service.listListings(cardId, query);
     paginated(res, items, meta);

@@ -5,7 +5,9 @@ import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/list
 import { Prisma } from '@/generated/prisma/client';
 
 import type { CardsRepository, PublicCardRecord } from './cards.repository';
-import { type CardListings, CardsService } from './cards.service';
+import type { CardListingsReader } from '@/domains/marketplace/listings/listings.contract';
+
+import { CardsService } from './cards.service';
 
 const CARD_ID = '0199a000-0000-7000-8000-000000000010';
 const NOW = new Date('2026-11-23T12:00:00Z');
@@ -45,7 +47,7 @@ function setup({ card = messi(), average = '2100' }: Setup = {}) {
       return Promise.resolve(average === null ? null : new Prisma.Decimal(average));
     },
   };
-  const listings: CardListings = {
+  const listings: CardListingsReader = {
     summarizeByCard: () =>
       Promise.resolve({ activeListingsCount: 4, lowestListingPrice: '1750.00' }),
     listAvailableByCard: () =>
