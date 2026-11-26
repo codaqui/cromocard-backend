@@ -2,14 +2,16 @@ import { periodShape, withPeriodRules } from '@/domains/admin/dashboard/dashboar
 import { z } from '@/lib/zod';
 import { paginationQuerySchema } from '@/shared/utils/pagination';
 
-export const REPORT_TYPES = ['signups', 'catalog', 'seller-audit'] as const;
+export const REPORT_TYPES = ['signups', 'catalog', 'seller-audit', 'volume'] as const;
 export const EXPORT_FORMATS = ['csv', 'pdf'] as const;
 
 export const DEFAULT_PREVIEW_SIZE = 10;
 export const MAX_PREVIEW_SIZE = 50;
 
 export const reportTypeParamSchema = z.object({
-  type: z.enum(REPORT_TYPES, { error: 'Escolha um relatório: signups, catalog ou seller-audit' }),
+  type: z.enum(REPORT_TYPES, {
+    error: 'Escolha um relatório: signups, catalog, seller-audit ou volume',
+  }),
 });
 
 export const previewQuerySchema = withPeriodRules(

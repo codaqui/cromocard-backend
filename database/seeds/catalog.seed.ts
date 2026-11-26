@@ -6,7 +6,7 @@ import { z } from '@/lib/zod';
 import { loadSeedData, seedKey } from './load-seed-data';
 import { keyResolver, optional, SeedNamespace } from './seed-id';
 
-const raritiesSchema = z.array(
+const rankedNamesSchema = z.array(
   z.object({ key: seedKey, name: z.string().max(60), sortOrder: z.number().int() }),
 );
 
@@ -49,13 +49,19 @@ const cardsSchema = z.array(
   }),
 );
 
-const rarities = loadSeedData('rarities.json', raritiesSchema);
+const rarities = loadSeedData('rarities.json', rankedNamesSchema);
+const cardConditions = loadSeedData('card-conditions.json', rankedNamesSchema);
 const languages = loadSeedData('languages.json', languagesSchema);
 const categories = loadSeedData('categories.json', categoriesSchema);
 const albums = loadSeedData('albums.json', albumsSchema);
 const cards = loadSeedData('cards.json', cardsSchema);
 
 export const rarityIdOf = keyResolver(SeedNamespace.rarities, rarities, 'rarities.json');
+export const cardConditionIdOf = keyResolver(
+  SeedNamespace.cardConditions,
+  cardConditions,
+  'card-conditions.json',
+);
 export const languageIdOf = keyResolver(SeedNamespace.languages, languages, 'languages.json');
 export const categoryIdOf = keyResolver(SeedNamespace.categories, categories, 'categories.json');
 export const albumIdOf = keyResolver(SeedNamespace.albums, albums, 'albums.json');
@@ -69,6 +75,10 @@ async function seedReferenceData(prisma: PrismaClient) {
   for (const { key, ...language } of languages) {
     const data = { ...language, id: languageIdOf(key) };
     await prisma.language.upsert({ where: { id: data.id }, create: data, update: data });
+  }
+  for (const { key, ...condition } of cardConditions) {
+    const data = { ...condition, id: cardConditionIdOf(key) };
+    await prisma.cardCondition.upsert({ where: { id: data.id }, create: data, update: data });
   }
 }
 
