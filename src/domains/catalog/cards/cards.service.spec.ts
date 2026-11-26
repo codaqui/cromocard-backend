@@ -5,12 +5,22 @@ import { listCardListingsQuerySchema } from '@/domains/marketplace/listings/list
 import { Prisma } from '@/generated/prisma/client';
 
 import type { CardsRepository, PublicCardRecord } from './cards.repository';
-import type { CardListingsReader } from '@/domains/marketplace/listings/listings.contract';
+import type {
+  CardListingsReader,
+  ListCardListingsQuery,
+  ListingSummary,
+} from '@/domains/marketplace/listings/listings.contract';
 
 import { CardsService, MARKET_PRICE_WINDOW_DAYS } from './cards.service';
 
 const CARD_ID = '0199a000-0000-7000-8000-000000000010';
 const NOW = new Date('2026-11-23T12:00:00Z');
+const LISTING: ListingSummary = {
+  id: '0199a000-0000-7000-8000-000000000020',
+  price: '1750.00',
+  condition: { name: 'Nova' },
+  seller: { id: '0199a000-0000-7000-8000-000000000030', username: 'ana' },
+};
 
 function messi(overrides: Partial<PublicCardRecord> = {}): PublicCardRecord {
   return {
@@ -39,6 +49,7 @@ interface Setup {
 
 function setup({ card = messi(), average = '2100' }: Setup = {}) {
   const sinceCalls: Date[] = [];
+  const listCalls: [string, ListCardListingsQuery][] = [];
   const repository: CardsRepository = {
     findPublicById: (id) => Promise.resolve(card?.id === id ? card : null),
     existsPublic: (id) => Promise.resolve(card?.id === id),
@@ -50,10 +61,15 @@ function setup({ card = messi(), average = '2100' }: Setup = {}) {
   const listings: CardListingsReader = {
     summarizeByCard: () =>
       Promise.resolve({ activeListingsCount: 4, lowestListingPrice: '1750.00' }),
-    listAvailableByCard: () =>
-      Promise.resolve({ items: [], meta: { page: 1, pageSize: 10, total: 0, totalPages: 0 } }),
+    listAvailableByCard: (cardId, query) => {
+      listCalls.push([cardId, query]);
+      return Promise.resolve({
+        items: [LISTING],
+        meta: { page: query.page, pageSize: query.pageSize, total: 1, totalPages: 1 },
+      });
+    },
   };
-  return { service: new CardsService(repository, listings, () => NOW), sinceCalls };
+  return { service: new CardsService(repository, listings, () => NOW), sinceCalls, listCalls };
 }
 
 describe('CardsService.getProfile', () => {
@@ -140,12 +156,16 @@ describe('CardsService.getProfile', () => {
 });
 
 describe('CardsService.listListings', () => {
-  const query = listCardListingsQuerySchema.parse({});
+  const query = listCardListingsQuerySchema.parse({ page: '2', pageSize: '20' });
 
-  it('CA2: devolve os anúncios da carta pública', async () => {
-    const result = await setup().service.listListings(CARD_ID, query);
+  it('CA2: repassa a carta e a query ao marketplace e devolve os anúncios dele', async () => {
+    const { service, listCalls } = setup();
 
-    expect(result.meta.total).toBe(0);
+    const result = await service.listListings(CARD_ID, query);
+
+    expect(listCalls).toEqual([[CARD_ID, query]]);
+    expect(result.items).toEqual([LISTING]);
+    expect(result.meta).toMatchObject({ page: 2, pageSize: 20, total: 1 });
   });
 
   it('CA8: recusa a lista de uma carta que não abre', async () => {
