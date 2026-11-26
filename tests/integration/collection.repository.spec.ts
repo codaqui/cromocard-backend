@@ -188,6 +188,24 @@ describe('PrismaCollectionCardsRepository', () => {
     expect(await collectionCards.findRows(collectionId, [])).toEqual([]);
   });
 
+  it('CCD061: as cartas em coleções são as de marcação ativa, de qualquer status', async () => {
+    const ids = [cards.Pikachu!, cards.Charizard!, cards.Mewtwo!, cards.Eevee!];
+
+    const inUse = await collectionCards.findCardIdsInCollections(ids);
+
+    expect(inUse.sort()).toEqual([cards.Pikachu, cards.Charizard, cards.Mewtwo].sort());
+    expect(await collectionCards.findCardIdsInCollections([])).toEqual([]);
+  });
+
+  it('CCD061: a marcação de uma coleção excluída não prende a carta', async () => {
+    await prisma.collection.update({ where: { userId }, data: removed });
+
+    const inUse = await collectionCards.findCardIdsInCollections([cards.Pikachu!]);
+
+    await prisma.collection.update({ where: { userId }, data: { deletedAt: null } });
+    expect(inUse).toEqual([]);
+  });
+
   it('R8: as categorias dos filtros são as dos álbuns ativos', async () => {
     expect(await collectionCards.listCategories(collectionId)).toEqual([
       { id: categoryId, name: `${MARKER} Pokémon` },

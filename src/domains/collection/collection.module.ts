@@ -18,6 +18,8 @@ const collectionService = new CollectionService({
   now: () => new Date(),
 });
 
+export { collectionService };
+
 export const collectionModule: DomainModule = {
   basePath: '/collections',
   router: createCollectionRoutes(new CollectionController(collectionService)),

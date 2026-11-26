@@ -59,6 +59,7 @@ let cards: {
   findRows: Mock<CollectionCardsRepository['findRows']>;
   countByStatus: Mock<CollectionCardsRepository['countByStatus']>;
   listCategories: Mock<CollectionCardsRepository['listCategories']>;
+  findCardIdsInCollections: Mock<CollectionCardsRepository['findCardIdsInCollections']>;
 };
 let listings: { lowestActivePrice: Mock<ListingPrices['lowestActivePrice']> };
 let service: CollectionService;
@@ -93,6 +94,9 @@ beforeEach(() => {
     listCategories: vi
       .fn<CollectionCardsRepository['listCategories']>()
       .mockResolvedValue([{ id: 'pokemon', name: 'Pokémon' }]),
+    findCardIdsInCollections: vi
+      .fn<CollectionCardsRepository['findCardIdsInCollections']>()
+      .mockResolvedValue(['c1']),
   };
   listings = {
     lowestActivePrice: vi.fn<ListingPrices['lowestActivePrice']>().mockResolvedValue(new Map()),
@@ -367,5 +371,12 @@ describe('CollectionService.listCards', () => {
     const { items } = await service.listCards('usuario-1', query());
 
     expect(items.map(({ cardId }) => cardId)).toEqual(['c7']);
+  });
+});
+
+describe('CollectionService.cardIdsInCollections', () => {
+  it('CCD061: informa ao catálogo as cartas marcadas em coleções', async () => {
+    await expect(service.cardIdsInCollections(['c1', 'c2'])).resolves.toEqual(['c1']);
+    expect(cards.findCardIdsInCollections).toHaveBeenCalledWith(['c1', 'c2']);
   });
 });

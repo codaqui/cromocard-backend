@@ -42,6 +42,7 @@ export interface CollectionCardsRepository {
   findRows(collectionId: string, cardIds: string[]): Promise<CollectionCardRow[]>;
   countByStatus(collectionId: string): Promise<CardStatusCounts>;
   listCategories(collectionId: string): Promise<CollectionCategory[]>;
+  findCardIdsInCollections(cardIds: string[]): Promise<string[]>;
 }
 
 function marked(collectionId: string, statuses: CollectionCardStatus[]) {
@@ -149,5 +150,15 @@ export class PrismaCollectionCardsRepository implements CollectionCardsRepositor
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
+  }
+
+  async findCardIdsInCollections(cardIds: string[]): Promise<string[]> {
+    if (cardIds.length === 0) return [];
+    const marks = await this.prisma.collectionCard.findMany({
+      where: { cardId: { in: cardIds }, ...notDeleted, collection: notDeleted },
+      select: { cardId: true },
+      distinct: ['cardId'],
+    });
+    return marks.map(({ cardId }) => cardId);
   }
 }

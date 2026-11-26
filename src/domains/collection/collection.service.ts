@@ -213,6 +213,10 @@ export class CollectionService {
     };
   }
 
+  cardIdsInCollections(cardIds: string[]): Promise<string[]> {
+    return this.deps.cards.findCardIdsInCollections(cardIds);
+  }
+
   private async priceCards(ranked: RankedCard[]): Promise<PricedCard[]> {
     const missingIds = ranked
       .filter(({ status }) => status === 'MISSING')
