@@ -130,18 +130,18 @@ model RefreshToken {
 }
 
 model Category {
-  id               String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  parentCategoryId String?   @map("parent_category_id") @db.Uuid
-  name             String    @db.VarChar(90)
-  description      String?   @db.VarChar(255)
-  isDefault        Boolean   @default(false) @map("is_default")
-  slug             String?   @db.VarChar(100)
-  displayOrder     Int       @default(0) @map("display_order")
-  isPinned         Boolean   @default(false) @map("is_pinned")
-  badge            String?   @db.VarChar(20)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  parentCategoryId String?      @map("parent_category_id") @db.Uuid
+  name             String       @db.VarChar(90)
+  description      String?      @db.VarChar(255)
+  isDefault        Boolean      @default(false) @map("is_default")
+  slug             String?      @db.VarChar(100)
+  displayOrder     Int          @default(0) @map("display_order")
+  isPinned         Boolean      @default(false) @map("is_pinned")
+  badge            String?      @db.VarChar(20)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
 
   parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_categories_parent_category_id")
   subcategories  Category[] @relation("CategoryHierarchy")
@@ -454,7 +454,7 @@ enum CatalogVote {
   @@map("catalog_vote")
 }
 
-/// Um voto por cliente em cada solicitaÃ§Ã£o (CCD103, ADR-053).
+/// Um voto por cliente em cada solicitação (CCD103, ADR-053).
 model CatalogRequestVote {
   catalogRequestId String      @map("catalog_request_id") @db.Uuid
   userId           String      @map("user_id") @db.Uuid
