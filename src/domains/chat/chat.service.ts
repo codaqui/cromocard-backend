@@ -21,6 +21,7 @@ export type ChatStore = Pick<
   | 'createMessage'
   | 'findDirectConversationId'
   | 'createDirectConversation'
+  | 'listPartnerIds'
 >;
 
 export type ContactsStore = Pick<ContactsRepository, 'search' | 'isReachable'>;
@@ -79,6 +80,10 @@ export class ChatService {
     const { contact } = await this.conversationOf(userId, conversationId);
     const message = await this.repository.createMessage(conversationId, userId, content);
     return { message, recipientId: contact.id };
+  }
+
+  listPartnerIds(userId: string): Promise<string[]> {
+    return this.repository.listPartnerIds(userId);
   }
 
   async conversationOf(userId: string, conversationId: string): Promise<ConversationSummary> {

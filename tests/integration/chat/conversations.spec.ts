@@ -141,6 +141,29 @@ describe('GET /me/conversations', () => {
     expect(dataOf<Summary[]>(unread).map(({ unreadCount }) => unreadCount)).toEqual([1, 1]);
   });
 
+  it('CA4: quem não tem conversa recebe a lista vazia e os totais zerados', async () => {
+    const novo = await fx.createUser('novo');
+
+    const res = await request(app).get(BASE).set(as(novo));
+
+    expect(dataOf<Summary[]>(res)).toEqual([]);
+    expect(metaOf<ListMeta>(res)).toMatchObject({ total: 0, totals: { all: 0, unread: 0 } });
+  });
+
+  it('mensagem sem texto (anexo, fase Futuro) vira prévia vazia', async () => {
+    const outro = await fx.createUser('anexo');
+    const id = await fx.createConversation(ana, outro);
+    await prisma.message.create({
+      data: { conversationId: id, authorId: outro.id, attachmentUrl: '/uploads/a.png' },
+    });
+
+    const items = dataOf<Summary[]>(
+      await request(app).get(BASE).set(as(ana)).query({ q: 'anexo' }),
+    );
+
+    expect(items[0]?.lastMessage).toMatchObject({ content: '', fromMe: false });
+  });
+
   it('CA7: 401 sem token e 403 para o administrador', async () => {
     const admin = await fx.createUser('admin', 'ADMIN');
 

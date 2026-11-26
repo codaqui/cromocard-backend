@@ -39,6 +39,7 @@ beforeEach(() => {
     createMessage: vi.fn().mockResolvedValue(message),
     findDirectConversationId: vi.fn().mockResolvedValue(null),
     createDirectConversation: vi.fn().mockResolvedValue(CONVERSATION),
+    listPartnerIds: vi.fn().mockResolvedValue(['elisa']),
   };
   contacts = {
     search: vi.fn().mockResolvedValue([]),
@@ -144,5 +145,11 @@ describe('Nova conversa (R13)', () => {
     await service.listContacts(ANA, { q: 'ren', scope: 'groups' });
 
     expect(contacts.search).toHaveBeenCalledWith(ANA, { q: 'ren', scope: 'groups' });
+  });
+});
+
+describe('presença (R15)', () => {
+  it('lista com quem o usuário conversa, para avisar o online', async () => {
+    await expect(service.listPartnerIds(ANA)).resolves.toEqual(['elisa']);
   });
 });

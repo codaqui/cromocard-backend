@@ -103,10 +103,10 @@ export class ChatRepository {
   }
 
   async countConversations(userId: string): Promise<ConversationTotals> {
-    const [row] = await this.prisma.$queryRaw<ConversationTotals[]>`
+    const rows = await this.prisma.$queryRaw<ConversationTotals[]>`
       ${myConversations(userId)}
       SELECT count(*)::int AS "all", (count(*) FILTER (WHERE unread > 0))::int AS unread FROM stats`;
-    return row ?? { all: 0, unread: 0 };
+    return rows[0] as ConversationTotals;
   }
 
   async findConversation(
@@ -126,8 +126,9 @@ export class ChatRepository {
       take: limit + 1,
       select: messageSelect,
     });
-    const page = rows.slice(0, limit).reverse() as ChatMessage[];
-    return { items: page, nextCursor: rows.length > limit ? (page[0]?.id ?? null) : null };
+    const oldestInPage = rows.at(limit - 1) as { id: string };
+    const items = rows.slice(0, limit).reverse() as ChatMessage[];
+    return { items, nextCursor: rows.length > limit ? oldestInPage.id : null };
   }
 
   async markAsRead(conversationId: string, userId: string): Promise<void> {
