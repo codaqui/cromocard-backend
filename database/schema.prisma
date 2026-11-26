@@ -25,26 +25,36 @@ enum UserStatus {
   @@map("user_status")
 }
 
+enum StripeAccountStatus {
+  PENDING
+  VERIFYING
+  READY
+
+  @@map("stripe_account_status")
+}
+
 model User {
-  id             String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  name           String     @db.VarChar(120)
-  email          String     @unique @db.VarChar(160)
-  passwordHash   String?    @map("password_hash") @db.VarChar(255)
-  role           UserRole
-  status         UserStatus @default(ACTIVE)
-  emailVerified  Boolean    @default(false) @map("email_verified")
-  termsAccepted  Boolean    @default(false) @map("terms_accepted")
-  oauthProvider  String?    @map("oauth_provider") @db.VarChar(30)
-  oauthId        String?    @map("oauth_id") @db.VarChar(120)
-  username       String?    @unique @db.VarChar(30)
-  phone          String?    @db.VarChar(20)
-  cpf            String?    @unique @db.VarChar(14)
-  lastLoginAt    DateTime?  @map("last_login_at") @db.Timestamptz(6)
-  lastLoginIp    String?    @map("last_login_ip") @db.VarChar(45)
-  suspendedUntil DateTime?  @map("suspended_until") @db.Timestamptz(6)
-  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  id                  String               @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name                String               @db.VarChar(120)
+  email               String               @unique @db.VarChar(160)
+  passwordHash        String?              @map("password_hash") @db.VarChar(255)
+  role                UserRole
+  status              UserStatus           @default(ACTIVE)
+  emailVerified       Boolean              @default(false) @map("email_verified")
+  termsAccepted       Boolean              @default(false) @map("terms_accepted")
+  oauthProvider       String?              @map("oauth_provider") @db.VarChar(30)
+  oauthId             String?              @map("oauth_id") @db.VarChar(120)
+  username            String?              @unique @db.VarChar(30)
+  phone               String?              @db.VarChar(20)
+  cpf                 String?              @unique @db.VarChar(14)
+  lastLoginAt         DateTime?            @map("last_login_at") @db.Timestamptz(6)
+  lastLoginIp         String?              @map("last_login_ip") @db.VarChar(45)
+  suspendedUntil      DateTime?            @map("suspended_until") @db.Timestamptz(6)
+  stripeAccountId     String?              @unique @map("stripe_account_id") @db.VarChar(60)
+  stripeAccountStatus StripeAccountStatus? @map("stripe_account_status")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime?            @map("deleted_at") @db.Timestamptz(6)
 
   createdGroups                   Group[]
   groupMemberships                GroupMember[]
@@ -70,6 +80,8 @@ model User {
   warningsReceived                UserWarning[]            @relation("UserWarningTarget")
   warningsGiven                   UserWarning[]            @relation("UserWarningAdmin")
   listings                        Listing[]
+  purchases                       Order[]                  @relation("OrderBuyer")
+  sales                           Order[]                  @relation("OrderSeller")
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -93,6 +105,7 @@ model Address {
 
   user                User                 @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_addresses_user_id")
   sellerVerifications SellerVerification[]
+  orders              Order[]
 
   @@map("addresses")
 }
@@ -130,18 +143,18 @@ model RefreshToken {
 }
 
 model Category {
-  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  parentCategoryId String?      @map("parent_category_id") @db.Uuid
-  name             String       @db.VarChar(90)
-  description      String?      @db.VarChar(255)
-  isDefault        Boolean      @default(false) @map("is_default")
-  slug             String?      @db.VarChar(100)
-  displayOrder     Int          @default(0) @map("display_order")
-  isPinned         Boolean      @default(false) @map("is_pinned")
-  badge            String?      @db.VarChar(20)
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz(6)
+  id               String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  parentCategoryId String?   @map("parent_category_id") @db.Uuid
+  name             String    @db.VarChar(90)
+  description      String?   @db.VarChar(255)
+  isDefault        Boolean   @default(false) @map("is_default")
+  slug             String?   @db.VarChar(100)
+  displayOrder     Int       @default(0) @map("display_order")
+  isPinned         Boolean   @default(false) @map("is_pinned")
+  badge            String?   @db.VarChar(20)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   parentCategory Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_categories_parent_category_id")
   subcategories  Category[] @relation("CategoryHierarchy")
@@ -229,10 +242,10 @@ model Card {
   rarity          Rarity?          @relation(fields: [rarityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_rarity_id")
   language        Language?        @relation(fields: [languageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_language_id")
   photos          CardPhoto[]
-  listings        Listing[]
-  priceHistory    PriceHistory[]
   groupMessages   GroupMessage[]
   catalogRequests CatalogRequest[]
+  listings        Listing[]
+  priceHistory    PriceHistory[]
 
   @@unique([albumId, number])
   @@unique([code], map: "cards_code_key", where: raw("deleted_at IS NULL"))
@@ -341,6 +354,7 @@ model GroupMessage {
   replyTo GroupMessage?  @relation("GroupMessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_reply_to_id")
   replies GroupMessage[] @relation("GroupMessageReplies")
   card    Card?          @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_card_id")
+  listing Listing?       @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_group_messages_listing_id")
   reports Report[]
 
   @@map("group_messages")
@@ -385,6 +399,7 @@ model Report {
   moderator    User?         @relation("ReportModerator", fields: [moderatorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_moderator_id")
   targetUser   User?         @relation("ReportTargetUser", fields: [targetUserId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_target_user_id")
   groupMessage GroupMessage? @relation(fields: [groupMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_group_message_id")
+  listing      Listing?      @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_listing_id")
   warnings     UserWarning[]
 
   @@map("reports")
@@ -654,13 +669,6 @@ model SellerVerificationNote {
   @@map("seller_verification_notes")
 }
 
-enum CardStatus {
-  DRAFT
-  ACTIVE
-
-  @@map("card_status")
-}
-
 enum ListingStatus {
   ACTIVE
   PAUSED
@@ -669,24 +677,39 @@ enum ListingStatus {
   @@map("listing_status")
 }
 
+enum OrderStatus {
+  AWAITING_PAYMENT
+  PAID
+  SHIPPED
+  DELIVERED
+  COMPLETED
+  CANCELED
+
+  @@map("order_status")
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  PIX
+  BOLETO
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+
+  @@map("payment_status")
+}
+
 enum PriceSource {
   SALE
   LISTING
 
   @@map("price_source")
-}
-
-model CardCondition {
-  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  name      String    @unique @db.VarChar(60)
-  sortOrder Int       @map("sort_order") @db.SmallInt
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
-
-  listings Listing[]
-
-  @@map("card_conditions")
 }
 
 model Listing {
@@ -702,12 +725,100 @@ model Listing {
   updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt         DateTime?     @map("deleted_at") @db.Timestamptz(6)
 
-  seller    User           @relation(fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_seller_id")
-  card      Card           @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_card_id")
-  condition CardCondition? @relation(fields: [conditionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_condition_id")
+  seller        User           @relation(fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_seller_id")
+  card          Card           @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_card_id")
+  condition     CardCondition? @relation(fields: [conditionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listings_condition_id")
+  photos        ListingPhoto[]
+  orders        Order[]
+  groupMessages GroupMessage[]
+  reports       Report[]
 
   @@index([cardId, status, price], map: "idx_listings_card_id_status_price")
   @@map("listings")
+}
+
+model CardCondition {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  name      String    @unique @db.VarChar(60)
+  sortOrder Int       @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  listings Listing[]
+
+  @@map("card_conditions")
+}
+
+model ListingPhoto {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  listingId String    @map("listing_id") @db.Uuid
+  url       String    @db.VarChar(255)
+  sortOrder Int       @default(0) @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_listing_photos_listing_id")
+
+  @@map("listing_photos")
+}
+
+model Order {
+  id                 String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  listingId          String      @map("listing_id") @db.Uuid
+  buyerId            String      @map("buyer_id") @db.Uuid
+  sellerId           String      @map("seller_id") @db.Uuid
+  shippingAddressId  String      @map("shipping_address_id") @db.Uuid
+  quantity           Int         @default(1)
+  itemsAmount        Decimal     @map("items_amount") @db.Decimal(10, 2)
+  shippingAmount     Decimal     @default(0) @map("shipping_amount") @db.Decimal(10, 2)
+  totalAmount        Decimal     @map("total_amount") @db.Decimal(10, 2)
+  shippingMethod     String      @map("shipping_method") @db.VarChar(60)
+  status             OrderStatus @default(AWAITING_PAYMENT)
+  shippingService    String?     @map("shipping_service") @db.VarChar(60)
+  shippingLabelId    String?     @map("shipping_label_id") @db.VarChar(60)
+  trackingCode       String?     @map("tracking_code") @db.VarChar(40)
+  trackingUrl        String?     @map("tracking_url") @db.VarChar(255)
+  platformFee        Decimal?    @map("platform_fee") @db.Decimal(10, 2)
+  stripeTransferId   String?     @map("stripe_transfer_id") @db.VarChar(60)
+  cancelReason       String?     @map("cancel_reason") @db.VarChar(255)
+  problemDescription String?     @map("problem_description") @db.VarChar(500)
+  problemReportedAt  DateTime?   @map("problem_reported_at") @db.Timestamptz(6)
+  paidAt             DateTime?   @map("paid_at") @db.Timestamptz(6)
+  shippedAt          DateTime?   @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt        DateTime?   @map("delivered_at") @db.Timestamptz(6)
+  releasedAt         DateTime?   @map("released_at") @db.Timestamptz(6)
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  listing         Listing  @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_listing_id")
+  buyer           User     @relation("OrderBuyer", fields: [buyerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_buyer_id")
+  seller          User     @relation("OrderSeller", fields: [sellerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_seller_id")
+  shippingAddress Address  @relation(fields: [shippingAddressId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_orders_shipping_address_id")
+  payment         Payment?
+
+  @@map("orders")
+}
+
+model Payment {
+  id               String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId          String        @unique @map("order_id") @db.Uuid
+  method           PaymentMethod
+  value            Decimal       @db.Decimal(10, 2)
+  status           PaymentStatus @default(PENDING)
+  gatewayReference String?       @map("gateway_reference") @db.VarChar(120)
+  chargeId         String?       @map("charge_id") @db.VarChar(60)
+  paidAt           DateTime?     @map("paid_at") @db.Timestamptz(6)
+  refundedAt       DateTime?     @map("refunded_at") @db.Timestamptz(6)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_payments_order_id")
+
+  @@map("payments")
 }
 
 model PriceHistory {
@@ -724,4 +835,11 @@ model PriceHistory {
 
   @@index([cardId, source, referenceDate], map: "idx_price_history_card_id_source_reference_date")
   @@map("price_history")
+}
+
+enum CardStatus {
+  DRAFT
+  ACTIVE
+
+  @@map("card_status")
 }

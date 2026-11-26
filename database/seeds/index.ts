@@ -25,8 +25,8 @@ async function seed(): Promise<void> {
   await seedUsers(prisma, options.userPassword);
   await seedCatalog(prisma);
   await seedCommunity(prisma);
-  await seedMarketplace(prisma);
   await seedSellerVerifications(prisma);
+  await seedMarketplace(prisma);
   const images = options.isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
   await seedAdmin(prisma, images);
 

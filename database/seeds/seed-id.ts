@@ -18,9 +18,13 @@ export const SeedNamespace = {
   sellerVerifications: 15,
   sellerDocuments: 16,
   globalNotifications: 17,
-  cardConditions: 18,
-  listings: 19,
-  priceHistory: 20,
+  marketplaceAddresses: 30,
+  listings: 31,
+  orders: 32,
+  payments: 33,
+  priceHistory: 35,
+  listingMessages: 36,
+  cardConditions: 37,
 } as const;
 
 type SeedNamespaceValue = (typeof SeedNamespace)[keyof typeof SeedNamespace];

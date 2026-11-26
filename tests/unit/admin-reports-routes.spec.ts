@@ -38,7 +38,7 @@ describe.each(reportPaths)('rota de relatórios %s', (path) => {
 
 describe('validação dos relatórios', () => {
   it.each([
-    ['relatório que ainda não existe (volume, CCD097)', '/api/v1/admin/reports/volume'],
+    ['relatório que não existe', '/api/v1/admin/reports/finance'],
     ['período fora da lista', '/api/v1/admin/reports/signups?period=2d'],
     ['prévia acima de 50 linhas', '/api/v1/admin/reports/signups?pageSize=51'],
     ['exportação sem formato', '/api/v1/admin/reports/signups/export'],

@@ -58,7 +58,7 @@ const groups = loadSeedData('groups.json', groupsSchema);
 const messages = loadSeedData('group-messages.json', messagesSchema);
 const reports = loadSeedData('reports.json', reportsSchema);
 
-const groupIdOf = keyResolver(SeedNamespace.groups, groups, 'groups.json');
+export const groupIdOf = keyResolver(SeedNamespace.groups, groups, 'groups.json');
 const messageIdOf = keyResolver(SeedNamespace.groupMessages, messages, 'group-messages.json');
 export const reportIdOf = keyResolver(SeedNamespace.reports, reports, 'reports.json');
 
