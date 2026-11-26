@@ -18,7 +18,7 @@ export function createSocketServer(
   { handlers = [] }: SocketServerOptions = {},
 ): AppSocketServer {
   const io: AppSocketServer = new Server(httpServer, {
-    cors: { origin: env.CORS_ORIGIN, credentials: true },
+    cors: { origin: env.CORS_ORIGIN },
   });
 
   io.use(authenticateSocket);
