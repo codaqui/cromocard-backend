@@ -3,11 +3,11 @@ import { logger } from '@/config/logger';
 import { prisma } from '@/lib/prisma';
 import { createStorageProvider } from '@/providers/storage/storage.factory';
 
-import { seedAdmin, uploadSampleImages } from './admin.seed';
+import { seedAdmin } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
 import { seedCommunity } from './community.seed';
 import { seedMarketplace } from './marketplace.seed';
-import { seedProfiles } from './profiles.seed';
+import { uploadSampleImages } from './sample-images';
 import { seedOptionsFrom } from './seed-options';
 import { seedSellerVerifications } from './seller-verifications.seed';
 import { assertSeedEmailsAvailable, seedUsers } from './users.seed';
@@ -23,14 +23,13 @@ async function seed(): Promise<void> {
   });
 
   await assertSeedEmailsAvailable(prisma);
-  await seedUsers(prisma, options.userPassword);
+  const images = options.isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
+  await seedUsers(prisma, options.userPassword, images.avatarUrl);
   await seedCatalog(prisma);
   await seedCommunity(prisma);
   await seedSellerVerifications(prisma);
   await seedMarketplace(prisma);
-  const images = options.isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
   await seedAdmin(prisma, images);
-  await seedProfiles(prisma, images.avatarUrl);
 
   logger.info(
     options.isLocalDatabase

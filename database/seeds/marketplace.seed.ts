@@ -23,9 +23,12 @@ const marketplaceSchema = z.object({
     z.object({
       key: seedKey,
       user: seedKey,
+      label: z.string().max(60).default('Casa'),
+      isPrimary: z.boolean().default(true),
       zipCode: z.string().max(9),
       street: z.string().max(160),
       number: z.string().max(15),
+      complement: z.string().max(60).optional(),
       neighborhood: z.string().max(90),
       city: z.string().max(90),
       state: z.string().length(2),
@@ -93,8 +96,6 @@ const toAddressData = ({ key, user, ...address }: (typeof marketplace.addresses)
   ...address,
   id: addressIdOf(key),
   userId: userIdOf(user),
-  label: 'Casa',
-  isPrimary: true,
 });
 
 const toListingData = ({ key, seller, card, condition, price, quantity, status }: SeedListing) => ({
