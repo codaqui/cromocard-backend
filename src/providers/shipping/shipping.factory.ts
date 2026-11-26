@@ -1,4 +1,5 @@
 import { env } from '@/config/env';
+import { requiredEnv } from '@/config/required-env';
 
 import { FakeShippingProvider } from './fake.shipping-provider';
 import { MelhorEnvioShippingProvider } from './melhor-envio.shipping-provider';
@@ -9,7 +10,7 @@ const shippingProviderByDriver: Record<typeof env.SHIPPING_DRIVER, () => Shippin
   'melhor-envio': () =>
     new MelhorEnvioShippingProvider({
       baseUrl: env.MELHOR_ENVIO_BASE_URL,
-      token: String(env.MELHOR_ENVIO_TOKEN),
+      token: requiredEnv('MELHOR_ENVIO_TOKEN'),
     }),
 };
 
