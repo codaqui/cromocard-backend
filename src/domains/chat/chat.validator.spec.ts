@@ -71,6 +71,32 @@ describe('chat.validator', () => {
     expect(result.error?.issues[0]?.message).toBe(message);
   });
 
+  it('CA1: aceita a resposta com a mensagem citada (R5)', () => {
+    expect(
+      sendMessageSchema.parse({ conversationId: ID, content: 'Quero sim', replyToId: ID }),
+    ).toEqual({ conversationId: ID, content: 'Quero sim', replyToId: ID });
+  });
+
+  it('CA3: recusa a resposta vazia mesmo com a mensagem citada (R9)', () => {
+    const result = sendMessageSchema.safeParse({
+      conversationId: ID,
+      content: '  ',
+      replyToId: ID,
+    });
+
+    expect(result.error?.issues[0]?.message).toBe('Escreva a mensagem.');
+  });
+
+  it('CA5: recusa a citação que não é um identificador', () => {
+    const result = sendMessageSchema.safeParse({
+      conversationId: ID,
+      content: 'Oi',
+      replyToId: 'mensagem-1',
+    });
+
+    expect(result.error?.issues[0]?.path).toEqual(['replyToId']);
+  });
+
   it('pergunta a presença de até 100 pessoas', () => {
     expect(presenceListSchema.safeParse({ userIds: Array(101).fill(ID) }).success).toBe(false);
   });

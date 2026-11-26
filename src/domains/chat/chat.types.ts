@@ -23,6 +23,10 @@ export interface ConversationSummary {
   createdAt: Date;
 }
 
+export type QuotedMessage =
+  | { id: string; authorUsername: string | null; content: string; unavailable: false }
+  | { id: string; authorUsername: string | null; unavailable: true };
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -30,6 +34,19 @@ export interface ChatMessage {
   content: string;
   isRead: boolean;
   createdAt: Date;
+  replyTo: QuotedMessage | null;
+}
+
+export interface NewMessage {
+  conversationId: string;
+  authorId: string;
+  content: string;
+  replyToId?: string;
+}
+
+export interface ReplyTarget {
+  conversationId: string;
+  deletedAt: Date | null;
 }
 
 export interface ConversationTotals {

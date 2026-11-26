@@ -244,6 +244,35 @@ describe('mensagens da conversa', () => {
     expect(dataOf<Msg[]>(older).map(({ content }) => content)).toEqual(['Primeira']);
   });
 
+  it('CCD045 CA1 e CA12: a resposta traz a citação, e a de mensagem excluída vem indisponível', async () => {
+    const autor = await fx.createUser('citado');
+    const id = await fx.createConversation(ana, autor);
+    const kept = await fx.say({ conversationId: id, author: autor, content: 'Tenho o Zekrom.' });
+    const gone = await fx.say({ conversationId: id, author: autor, content: 'X', deleted: true });
+    const reply = (replyToId: string, content: string) =>
+      prisma.message.create({ data: { conversationId: id, authorId: ana.id, content, replyToId } });
+    await reply(kept.id, 'Quero sim');
+    await reply(gone.id, 'E esta?');
+
+    const res = await request(app).get(`${BASE}/${id}/messages`).set(as(ana));
+
+    const byContent = new Map(
+      dataOf<(Msg & { replyTo: unknown })[]>(res).map(({ content, replyTo }) => [content, replyTo]),
+    );
+    expect(byContent.get('Tenho o Zekrom.')).toBeNull();
+    expect(byContent.get('Quero sim')).toEqual({
+      id: kept.id,
+      authorUsername: expect.any(String) as string,
+      content: 'Tenho o Zekrom.',
+      unavailable: false,
+    });
+    expect(byContent.get('E esta?')).toEqual({
+      id: gone.id,
+      authorUsername: expect.any(String) as string,
+      unavailable: true,
+    });
+  });
+
   it('CA3: abrir a conversa marca as recebidas como lidas e zera o contador', async () => {
     const read = await request(app).post(`${BASE}/${withBruno}/read`).set(as(ana));
     const items = dataOf<Summary[]>(await request(app).get(BASE).set(as(ana)));

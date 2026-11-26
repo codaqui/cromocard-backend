@@ -40,6 +40,7 @@ export const sendMessageSchema = z.object({
     .max(MESSAGE_MAX_LENGTH, {
       error: `A mensagem pode ter até ${MESSAGE_MAX_LENGTH} caracteres.`,
     }),
+  replyToId: uuid.optional(),
 });
 
 export const conversationRoomSchema = z.object({ conversationId: uuid });
