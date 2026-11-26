@@ -11,7 +11,7 @@ function toValidationError(error: ZodError): ValidationError {
   );
 }
 
-function toAppError(error: unknown): AppError | undefined {
+export function toAppError(error: unknown): AppError | undefined {
   if (error instanceof AppError) return error;
   if (error instanceof ZodError) return toValidationError(error);
   if (isUniqueConstraintError(error)) return new ConflictError('Este registro já existe');
