@@ -1,6 +1,5 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import type { CollectionCardStatus } from '@/generated/prisma/enums';
-import { type PaginationQuery, toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted } from '@/shared/utils/soft-delete';
 
 import { activeCardsOf, OWNED_STATUSES } from './collection.repository';
@@ -33,17 +32,14 @@ export interface CollectionCategory {
   name: string;
 }
 
-export interface CollectionCardsPage {
-  items: CollectionCardRow[];
-  total: number;
+export interface RankedCard {
+  cardId: string;
+  status: CollectionCardStatus;
 }
 
 export interface CollectionCardsRepository {
-  list(
-    collectionId: string,
-    filter: CollectionCardsFilter,
-    page: PaginationQuery,
-  ): Promise<CollectionCardsPage>;
+  rank(collectionId: string, filter: CollectionCardsFilter): Promise<RankedCard[]>;
+  findRows(collectionId: string, cardIds: string[]): Promise<CollectionCardRow[]>;
   countByStatus(collectionId: string): Promise<CardStatusCounts>;
   listCategories(collectionId: string): Promise<CollectionCategory[]>;
 }
@@ -70,17 +66,21 @@ function cardsWhere(collectionId: string, filter: CollectionCardsFilter): Prisma
   };
 }
 
+function markOf(collectionId: string) {
+  return {
+    where: { collectionId, ...notDeleted },
+    select: { status: true, quantity: true },
+    take: 1,
+  } satisfies Prisma.Card$collectionCardsArgs;
+}
+
 function cardSelect(collectionId: string) {
   return {
     id: true,
     name: true,
     frontImageUrl: true,
     album: { select: { id: true, title: true, category: { select: { id: true, name: true } } } },
-    collectionCards: {
-      where: { collectionId, ...notDeleted },
-      select: { status: true, quantity: true },
-      take: 1,
-    },
+    collectionCards: markOf(collectionId),
   } satisfies Prisma.CardSelect;
 }
 
@@ -101,29 +101,32 @@ function toRow({
     album: { id: album!.id, title: album!.title },
     category: album!.category,
     status: mark?.status ?? 'MISSING',
-    quantity: mark?.quantity ?? 0,
+    quantity: mark?.status === 'MISSING' ? 0 : (mark?.quantity ?? 0),
   };
 }
 
 export class PrismaCollectionCardsRepository implements CollectionCardsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async list(
-    collectionId: string,
-    filter: CollectionCardsFilter,
-    page: PaginationQuery,
-  ): Promise<CollectionCardsPage> {
-    const where = cardsWhere(collectionId, filter);
-    const [cards, total] = await this.prisma.$transaction([
-      this.prisma.card.findMany({
-        where,
-        select: cardSelect(collectionId),
-        orderBy: [{ album: { title: 'asc' } }, { number: 'asc' }, { id: 'asc' }],
-        ...toSkipTake(page),
-      }),
-      this.prisma.card.count({ where }),
-    ]);
-    return { items: cards.map(toRow), total };
+  async rank(collectionId: string, filter: CollectionCardsFilter): Promise<RankedCard[]> {
+    const cards = await this.prisma.card.findMany({
+      where: cardsWhere(collectionId, filter),
+      select: { id: true, collectionCards: markOf(collectionId) },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    return cards.map(({ id, collectionCards: [mark] }) => ({
+      cardId: id,
+      status: mark?.status ?? 'MISSING',
+    }));
+  }
+
+  async findRows(collectionId: string, cardIds: string[]): Promise<CollectionCardRow[]> {
+    if (cardIds.length === 0) return [];
+    const cards = await this.prisma.card.findMany({
+      where: { id: { in: cardIds }, ...activeCardsOf(collectionId) },
+      select: cardSelect(collectionId),
+    });
+    return cards.map(toRow);
   }
 
   async countByStatus(collectionId: string): Promise<CardStatusCounts> {

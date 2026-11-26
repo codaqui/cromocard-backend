@@ -116,8 +116,6 @@ describe('PrismaCollectionRepository', () => {
 });
 
 describe('PrismaCollectionCardsRepository', () => {
-  const firstPage = { page: 1, pageSize: 8 };
-
   it('R8: conta por status, com a carta sem marcação ativa como faltante', async () => {
     expect(await collectionCards.countByStatus(collectionId)).toEqual({
       all: 4,
@@ -127,24 +125,48 @@ describe('PrismaCollectionCardsRepository', () => {
     });
   });
 
-  it('R8: a aba Faltantes traz a marcação MISSING e a carta sem marcação', async () => {
-    const { items, total } = await collectionCards.list(
-      collectionId,
-      { status: 'MISSING' },
-      firstPage,
-    );
-
-    expect(total).toBe(2);
-    expect(items.map(({ name, status }) => [name, status])).toEqual([
-      [`${MARKER} Eevee`, 'MISSING'],
-      [`${MARKER} Mewtwo`, 'MISSING'],
+  it('R8: ordena todas as cartas ativas pelo nome, com o status de cada uma', async () => {
+    expect(await collectionCards.rank(collectionId, {})).toEqual([
+      { cardId: cards.Charizard, status: 'DUPLICATE' },
+      { cardId: cards.Eevee, status: 'MISSING' },
+      { cardId: cards.Mewtwo, status: 'MISSING' },
+      { cardId: cards.Pikachu, status: 'OWNED' },
     ]);
   });
 
-  it('R8: busca pelo nome sem diferenciar maiúsculas e traz álbum, categoria e quantidade', async () => {
-    const { items } = await collectionCards.list(collectionId, { q: 'CHARI' }, firstPage);
+  it('R8: a aba Faltantes traz a marcação MISSING e a carta sem marcação', async () => {
+    const ranked = await collectionCards.rank(collectionId, { status: 'MISSING' });
 
-    expect(items).toEqual([
+    expect(ranked.map(({ cardId }) => cardId)).toEqual([cards.Eevee, cards.Mewtwo]);
+  });
+
+  it('R8: a aba Possuo traz OWNED e DUPLICATE, e a aba Repetidas só DUPLICATE', async () => {
+    const owned = await collectionCards.rank(collectionId, { status: 'OWNED' });
+    const duplicates = await collectionCards.rank(collectionId, { status: 'DUPLICATE' });
+
+    expect(owned.map(({ cardId }) => cardId)).toEqual([cards.Charizard, cards.Pikachu]);
+    expect(duplicates.map(({ cardId }) => cardId)).toEqual([cards.Charizard]);
+  });
+
+  it('R8: busca pelo nome sem diferenciar maiúsculas e filtra pela categoria', async () => {
+    const byName = await collectionCards.rank(collectionId, { q: 'CHARI' });
+    const byCategory = await collectionCards.rank(collectionId, { categoryId });
+    const otherCategory = await collectionCards.rank(collectionId, {
+      categoryId: crypto.randomUUID(),
+    });
+
+    expect(byName.map(({ cardId }) => cardId)).toEqual([cards.Charizard]);
+    expect([byCategory.length, otherCategory.length]).toEqual([4, 0]);
+  });
+
+  it('R8: traz os dados da página com álbum, categoria e quantidade', async () => {
+    const rows = await collectionCards.findRows(collectionId, [
+      cards.Charizard!,
+      cards.Eevee!,
+      cards.Mewtwo!,
+    ]);
+
+    expect(rows.sort((first, second) => first.name.localeCompare(second.name))).toEqual([
       {
         cardId: cards.Charizard,
         name: `${MARKER} Charizard`,
@@ -154,17 +176,16 @@ describe('PrismaCollectionCardsRepository', () => {
         status: 'DUPLICATE',
         quantity: 3,
       },
+      expect.objectContaining({ cardId: cards.Eevee, status: 'MISSING', quantity: 0 }),
+      expect.objectContaining({ cardId: cards.Mewtwo, status: 'MISSING', quantity: 0 }),
     ]);
   });
 
-  it('R8: filtra pela categoria e pagina', async () => {
-    const { items, total } = await collectionCards.list(
-      collectionId,
-      { categoryId },
-      { page: 2, pageSize: 3 },
-    );
+  it('R8: os dados da página ignoram carta excluída ou de álbum fora da coleção', async () => {
+    const rows = await collectionCards.findRows(collectionId, [cards.Snorlax!, cards.Messi!]);
 
-    expect([items.length, total]).toEqual([1, 4]);
+    expect(rows).toEqual([]);
+    expect(await collectionCards.findRows(collectionId, [])).toEqual([]);
   });
 
   it('R8: as categorias dos filtros são as dos álbuns ativos', async () => {

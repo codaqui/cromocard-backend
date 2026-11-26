@@ -1,6 +1,21 @@
+import {
+  buildPaginationMeta,
+  type PaginationMeta,
+  type PaginationQuery,
+  toSkipTake,
+} from '@/shared/utils/pagination';
 import { BRASILIA_TIME_ZONE, type DateRange, daysBefore } from '@/shared/utils/time-zone';
 
-import type { CollectionPrices } from './collection-prices';
+import type {
+  CardStatusCounts,
+  CollectionCardRow,
+  CollectionCardsFilter,
+  CollectionCardsRepository,
+  CollectionCategory,
+  RankedCard,
+} from './collection-cards.repository';
+import type { ListingPrices } from './collection-listing-prices';
+import type { CardPricesInCents, CollectionPrices } from './collection-prices';
 import type {
   ActiveAlbum,
   AlbumMarks,
@@ -12,8 +27,31 @@ export const PRICE_WINDOW_DAYS = 30;
 
 export interface CollectionServiceDeps {
   collections: CollectionRepository;
+  cards: CollectionCardsRepository;
   prices: CollectionPrices;
+  listings: ListingPrices;
   now: () => Date;
+}
+
+export type CollectionCardsSort = 'value_desc';
+
+export interface CollectionCardsQuery extends CollectionCardsFilter, PaginationQuery {
+  sort: CollectionCardsSort;
+}
+
+export interface CollectionCardItem extends CollectionCardRow {
+  averagePrice: string | null;
+  lowestListingPrice: string | null;
+}
+
+export interface CollectionCardsList {
+  items: CollectionCardItem[];
+  meta: PaginationMeta & { counts: CardStatusCounts; categories: CollectionCategory[] };
+}
+
+interface PricedCard extends RankedCard {
+  averageCents?: number;
+  lowestListingCents?: number;
 }
 
 export interface CardTotals {
@@ -109,6 +147,31 @@ function variationOf(currentCents: number, previousCents: number): number | null
   return roundTo(((currentCents - previousCents) / previousCents) * 100, 1);
 }
 
+const toMoney = (cents?: number) => (cents === undefined ? null : (cents / 100).toFixed(2));
+
+function valueOf({ status, averageCents, lowestListingCents }: PricedCard): number {
+  return (status === 'MISSING' ? lowestListingCents : averageCents) ?? -1;
+}
+
+function byValue(cards: PricedCard[]): PricedCard[] {
+  return [...cards].sort((first, second) => valueOf(second) - valueOf(first));
+}
+
+function toItems(page: PricedCard[], rows: CollectionCardRow[]): CollectionCardItem[] {
+  const rowsById = new Map(rows.map((row) => [row.cardId, row]));
+  return page.flatMap(({ cardId, status, averageCents, lowestListingCents }) => {
+    const row = rowsById.get(cardId);
+    if (!row) return [];
+    const lowest = status === 'MISSING' ? lowestListingCents : undefined;
+    return [{ ...row, averagePrice: toMoney(averageCents), lowestListingPrice: toMoney(lowest) }];
+  });
+}
+
+function pageOf(cards: PricedCard[], query: PaginationQuery): PricedCard[] {
+  const { skip, take } = toSkipTake(query);
+  return cards.slice(skip, skip + take);
+}
+
 export class CollectionService {
   constructor(private readonly deps: CollectionServiceDeps) {}
 
@@ -128,6 +191,54 @@ export class CollectionService {
       estimatedValue,
       featuredAlbum: featuredAlbumOf(albums, marks),
     };
+  }
+
+  async listCards(userId: string, query: CollectionCardsQuery): Promise<CollectionCardsList> {
+    const { id } = await this.deps.collections.findOrCreateByUserId(userId);
+    const { cards } = this.deps;
+    const { status, q, categoryId } = query;
+    const [ranked, counts, categories] = await Promise.all([
+      cards.rank(id, { status, q, categoryId }),
+      cards.countByStatus(id),
+      cards.listCategories(id),
+    ]);
+    const page = pageOf(byValue(await this.priceCards(ranked)), query);
+    const rows = await cards.findRows(
+      id,
+      page.map(({ cardId }) => cardId),
+    );
+    return {
+      items: toItems(page, rows),
+      meta: { ...buildPaginationMeta(query, ranked.length), counts, categories },
+    };
+  }
+
+  private async priceCards(ranked: RankedCard[]): Promise<PricedCard[]> {
+    const missingIds = ranked
+      .filter(({ status }) => status === 'MISSING')
+      .map(({ cardId }) => cardId);
+    const [averages, lowest] = await Promise.all([
+      this.averagePricesOf(
+        ranked.map(({ cardId }) => cardId),
+        this.priceWindows()[0],
+      ),
+      this.lowestListingsOf(missingIds),
+    ]);
+    return ranked.map((card) => ({
+      ...card,
+      averageCents: averages.get(card.cardId),
+      lowestListingCents: lowest.get(card.cardId),
+    }));
+  }
+
+  private averagePricesOf(cardIds: string[], range: DateRange): Promise<CardPricesInCents> {
+    if (cardIds.length === 0) return Promise.resolve(new Map<string, number>());
+    return this.deps.prices.averagePrices(cardIds, range);
+  }
+
+  private lowestListingsOf(cardIds: string[]): Promise<CardPricesInCents> {
+    if (cardIds.length === 0) return Promise.resolve(new Map<string, number>());
+    return this.deps.listings.lowestActivePrice(cardIds);
   }
 
   private async estimateValue(collectionId: string): Promise<EstimatedValue> {
@@ -153,8 +264,7 @@ export class CollectionService {
   }
 
   private async valueInCents(cardIds: string[], range: DateRange): Promise<number> {
-    if (cardIds.length === 0) return 0;
-    const prices = await this.deps.prices.averagePrices(cardIds, range);
+    const prices = await this.averagePricesOf(cardIds, range);
     return sum(cardIds.map((cardId) => prices.get(cardId) ?? 0));
   }
 }
