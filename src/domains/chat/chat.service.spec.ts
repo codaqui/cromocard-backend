@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ConversationNotFoundError } from './chat.errors';
-import { ChatService, type ChatStore } from './chat.service';
+import { ContactNotFoundError, ConversationNotFoundError } from './chat.errors';
+import { ChatService, type ChatStore, type ContactsStore } from './chat.service';
 import type { ChatMessage, ConversationSummary } from './chat.types';
 
 const ANA = 'ana';
@@ -26,6 +26,7 @@ const message: ChatMessage = {
 };
 
 let store: { [K in keyof ChatStore]: ReturnType<typeof vi.fn> };
+let contacts: { [K in keyof ContactsStore]: ReturnType<typeof vi.fn> };
 let service: ChatService;
 
 beforeEach(() => {
@@ -36,8 +37,14 @@ beforeEach(() => {
     listMessages: vi.fn().mockResolvedValue({ items: [message], nextCursor: null }),
     markAsRead: vi.fn().mockResolvedValue(undefined),
     createMessage: vi.fn().mockResolvedValue(message),
+    findDirectConversationId: vi.fn().mockResolvedValue(null),
+    createDirectConversation: vi.fn().mockResolvedValue(CONVERSATION),
   };
-  service = new ChatService(store as unknown as ChatStore);
+  contacts = {
+    search: vi.fn().mockResolvedValue([]),
+    isReachable: vi.fn().mockResolvedValue(true),
+  };
+  service = new ChatService(store as unknown as ChatStore, contacts as unknown as ContactsStore);
 });
 
 describe('listConversations', () => {
@@ -104,5 +111,38 @@ describe('mensagens', () => {
       recipientId: 'elisa',
     });
     expect(store.createMessage).toHaveBeenCalledWith(CONVERSATION, ANA, 'Oi');
+  });
+});
+
+describe('Nova conversa (R13)', () => {
+  it('CA13: cria a conversa com quem ainda não tinha', async () => {
+    const result = await service.startConversation(ANA, 'renan');
+
+    expect(store.createDirectConversation).toHaveBeenCalledWith(ANA, 'renan');
+    expect(result).toEqual({ conversation: summary(), created: true });
+  });
+
+  it('CA13: reaproveita a conversa que já existe, sem criar outra', async () => {
+    store.findDirectConversationId.mockResolvedValue(CONVERSATION);
+
+    const result = await service.startConversation(ANA, 'elisa');
+
+    expect(store.createDirectConversation).not.toHaveBeenCalled();
+    expect(result.created).toBe(false);
+  });
+
+  it('CA14: recusa com 404 quem está bloqueado, suspenso ou não existe', async () => {
+    contacts.isReachable.mockResolvedValue(false);
+
+    await expect(service.startConversation(ANA, 'gabriela')).rejects.toBeInstanceOf(
+      ContactNotFoundError,
+    );
+    expect(store.createDirectConversation).not.toHaveBeenCalled();
+  });
+
+  it('repassa a busca de contatos com a aba', async () => {
+    await service.listContacts(ANA, { q: 'ren', scope: 'groups' });
+
+    expect(contacts.search).toHaveBeenCalledWith(ANA, { q: 'ren', scope: 'groups' });
   });
 });

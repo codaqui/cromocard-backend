@@ -1,9 +1,15 @@
 import { buildPaginationMeta, toSkipTake } from '@/shared/utils/pagination';
 
-import { ConversationNotFoundError } from './chat.errors';
+import { ContactNotFoundError, ConversationNotFoundError } from './chat.errors';
 import type { ChatRepository } from './chat.repository';
 import type { ChatMessage, ConversationSummary } from './chat.types';
-import type { ListConversationsQuery, MessagesQuery, SendMessageInput } from './chat.validator';
+import type {
+  ContactsQuery,
+  ListConversationsQuery,
+  MessagesQuery,
+  SendMessageInput,
+} from './chat.validator';
+import type { ContactsRepository } from './contacts.repository';
 
 export type ChatStore = Pick<
   ChatRepository,
@@ -13,7 +19,16 @@ export type ChatStore = Pick<
   | 'listMessages'
   | 'markAsRead'
   | 'createMessage'
+  | 'findDirectConversationId'
+  | 'createDirectConversation'
 >;
+
+export type ContactsStore = Pick<ContactsRepository, 'search' | 'isReachable'>;
+
+export interface StartedConversation {
+  conversation: ConversationSummary;
+  created: boolean;
+}
 
 export interface SentMessage {
   message: ChatMessage;
@@ -21,7 +36,21 @@ export interface SentMessage {
 }
 
 export class ChatService {
-  constructor(private readonly repository: ChatStore) {}
+  constructor(
+    private readonly repository: ChatStore,
+    private readonly contacts: ContactsStore,
+  ) {}
+
+  listContacts(userId: string, query: ContactsQuery) {
+    return this.contacts.search(userId, query);
+  }
+
+  async startConversation(userId: string, contactId: string): Promise<StartedConversation> {
+    if (!(await this.contacts.isReachable(userId, contactId))) throw new ContactNotFoundError();
+    const existing = await this.repository.findDirectConversationId(userId, contactId);
+    const id = existing ?? (await this.repository.createDirectConversation(userId, contactId));
+    return { conversation: await this.conversationOf(userId, id), created: existing === null };
+  }
 
   async listConversations(userId: string, query: ListConversationsQuery) {
     const options = { q: query.q, filter: query.filter, ...toSkipTake(query) };
