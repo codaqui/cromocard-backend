@@ -6,8 +6,10 @@ import { detectImageType } from './image-type';
 import { InvalidImageTypeError } from './uploads.errors';
 import type { UploadFolder } from './uploads.validator';
 
+export type ImageFolder = UploadFolder | 'report-evidences';
+
 export interface ImageUpload {
-  folder: UploadFolder;
+  folder: ImageFolder;
   content: Buffer;
 }
 
@@ -26,5 +28,9 @@ export class UploadsService {
       content,
       contentType: imageType.mimeType,
     });
+  }
+
+  deleteImage(key: string): Promise<void> {
+    return this.storageProvider.delete(key);
   }
 }

@@ -68,4 +68,12 @@ describe('UploadsService', () => {
     );
     expect(storage.files).toHaveLength(0);
   });
+
+  it('guarda o print da denúncia na pasta report-evidences e apaga pela chave', async () => {
+    const stored = await service.uploadImage({ folder: 'report-evidences', content: pngImage() });
+
+    expect(stored.key).toMatch(/^report-evidences\/.+\.png$/);
+    await service.deleteImage(stored.key);
+    expect(storage.files).toHaveLength(0);
+  });
 });
