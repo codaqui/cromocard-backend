@@ -8,13 +8,14 @@ import {
 } from './reports.validator';
 
 describe('reports.validator', () => {
-  it('R4: aceita os relatórios de novos cadastros, catálogo e auditoria de lojistas', () => {
+  it('R4: aceita os relatórios de novos cadastros, catálogo, auditoria de lojistas e volume', () => {
     expect(reportTypeParamSchema.parse({ type: 'signups' })).toEqual({ type: 'signups' });
     expect(reportTypeParamSchema.parse({ type: 'catalog' })).toEqual({ type: 'catalog' });
     expect(reportTypeParamSchema.parse({ type: 'seller-audit' })).toEqual({
       type: 'seller-audit',
     });
-    expect(reportTypeParamSchema.safeParse({ type: 'volume' }).success).toBe(false);
+    expect(reportTypeParamSchema.parse({ type: 'volume' })).toEqual({ type: 'volume' });
+    expect(reportTypeParamSchema.safeParse({ type: 'finance' }).success).toBe(false);
   });
 
   it('R5: aceita os períodos do Dashboard e usa 10 linhas na prévia', () => {

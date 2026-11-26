@@ -1,5 +1,6 @@
 import { logger } from '@/config/logger';
 import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
+import { financeService } from '@/domains/admin/finance/finance.module';
 import { prisma } from '@/lib/prisma';
 import { createStorageProvider } from '@/providers/storage/storage.factory';
 import type { DomainModule } from '@/shared/types/domain-module';
@@ -29,6 +30,7 @@ const reportsService = new ReportsService({
   repository: new PrismaReportsRepository(prisma),
   auditLogService,
   archive: reportExportsService,
+  finance: financeService,
   exporters,
   now,
 });
