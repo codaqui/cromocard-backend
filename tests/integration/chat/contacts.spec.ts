@@ -126,7 +126,7 @@ describe('GET /me/contacts', () => {
     expect(idsOf(deals)).toEqual([comprador.id]);
   });
 
-  it('CA15: o lojista com a verificação aprovada vem com o selo, mesmo sem texto na busca', async () => {
+  it('CA15: o lojista com a verificação aprovada vem com o selo', async () => {
     await prisma.sellerVerification.create({
       data: {
         userId: lojista.id,
@@ -138,10 +138,16 @@ describe('GET /me/contacts', () => {
       },
     });
 
-    const res = await request(app).get(BASE).set(as(ana)).query({ scope: 'sellers' });
+    const res = await request(app).get(BASE).set(as(ana)).query({ q: MARKER, scope: 'sellers' });
     const found = (res.body as { data: ContactResult[] }).data.find(({ id }) => id === lojista.id);
 
     expect(found).toMatchObject({ role: 'SELLER', verified: true, commonGroups: [] });
+  });
+
+  it('sem texto na busca, a aba traz todo mundo dela', async () => {
+    const deals = await request(app).get(BASE).set(as(ana)).query({ scope: 'deals' });
+
+    expect(idsOf(deals)).toEqual([comprador.id]);
   });
 
   it('recusa aba desconhecida e o administrador', async () => {
