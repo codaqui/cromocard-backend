@@ -2,8 +2,8 @@ import { prisma } from '@/lib/prisma';
 import type { DomainModule } from '@/shared/types/domain-module';
 
 import { PrismaCollectionCardsRepository } from './collection-cards.repository';
-import { noListingsYet } from './collection-listing-prices';
-import { noPriceHistoryYet } from './collection-prices';
+import { PrismaListingPrices } from './collection-listing-prices.repository';
+import { PrismaCollectionPrices } from './collection-prices.repository';
 import { CollectionController } from './collection.controller';
 import { PrismaCollectionRepository } from './collection.repository';
 import { createCollectionRoutes } from './collection.routes';
@@ -13,8 +13,8 @@ import { registerCollectionDocs } from './collection.swagger';
 const collectionService = new CollectionService({
   collections: new PrismaCollectionRepository(prisma),
   cards: new PrismaCollectionCardsRepository(prisma),
-  prices: noPriceHistoryYet,
-  listings: noListingsYet,
+  prices: new PrismaCollectionPrices(prisma),
+  listings: new PrismaListingPrices(prisma),
   now: () => new Date(),
 });
 

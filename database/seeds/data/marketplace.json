@@ -93,6 +93,22 @@
       "condition": "regular",
       "price": "120.00",
       "status": "ACTIVE"
+    },
+    {
+      "key": "helena-charizard-sv107",
+      "seller": "helena",
+      "card": "charizard-vmax-sv107",
+      "condition": "near-mint",
+      "price": "1790.00",
+      "status": "ACTIVE"
+    },
+    {
+      "key": "igor-charizard-sv107",
+      "seller": "igor",
+      "card": "charizard-vmax-sv107",
+      "condition": "mint",
+      "price": "2050.00",
+      "status": "ACTIVE"
     }
   ],
   "orders": [

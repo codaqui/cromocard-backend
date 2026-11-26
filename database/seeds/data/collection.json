@@ -90,5 +90,53 @@
         "missing": 2
       }
     }
-  ]
+  ],
+  "prices": {
+    "generated": {
+      "current": "148.00",
+      "previous": "130.00"
+    },
+    "cards": [
+      {
+        "card": "messi",
+        "current": "2100.00",
+        "previous": "1850.00"
+      },
+      {
+        "card": "mbappe",
+        "current": "1800.00",
+        "previous": "1600.00"
+      },
+      {
+        "card": "vinicius",
+        "current": "1250.00",
+        "previous": "1100.00"
+      },
+      {
+        "card": "alisson",
+        "current": "1425.00",
+        "previous": "1300.00"
+      },
+      {
+        "card": "escudo-selecao",
+        "current": "250.00",
+        "previous": "220.00"
+      },
+      {
+        "card": "charizard-vmax-shiny",
+        "current": "380.00",
+        "previous": "330.00"
+      },
+      {
+        "card": "mox-diamond",
+        "current": "950.00",
+        "previous": "735.00"
+      },
+      {
+        "card": "mago-negro",
+        "current": "120.00",
+        "previous": "100.00"
+      }
+    ]
+  }
 }

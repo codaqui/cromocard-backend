@@ -2,7 +2,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '@/app';
-import type { CollectionCardStatus, UserRole } from '@/generated/prisma/enums';
+import type { CollectionCardStatus, ListingStatus, UserRole } from '@/generated/prisma/enums';
 import { signAccessToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
 
@@ -120,6 +120,36 @@ async function markCards(collectionId: string, marks: Mark[]) {
   });
 }
 
+type PricePoint = [name: string, price: number, days: number, deleted?: boolean];
+type ListingPoint = [name: string, price: number, status: ListingStatus, deleted?: boolean];
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+const deletedAtOf = (deleted?: boolean) => (deleted ? new Date() : null);
+
+async function addPrices(points: PricePoint[]) {
+  await prisma.priceHistory.createMany({
+    data: points.map(([name, price, days, deleted]) => ({
+      cardId: cardIds[name]!,
+      price,
+      referenceDate: daysAgo(days),
+      source: 'SALE' as const,
+      deletedAt: deletedAtOf(deleted),
+    })),
+  });
+}
+
+async function addListings(sellerId: string, listings: ListingPoint[]) {
+  await prisma.listing.createMany({
+    data: listings.map(([name, price, status, deleted]) => ({
+      sellerId,
+      cardId: cardIds[name]!,
+      price,
+      status,
+      deletedAt: deletedAtOf(deleted),
+    })),
+  });
+}
+
 const ownedCards: Mark[] = ['01', '02', '03', '04', '05', '06'].map((n) => [`Carta ${n}`, 'OWNED']);
 
 beforeAll(async () => {
@@ -140,6 +170,22 @@ beforeAll(async () => {
     ['Carta 09', 'OWNED'],
     ['Carta 10', 'DUPLICATE', 2],
   ]);
+  await addPrices([
+    ['Carta 01', 100, 5],
+    ['Carta 01', 120, 20],
+    ['Carta 01', 90, 40],
+    ['Carta 07', 50, 10],
+    ['Carta 07', 50, 45],
+    ['Carta 08', 999, 10],
+    ['Carta 02', 500, 10, true],
+    ['Carta 02', 300, 70],
+  ]);
+  await addListings(removedAlbumCollector.id, [
+    ['Carta 09', 30, 'ACTIVE'],
+    ['Carta 09', 25, 'ACTIVE'],
+    ['Carta 09', 10, 'PAUSED'],
+    ['Carta 09', 5, 'ACTIVE', true],
+  ]);
 });
 
 afterAll(async () => {
@@ -148,6 +194,8 @@ afterAll(async () => {
   await prisma.collectionCard.deleteMany({ where: ofUsers });
   await prisma.userAlbum.deleteMany({ where: ofUsers });
   await prisma.collection.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.priceHistory.deleteMany({ where: { card: { name: { startsWith: MARKER } } } });
+  await prisma.listing.deleteMany({ where: { sellerId: removedAlbumCollector.id } });
   await prisma.card.deleteMany({ where: { name: { startsWith: MARKER } } });
   await prisma.album.deleteMany({ where: { title: { startsWith: MARKER } } });
   await prisma.category.deleteMany({ where: { name: { startsWith: MARKER } } });
@@ -190,13 +238,17 @@ describe('GET /api/v1/collections/me/summary', () => {
     });
   });
 
-  it('L5: sem preço ligado (T2), o valor estimado vem zerado e a variação null', async () => {
+  it('CA3: soma o preço médio de 30 dias das possuídas e compara com 30 a 60 dias atrás', async () => {
     const { summary } = await summaryOf(collector);
+
+    expect(summary.estimatedValue).toEqual({ amount: '160.00', variationPercent: 14.3 });
+  });
+
+  it('L5: sem preço nas cartas possuídas, o valor vem zerado e a variação null', async () => {
+    const { summary } = await summaryOf(removedAlbumCollector);
 
     expect(summary.estimatedValue).toEqual({ amount: '0.00', variationPercent: null });
   });
-
-  it.todo('CA3: soma os preços médios de price_history e a variação em 30 dias (T2)');
 
   it('CA5: cliente sem coleção vê tudo zerado e a coleção nasce privada uma vez só (L2)', async () => {
     const { status, summary } = await summaryOf(newcomer);
@@ -220,7 +272,9 @@ describe('GET /api/v1/collections/me/cards', () => {
     const { status, data, meta } = await cardsOf(collector);
 
     expect(status).toBe(200);
-    expect(data).toHaveLength(8);
+    expect(idsOf(data)).toEqual(
+      ['01', '07', '09', '02', '03', '04', '05', '06'].map((n) => cardIds[`Carta ${n}`]),
+    );
     expect(meta).toEqual({
       page: 1,
       pageSize: 8,
@@ -231,21 +285,32 @@ describe('GET /api/v1/collections/me/cards', () => {
     });
   });
 
-  it('CA4: a faltante sem anúncio vem com o menor anúncio null, marcada ou não', async () => {
+  it('CA4: a faltante mostra o menor anúncio ativo; sem anúncio, null', async () => {
     const { data } = await cardsOf(collector, '?status=MISSING');
 
-    expect(data).toEqual(
-      ['Carta 08', 'Carta 09', 'Carta 10'].map((name): unknown =>
-        expect.objectContaining({
-          cardId: cardIds[name],
-          name: `${MARKER} ${name}`,
-          status: 'MISSING',
-          quantity: 0,
-          averagePrice: null,
-          lowestListingPrice: null,
-        }),
-      ),
-    );
+    const missing = (name: string, averagePrice: string | null, lowest: string | null) =>
+      expect.objectContaining({
+        cardId: cardIds[name],
+        name: `${MARKER} ${name}`,
+        status: 'MISSING',
+        quantity: 0,
+        averagePrice,
+        lowestListingPrice: lowest,
+      }) as unknown;
+    expect(data).toEqual([
+      missing('Carta 09', null, '25.00'),
+      missing('Carta 08', '999.00', null),
+      missing('Carta 10', null, null),
+    ]);
+  });
+
+  it('R8: a possuída mostra o preço médio de 30 dias e nunca o menor anúncio', async () => {
+    const { data } = await cardsOf(collector, '?status=OWNED&pageSize=2');
+
+    expect(data).toEqual([
+      expect.objectContaining({ averagePrice: '110.00', lowestListingPrice: null }),
+      expect.objectContaining({ averagePrice: '50.00', lowestListingPrice: null }),
+    ]);
   });
 
   it('CA4: a aba Repetidas e a busca pelo nome', async () => {
@@ -258,8 +323,10 @@ describe('GET /api/v1/collections/me/cards', () => {
     expect(idsOf(search.data)).toEqual([cardIds['Carta 03']]);
   });
 
-  it('R8: a segunda página traz as 2 cartas restantes', async () => {
-    expect((await cardsOf(collector, '?page=2')).data).toHaveLength(2);
+  it('R8: a segunda página traz as 2 cartas sem preço restantes, pelo nome', async () => {
+    const { data } = await cardsOf(collector, '?page=2');
+
+    expect(idsOf(data)).toEqual([cardIds['Carta 08'], cardIds['Carta 10']]);
   });
 
   it('R8: filtra pela categoria dos álbuns', async () => {
