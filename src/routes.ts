@@ -4,6 +4,7 @@ import swaggerUi from 'swagger-ui-express';
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
 import { chatModule } from '@/domains/chat/chat.module';
+import { contactModerationModule } from '@/domains/chat/moderation/contact-moderation.module';
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
 import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
@@ -46,7 +47,8 @@ export interface RoutesOptions {
 }
 
 export function createRoutes({ withUploads }: RoutesOptions): Router {
-  const domainModules = withUploads ? [...sharedModules, uploadsModule] : sharedModules;
+  const uploadModules = [uploadsModule, contactModerationModule];
+  const domainModules = withUploads ? [...sharedModules, ...uploadModules] : sharedModules;
   const routes = Router();
 
   domainModules.forEach(({ basePath, router }) => routes.use(`${API_PREFIX}${basePath}`, router));
