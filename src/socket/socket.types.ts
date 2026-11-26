@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from '@/shared/types/authenticated-user';
 
 export interface SocketData {
   user: AuthenticatedUser;
+  tokenExpiresAt: number;
 }
 
 type AnyEvents = DefaultEventsMap;

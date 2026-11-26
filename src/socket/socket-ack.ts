@@ -19,10 +19,9 @@ export function toAckError(error: unknown): AckResponse<never> {
 
 export function withAck<TPayload, TResult>(handler: (payload: TPayload) => Promise<TResult>) {
   return async (payload: TPayload, ack?: Ack<TResult>): Promise<void> => {
-    const response = await handler(payload).then(
-      (data): AckResponse<TResult> => ({ data }),
-      toAckError,
-    );
+    const response = await Promise.resolve()
+      .then(() => handler(payload))
+      .then((data): AckResponse<TResult> => ({ data }), toAckError);
     if (typeof ack === 'function') ack(response);
   };
 }

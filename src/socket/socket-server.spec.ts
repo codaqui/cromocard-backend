@@ -1,14 +1,17 @@
 import { createServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+import jwt from 'jsonwebtoken';
 import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { env } from '@/config/env';
 import { signAccessToken } from '@/lib/jwt';
 import { NotFoundError } from '@/shared/errors/http-errors';
 
 import { withAck } from './socket-ack';
+import { socketHandlers } from './socket-handlers';
 import { userRoom } from './socket-rooms';
 import { createSocketServer } from './socket-server';
 import type { AckResponse, AppSocketServer, SocketHandlers } from './socket.types';
@@ -36,6 +39,12 @@ const testHandlers: SocketHandlers = (_io, socket) => {
   socket.on(
     'test:crash',
     withAck(async () => Promise.reject(new Error('banco fora do ar'))),
+  );
+  socket.on(
+    'test:sync-crash',
+    withAck((): Promise<never> => {
+      throw new Error('falha antes da Promise');
+    }),
   );
 };
 
@@ -107,6 +116,20 @@ describe('createSocketServer', () => {
     expect(bobReceived).toEqual([]);
   });
 
+  it('desconecta o socket quando o access token vence', async () => {
+    const token = jwt.sign({ role: ALICE.role }, env.JWT_SECRET, {
+      subject: ALICE.id,
+      expiresIn: 1,
+      algorithm: 'HS256',
+    });
+    const socket = client({ token });
+    await connected(socket);
+
+    const reason = await new Promise((resolve) => socket.once('disconnect', resolve));
+
+    expect(reason).toBe('io server disconnect');
+  });
+
   it.each([
     ['sem token', {}],
     ['com token vazio', { token: '' }],
@@ -158,6 +181,16 @@ describe('withAck', () => {
     });
   });
 
+  it('responde INTERNAL_ERROR quando o handler falha antes de devolver a Promise', async () => {
+    const socket = client({ token: signAccessToken(ALICE) });
+    await connected(socket);
+
+    await expect(emitWithAck(socket, 'test:sync-crash')).resolves.toEqual({
+      error: 'INTERNAL_ERROR',
+      message: 'Erro inesperado. Tente novamente mais tarde.',
+    });
+  });
+
   it('não quebra quando o cliente emite sem callback de ack', async () => {
     const socket = client({ token: signAccessToken(ALICE) });
     await connected(socket);
@@ -167,5 +200,27 @@ describe('withAck', () => {
     await expect(emitWithAck(socket, 'test:echo', { text: 'ainda conectado' })).resolves.toEqual({
       data: 'ainda conectado',
     });
+  });
+});
+
+describe('servidor do ws com os handlers de produção', () => {
+  it('aceita a conexão e entrega na room user:<id> com socketHandlers registrados', async () => {
+    const server = createServer();
+    const wsServer = createSocketServer(server, { handlers: socketHandlers });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const socket = connect(`http://localhost:${(server.address() as AddressInfo).port}`, {
+      auth: { token: signAccessToken(ALICE) },
+      transports: ['websocket'],
+      reconnection: false,
+      forceNew: true,
+    });
+    clients.push(socket);
+    await connected(socket);
+
+    const received = new Promise((resolve) => socket.once('notification:new', resolve));
+    wsServer.to(userRoom(ALICE.id)).emit('notification:new', { title: 'Olá' });
+
+    await expect(received).resolves.toEqual({ title: 'Olá' });
+    await new Promise<void>((resolve) => void wsServer.close(() => resolve()));
   });
 });

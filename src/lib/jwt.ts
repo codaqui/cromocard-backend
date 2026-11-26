@@ -52,3 +52,9 @@ export function verifyAccessToken(token: string): AuthenticatedUser {
     throw new UnauthorizedError('Token inválido ou expirado');
   }
 }
+
+const expiringPayloadSchema = z.object({ exp: z.number() });
+
+export function accessTokenExpiresAt(token: string): number {
+  return expiringPayloadSchema.parse(jwt.decode(token)).exp * 1000;
+}

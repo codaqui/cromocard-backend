@@ -1,6 +1,6 @@
 import type { ExtendedError } from 'socket.io';
 
-import { verifyAccessToken } from '@/lib/jwt';
+import { accessTokenExpiresAt, verifyAccessToken } from '@/lib/jwt';
 
 import type { AppSocket } from './socket.types';
 
@@ -25,6 +25,7 @@ export function authenticateSocket(socket: AppSocket, next: (error?: ExtendedErr
   }
   try {
     socket.data.user = verifyAccessToken(token);
+    socket.data.tokenExpiresAt = accessTokenExpiresAt(token);
     next();
   } catch {
     next(unauthorized());
