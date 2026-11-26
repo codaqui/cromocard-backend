@@ -55,7 +55,7 @@ export class PrismaCollectionRepository implements CollectionRepository {
   async findOrCreateByUserId(userId: string): Promise<OwnedCollection> {
     const { id, user } = await this.prisma.collection.upsert({
       where: { userId },
-      update: {},
+      update: notDeleted,
       create: { userId, isPublic: false },
       select: { id: true, user: { select: { name: true, createdAt: true } } },
     });

@@ -93,6 +93,15 @@ describe('PrismaCollectionRepository', () => {
     expect((await prisma.collection.findUniqueOrThrow({ where: { userId } })).isPublic).toBe(false);
   });
 
+  it('ADR-015: a coleção excluída volta restaurada, na mesma linha', async () => {
+    await prisma.collection.update({ where: { userId }, data: removed });
+
+    const restored = await collections.findOrCreateByUserId(userId);
+
+    expect(restored.id).toBe(collectionId);
+    expect((await prisma.collection.findUniqueOrThrow({ where: { userId } })).deletedAt).toBeNull();
+  });
+
   it('R3: só o álbum ativo da coleção, de álbum não excluído', async () => {
     const albums = await collections.findActiveAlbums(collectionId);
 
