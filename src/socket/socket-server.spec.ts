@@ -1,10 +1,12 @@
 import { createServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+import jwt from 'jsonwebtoken';
 import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { env } from '@/config/env';
 import { signAccessToken } from '@/lib/jwt';
 import { NotFoundError } from '@/shared/errors/http-errors';
 
@@ -105,6 +107,20 @@ describe('createSocketServer', () => {
 
     await expect(received).resolves.toEqual({ title: 'Olá' });
     expect(bobReceived).toEqual([]);
+  });
+
+  it('desconecta o socket quando o access token vence', async () => {
+    const token = jwt.sign({ role: ALICE.role }, env.JWT_SECRET, {
+      subject: ALICE.id,
+      expiresIn: 1,
+      algorithm: 'HS256',
+    });
+    const socket = client({ token });
+    await connected(socket);
+
+    const reason = await new Promise((resolve) => socket.once('disconnect', resolve));
+
+    expect(reason).toBe('io server disconnect');
   });
 
   it.each([
