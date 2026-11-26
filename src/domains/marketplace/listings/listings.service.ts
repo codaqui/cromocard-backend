@@ -3,23 +3,13 @@ import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 import type { ListingsRepository, ListingSummaryRecord } from './listings.repository';
 import type { ListCardListingsQuery } from './listings.validator';
 
-export interface ListingSummary {
-  id: string;
-  price: string;
-  condition: { name: string } | null;
-  seller: { id: string; username: string | null };
-}
-
-export interface CardListingsSummary {
-  activeListingsCount: number;
-  lowestListingPrice: string | null;
-}
+import type { CardListingsReader, CardListingsSummary, ListingSummary } from './listings.contract';
 
 function toSummary({ price, ...listing }: ListingSummaryRecord): ListingSummary {
   return { ...listing, price: price.toFixed(2) };
 }
 
-export class ListingsService {
+export class ListingsService implements CardListingsReader {
   constructor(private readonly repository: ListingsRepository) {}
 
   async listAvailableByCard(

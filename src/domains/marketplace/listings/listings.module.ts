@@ -6,4 +6,3 @@ import { ListingsService } from './listings.service';
 export const listingsService = new ListingsService(new PrismaListingsRepository(prisma));
 
 export { ListingsService } from './listings.service';
-export * from './listings.contract';

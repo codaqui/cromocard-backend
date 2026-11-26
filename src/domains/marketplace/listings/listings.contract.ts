@@ -1,11 +1,19 @@
 import type { Paginated } from '@/shared/utils/pagination';
 
-import type { CardListingsSummary, ListingSummary } from './listings.service';
 import type { ListCardListingsQuery } from './listings.validator';
 
-export type { CardListingsSummary, ListingSummary } from './listings.service';
+export interface ListingSummary {
+  id: string;
+  price: string;
+  condition: { name: string } | null;
+  seller: { id: string; username: string | null };
+}
 
-/** O que outros domínios podem pedir aos anúncios de uma carta. */
+export interface CardListingsSummary {
+  activeListingsCount: number;
+  lowestListingPrice: string | null;
+}
+
 export interface CardListingsReader {
   listAvailableByCard(
     cardId: string,
