@@ -11,6 +11,7 @@ import type { ListingPrices } from './collection-listing-prices';
 import type { CollectionPrices } from './collection-prices';
 import type { ActiveAlbum, AlbumMarks, CollectionRepository } from './collection.repository';
 import { CollectionService } from './collection.service';
+import { listCollectionCardsQuerySchema } from './collection.validator';
 
 const NOW = new Date('2026-11-25T15:00:00.000Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -260,7 +261,7 @@ function row({ cardId, status }: RankedCard): CollectionCardRow {
   };
 }
 
-const query = (page = 1) => ({ page, pageSize: 8, sort: 'value_desc' as const });
+const query = (page = 1) => listCollectionCardsQuerySchema.parse({ page: String(page) });
 
 describe('CollectionService.listCards', () => {
   beforeEach(() => {

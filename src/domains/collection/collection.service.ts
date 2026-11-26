@@ -9,7 +9,6 @@ import { BRASILIA_TIME_ZONE, type DateRange, daysBefore } from '@/shared/utils/t
 import type {
   CardStatusCounts,
   CollectionCardRow,
-  CollectionCardsFilter,
   CollectionCardsRepository,
   CollectionCategory,
   RankedCard,
@@ -22,8 +21,11 @@ import type {
   CollectionOwner,
   CollectionRepository,
 } from './collection.repository';
+import type { ListCollectionCardsQuery } from './collection.validator';
 
 export const PRICE_WINDOW_DAYS = 30;
+const CENTS_PER_REAL = 100;
+const UNPRICED_RANK = -1;
 
 export interface CollectionServiceDeps {
   collections: CollectionRepository;
@@ -31,12 +33,6 @@ export interface CollectionServiceDeps {
   prices: CollectionPrices;
   listings: ListingPrices;
   now: () => Date;
-}
-
-export type CollectionCardsSort = 'value_desc';
-
-export interface CollectionCardsQuery extends CollectionCardsFilter, PaginationQuery {
-  sort: CollectionCardsSort;
 }
 
 export interface CollectionCardItem extends CollectionCardRow {
@@ -147,10 +143,11 @@ function variationOf(currentCents: number, previousCents: number): number | null
   return roundTo(((currentCents - previousCents) / previousCents) * 100, 1);
 }
 
-const toMoney = (cents?: number) => (cents === undefined ? null : (cents / 100).toFixed(2));
+const formatCents = (cents: number) => (cents / CENTS_PER_REAL).toFixed(2);
+const toMoney = (cents?: number) => (cents === undefined ? null : formatCents(cents));
 
 function valueOf({ status, averageCents, lowestListingCents }: PricedCard): number {
-  return (status === 'MISSING' ? lowestListingCents : averageCents) ?? -1;
+  return (status === 'MISSING' ? lowestListingCents : averageCents) ?? UNPRICED_RANK;
 }
 
 function byValue(cards: PricedCard[]): PricedCard[] {
@@ -193,7 +190,7 @@ export class CollectionService {
     };
   }
 
-  async listCards(userId: string, query: CollectionCardsQuery): Promise<CollectionCardsList> {
+  async listCards(userId: string, query: ListCollectionCardsQuery): Promise<CollectionCardsList> {
     const { id } = await this.deps.collections.findOrCreateByUserId(userId);
     const { cards } = this.deps;
     const { status, q, categoryId } = query;
@@ -253,7 +250,7 @@ export class CollectionService {
       this.valueInCents(cardIds, previous),
     ]);
     return {
-      amount: (currentCents / 100).toFixed(2),
+      amount: formatCents(currentCents),
       variationPercent: variationOf(currentCents, previousCents),
     };
   }
