@@ -21,6 +21,7 @@ interface Message {
   conversationId: string;
   content: string;
   author: { id: string };
+  replyTo: { id: string; content?: string; unavailable: boolean } | null;
 }
 
 let httpServer: HttpServer;
@@ -157,6 +158,102 @@ describe('conversa em tempo real (R8, R18)', () => {
 
     expect(ack).toEqual({ data: { conversationId } });
     expect(io.sockets.adapter.rooms.get(`conversation:${conversationId}`)).toBeUndefined();
+  });
+});
+
+describe('responder uma mensagem (CCD045)', () => {
+  async function chatWithQuote() {
+    const rafa = await fx.createUser(`rafa${crypto.randomUUID().slice(0, 4)}`);
+    const bia = await fx.createUser(`bia${crypto.randomUUID().slice(0, 4)}`);
+    const id = await fx.createConversation(rafa, bia);
+    const quoted = await fx.say({ conversationId: id, author: bia, content: 'Tenho o Zekrom-EX.' });
+    return { rafa, bia, id, quoted };
+  }
+
+  it('CA1: grava a resposta com a citação, e ela chega aos dois já com o trecho citado', async () => {
+    const { rafa, bia, id, quoted } = await chatWithQuote();
+    const rafaSocket = await online(rafa);
+    const biaSocket = await online(bia);
+    await emit(biaSocket, 'conversation:join', { conversationId: id });
+    const atBia = next<Message>(biaSocket, 'message:new');
+
+    const ack = await emit<Message>(rafaSocket, 'message:send', {
+      conversationId: id,
+      content: 'Quero sim',
+      replyToId: quoted.id,
+    });
+
+    const replyTo = { id: quoted.id, content: 'Tenho o Zekrom-EX.', unavailable: false };
+    expect(ack).toMatchObject({ data: { replyTo } });
+    expect((await atBia).replyTo).toMatchObject(replyTo);
+    await expect(
+      prisma.message.count({ where: { conversationId: id, replyToId: quoted.id } }),
+    ).resolves.toBe(1);
+  });
+
+  it('CA5: citação de outra conversa volta como VALIDATION_ERROR, sem gravar nem emitir', async () => {
+    const { rafa, bia, id } = await chatWithQuote();
+    const otherConversation = await fx.createConversation(bia, carla);
+    const other = await fx.say({
+      conversationId: otherConversation,
+      author: carla,
+      content: 'De outra conversa',
+    });
+    const rafaSocket = await online(rafa);
+    const biaSocket = await online(bia);
+    await emit(biaSocket, 'conversation:join', { conversationId: id });
+    const quiet = silence(biaSocket, 'message:new');
+
+    const ack = await emit(rafaSocket, 'message:send', {
+      conversationId: id,
+      content: 'Oi',
+      replyToId: other.id,
+    });
+
+    expect(ack).toMatchObject({ error: 'VALIDATION_ERROR' });
+    expect(await quiet).toBe(true);
+    await expect(prisma.message.count({ where: { conversationId: id } })).resolves.toBe(1);
+  });
+
+  it('CA4: citação de mensagem excluída volta como REPLY_TARGET_UNAVAILABLE, sem gravar', async () => {
+    const { rafa, id, quoted } = await chatWithQuote();
+    await prisma.message.update({ where: { id: quoted.id }, data: { deletedAt: new Date() } });
+    const rafaSocket = await online(rafa);
+
+    const ack = await emit(rafaSocket, 'message:send', {
+      conversationId: id,
+      content: 'Quero sim',
+      replyToId: quoted.id,
+    });
+
+    expect(ack).toMatchObject({ error: 'REPLY_TARGET_UNAVAILABLE' });
+    await expect(prisma.message.count({ where: { conversationId: id } })).resolves.toBe(1);
+  });
+
+  it('CA6: quem não participa recebe CONVERSATION_NOT_FOUND ao responder', async () => {
+    const { id, quoted } = await chatWithQuote();
+    const carlaSocket = await online(carla);
+
+    const ack = await emit(carlaSocket, 'message:send', {
+      conversationId: id,
+      content: 'Oi',
+      replyToId: quoted.id,
+    });
+
+    expect(ack).toMatchObject({ error: 'CONVERSATION_NOT_FOUND' });
+  });
+
+  it('CA8: com bloqueio, a resposta é recusada nos dois sentidos', async () => {
+    const { rafa, bia, id, quoted } = await chatWithQuote();
+    await fx.block(bia, rafa);
+    const payload = { conversationId: id, content: 'Oi', replyToId: quoted.id };
+
+    const fromBlocked = await emit(await online(rafa), 'message:send', payload);
+    const fromBlocker = await emit(await online(bia), 'message:send', payload);
+
+    expect(fromBlocked).toMatchObject({ error: 'CONTACT_BLOCKED' });
+    expect(fromBlocker).toMatchObject({ error: 'CONTACT_BLOCKED' });
+    await expect(prisma.message.count({ where: { conversationId: id } })).resolves.toBe(1);
   });
 });
 

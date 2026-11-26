@@ -51,6 +51,15 @@ const message = z.object({
   content: z.string(),
   isRead: z.boolean(),
   createdAt: z.iso.datetime(),
+  replyTo: z
+    .object({
+      id: z.uuid(),
+      authorUsername: z.string().nullable(),
+      content: z.string().optional(),
+      unavailable: z.boolean(),
+    })
+    .nullable()
+    .openapi({ description: 'Mensagem citada (CCD045); sem `content` quando foi excluída' }),
 });
 
 const paths: RouteConfig[] = [

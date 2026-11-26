@@ -21,6 +21,7 @@ const chatSchema = z.object({
           content: z.string().min(1).max(2000),
           unread: z.boolean().default(false),
           deleted: z.boolean().default(false),
+          replyTo: seedKey.optional(),
         }),
       ),
     }),
@@ -55,6 +56,7 @@ const toMessageData = (conversationId: string, message: SeedMessage) => {
     readAt: message.unread ? null : createdAt,
     createdAt,
     deletedAt: message.deleted ? createdAt : null,
+    replyToId: message.replyTo ? seedId(SeedNamespace.messages, message.replyTo) : null,
   };
 };
 
