@@ -112,6 +112,10 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
     return Promise.resolve(this.reports.get(id) ?? null);
   }
 
+  findQueueReportStatus(id: string): Promise<ReportStatus | null> {
+    return Promise.resolve(this.reports.get(id)?.status ?? null);
+  }
+
   removeReportedMessage({ reportId, messageId, moderatorId }: MessageRemoval): Promise<string[]> {
     if (!this.resolve(reportId, ReportStatus.RESOLVED, moderatorId)) return Promise.resolve([]);
     const others = this.openReportsOf(messageId).filter((id) => id !== reportId);
@@ -343,7 +347,11 @@ describe('CommunityAdminService', () => {
         id: REPORT_ID,
         reason: 'Spam',
         description: 'Links repetidos',
+        origin: 'GROUP',
         reporterName: 'Bruno',
+        reporterUsername: 'bruno',
+        reportedUser: null,
+        evidences: [],
         message: {
           id: MESSAGE_ID,
           content: 'Compre agora!',
@@ -512,6 +520,19 @@ describe('CommunityAdminService', () => {
       );
       expect(repository.deletedMessages.size).toBe(0);
       expect(auditLog.entries).toEqual([]);
+    });
+
+    it('CA18: dispensa a denúncia do chat pessoal, que não tem mensagem de grupo', async () => {
+      const chatReport = { ...buildReport(), groupMessageId: null, groupMessage: null };
+      repository.reports.set(REPORT_ID, chatReport);
+
+      const resolution = await service.dismissReport(REPORT_ID, REASON, ADMIN_ID);
+
+      expect(resolution).toEqual({ id: REPORT_ID, status: ReportStatus.DISMISSED });
+      expect(repository.reports.get(REPORT_ID)?.moderatorId).toBe(ADMIN_ID);
+      await expect(service.removeReportedMessage(REPORT_ID, REASON, ADMIN_ID)).rejects.toThrow(
+        ReportNotFoundError,
+      );
     });
 
     it('responde 404 para denúncia inexistente', async () => {

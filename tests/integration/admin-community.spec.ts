@@ -112,7 +112,9 @@ afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { adminId } });
   await prisma.userWarning.deleteMany({ where: { adminId } });
   await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
-  await prisma.report.deleteMany({ where: { groupMessage: groups } });
+  const chatReports = { targetUserId: { in: userIds } };
+  await prisma.reportEvidence.deleteMany({ where: { report: chatReports } });
+  await prisma.report.deleteMany({ where: { OR: [{ groupMessage: groups }, chatReports] } });
   await prisma.groupMessage.deleteMany({ where: groups });
   await prisma.groupMember.deleteMany({ where: groups });
   await prisma.group.deleteMany({ where: { id: { in: allGroupIds } } });
@@ -212,7 +214,11 @@ describe('fila de denúncias de mensagens (PostgreSQL real)', () => {
       id: reportId,
       reason: 'Spam',
       description: null,
+      origin: 'GROUP',
       reporterName: `criador ${suffix}`,
+      reporterUsername: null,
+      reportedUser: null,
+      evidences: [],
       message: {
         id: messageId,
         content: 'Vendo figurinha falsa',
@@ -445,4 +451,94 @@ describe('exclusão de grupo (PostgreSQL real)', () => {
     expect((await asAdmin('get', `/groups/${groupId}`)).status).toBe(404);
     await expect(auditOf('GROUP_DELETED', groupId)).resolves.not.toBeNull();
   });
+});
+
+describe('denúncias do chat pessoal na fila (CCD047, PostgreSQL real)', () => {
+  const PRINT_URL = 'http://localhost:3333/uploads/report-evidences/print.png';
+
+  async function createChatReport(reason = 'Assédio', withPrint = true) {
+    const targetId = await createUser(`contato${crypto.randomUUID().slice(0, 4)}`);
+    const report = await prisma.report.create({
+      data: {
+        reporterId,
+        targetUserId: targetId,
+        targetType: 'USER',
+        reason,
+        description: 'Mensagens ofensivas no chat',
+        ...(withPrint && { evidences: { create: [{ url: PRINT_URL }] } }),
+      },
+    });
+    return { reportId: report.id, targetId };
+  }
+
+  it('CA18: mostra o card do chat com o contato, o motivo, a descrição e o print, nos indicadores', async () => {
+    const before = dataOf<{ pendingReports: number }>(await asAdmin('get', '/groups/summary'));
+    const { reportId, targetId } = await createChatReport();
+
+    const res = await asAdmin('get', '/reports').query({ pageSize: 100 });
+    const summary = dataOf<{ pendingReports: number }>(await asAdmin('get', '/groups/summary'));
+
+    expect(dataOf<{ id: string }[]>(res).find(({ id }) => id === reportId)).toMatchObject({
+      origin: 'CHAT',
+      reason: 'Assédio',
+      description: 'Mensagens ofensivas no chat',
+      reporterName: `criador ${suffix}`,
+      message: null,
+      reportedUser: { id: targetId, accountAgeDays: 0, warnings: 0 },
+      evidences: [PRINT_URL],
+    });
+    expect(summary.pendingReports).toBe(before.pendingReports + 1);
+  });
+
+  it('R19: Golpe e Assédio entram em Críticos, e Spam em Spam', async () => {
+    const harassment = await createChatReport('Assédio');
+    const spam = await createChatReport('Spam');
+
+    const critical = await asAdmin('get', '/reports').query({
+      pageSize: 100,
+      severity: 'CRITICAL',
+    });
+    const spamOnly = await asAdmin('get', '/reports').query({ pageSize: 100, severity: 'SPAM' });
+
+    const idsOf = (res: request.Response) => dataOf<{ id: string }[]>(res).map(({ id }) => id);
+    expect(idsOf(critical)).toContain(harassment.reportId);
+    expect(idsOf(critical)).not.toContain(spam.reportId);
+    expect(idsOf(spamOnly)).toContain(spam.reportId);
+    expect(idsOf(spamOnly)).not.toContain(harassment.reportId);
+  });
+
+  it('a denúncia de usuário sem print (de outra tela) não entra na fila', async () => {
+    const { reportId } = await createChatReport('Comportamento abusivo', false);
+
+    expect(await queuedReportIds()).not.toContain(reportId);
+  });
+
+  it('CA18: dispensa a denúncia do chat com o moderador e a data', async () => {
+    const { reportId } = await createChatReport();
+
+    const res = await asAdmin('post', `/reports/${reportId}/dismiss`).send(REASON);
+
+    expect(res.status).toBe(200);
+    const report = await prisma.report.findUnique({ where: { id: reportId } });
+    expect(report).toMatchObject({ status: 'DISMISSED', moderatorId: adminId });
+    expect(report?.resolvedAt).toBeInstanceOf(Date);
+    expect(await queuedReportIds()).not.toContain(reportId);
+  });
+
+  it.each(['warn', 'suspend', 'block'])(
+    'CA18: a sanção %s ao autor pela fila resolve a denúncia',
+    async (sanction) => {
+      const { reportId, targetId } = await createChatReport();
+      const body = { reason: 'Golpe confirmado no chat', reportId, days: 7 };
+
+      const res = await request(createApp())
+        .post(`/api/v1/users/${targetId}/${sanction}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(sanction === 'suspend' ? body : { reason: body.reason, reportId });
+
+      expect(res.status).toBeLessThan(300);
+      const report = await prisma.report.findUnique({ where: { id: reportId } });
+      expect(report).toMatchObject({ status: 'RESOLVED', moderatorId: adminId });
+    },
+  );
 });

@@ -218,7 +218,7 @@ export class CommunityAdminService {
     { reason }: ModerationReasonInput,
     adminId: string,
   ): Promise<ReportResolution> {
-    const { status } = await this.findOpenReport(reportId);
+    const status = await this.findDismissableStatus(reportId);
     if (!(await this.deps.repository.dismissReport(reportId, adminId))) {
       throw new ReportAlreadyResolvedError();
     }
@@ -245,6 +245,13 @@ export class CommunityAdminService {
     const details = statusChange(group.status, to);
     await this.audit(moderation, { action, entityType: 'group', entityId: id, details });
     return { ...group, status: to };
+  }
+
+  private async findDismissableStatus(id: string): Promise<ReportStatus> {
+    const status = await this.deps.repository.findQueueReportStatus(id);
+    if (!status) throw new ReportNotFoundError();
+    if (!isOpenReportStatus(status)) throw new ReportAlreadyResolvedError();
+    return status;
   }
 
   private async findOpenReport(id: string): Promise<OpenReport> {

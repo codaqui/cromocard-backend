@@ -53,7 +53,22 @@ const groupMessageReport = z.object({
   id: z.uuid(),
   reason: z.string(),
   description: z.string().nullable(),
+  origin: z.enum(['GROUP', 'CHAT']).openapi({
+    description: 'GROUP: mensagem de grupo (CCD062); CHAT: contato do chat pessoal (CCD047)',
+  }),
   reporterName: z.string(),
+  reporterUsername: z.string().nullable(),
+  reportedUser: z
+    .object({
+      id: z.uuid(),
+      name: z.string(),
+      username: z.string().nullable(),
+      accountAgeDays: count,
+      warnings: count,
+    })
+    .nullable()
+    .openapi({ description: 'Contato denunciado; só na origem CHAT' }),
+  evidences: z.array(z.string()).openapi({ description: 'URLs dos prints, na ordem enviada' }),
   message: z
     .object({
       id: z.uuid(),
