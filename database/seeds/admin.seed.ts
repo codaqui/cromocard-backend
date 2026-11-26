@@ -132,10 +132,17 @@ const sampleCategoryLogo = {
   contentType: 'image/png',
 };
 
+const sampleAvatar = {
+  key: 'avatars/seed-profile-avatar.png',
+  content: solidColorPng({ width: 500, height: 500, rgb: [255, 170, 60] }),
+  contentType: 'image/png',
+};
+
 /** Imagens de exemplo enviadas ao storage local (o banco compartilhado fica sem elas). */
 export interface SampleImages {
   bannerImageUrl?: string;
   categoryLogoUrl?: string;
+  avatarUrl?: string;
 }
 
 type RequestData = (typeof catalogRequests)[number]['data'];
@@ -266,11 +273,12 @@ function toGlobalNotificationData({
 }
 
 export async function uploadSampleImages(storage: StorageProvider): Promise<SampleImages> {
-  const [banner, categoryLogo] = await Promise.all([
+  const [banner, categoryLogo, avatar] = await Promise.all([
     storage.upload(sampleBanner),
     storage.upload(sampleCategoryLogo),
+    storage.upload(sampleAvatar),
   ]);
-  return { bannerImageUrl: banner.url, categoryLogoUrl: categoryLogo.url };
+  return { bannerImageUrl: banner.url, categoryLogoUrl: categoryLogo.url, avatarUrl: avatar.url };
 }
 
 export async function seedAdmin(prisma: PrismaClient, images: SampleImages = {}): Promise<void> {
