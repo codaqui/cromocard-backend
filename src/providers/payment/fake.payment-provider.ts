@@ -59,7 +59,6 @@ export class FakePaymentProvider implements PaymentProvider {
 
   webhookFor(sessionId: string, type: 'completed' | 'expired'): FakeWebhook {
     const session = this.sessions.get(sessionId);
-    if (session) session.status = type === 'completed' ? 'complete' : 'expired';
     const event: PaymentEvent = {
       id: `evt_fake_${sessionId}_${type}`,
       type,
@@ -75,8 +74,14 @@ export class FakePaymentProvider implements PaymentProvider {
       signature === FAKE_WEBHOOK_SIGNATURE
         ? paymentEventSchema.safeParse(jsonOf(rawBody))
         : undefined;
-    return event?.success
-      ? Promise.resolve(event.data)
-      : Promise.reject(new InvalidSignatureError());
+    if (!event?.success) return Promise.reject(new InvalidSignatureError());
+    this.applyToSession(event.data);
+    return Promise.resolve(event.data);
+  }
+
+  private applyToSession({ type, sessionId }: PaymentEvent): void {
+    const session = sessionId ? this.sessions.get(sessionId) : undefined;
+    if (!session || type === 'ignored') return;
+    session.status = type === 'completed' ? 'complete' : 'expired';
   }
 }

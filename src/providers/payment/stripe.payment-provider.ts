@@ -30,13 +30,14 @@ function failureOf(error: unknown): PaymentProviderError {
   const detail =
     error instanceof Stripe.errors.StripeError
       ? { code: error.code, type: error.type, statusCode: error.statusCode }
-      : { type: 'network' };
+      : { type: 'unexpected', name: error instanceof Error ? error.name : typeof error };
   logger.warn({ provider: 'stripe', ...detail }, 'Falha na chamada à Stripe');
   return new PaymentProviderError();
 }
 
 function sessionEvent(event: Stripe.Event, session: StripeSession, type: PaymentEvent['type']) {
-  return { id: event.id, type, sessionId: session.id, orderId: session.metadata?.orderId };
+  const orderId = session.metadata?.orderId ?? session.client_reference_id ?? undefined;
+  return { id: event.id, type, sessionId: session.id, orderId };
 }
 
 export class StripePaymentProvider implements PaymentProvider {
@@ -47,20 +48,23 @@ export class StripePaymentProvider implements PaymentProvider {
 
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession> {
     const session = await this.stripe.checkout.sessions
-      .create({
-        mode: 'payment',
-        allowed_payment_method_types: CARD_ONLY,
-        client_reference_id: input.orderId,
-        metadata: { orderId: input.orderId },
-        line_items: input.lineItems.map(({ name, amountInCents, quantity }) => ({
-          quantity,
-          price_data: { currency: CURRENCY, unit_amount: amountInCents, product_data: { name } },
-        })),
-        expires_at: Math.floor(input.expiresAt.getTime() / 1000),
-        success_url: input.successUrl,
-        cancel_url: input.cancelUrl,
-        customer_email: input.customerEmail,
-      })
+      .create(
+        {
+          mode: 'payment',
+          allowed_payment_method_types: CARD_ONLY,
+          client_reference_id: input.orderId,
+          metadata: { orderId: input.orderId },
+          line_items: input.lineItems.map(({ name, amountInCents, quantity }) => ({
+            quantity,
+            price_data: { currency: CURRENCY, unit_amount: amountInCents, product_data: { name } },
+          })),
+          expires_at: Math.floor(input.expiresAt.getTime() / 1000),
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
+          customer_email: input.customerEmail,
+        },
+        { idempotencyKey: `checkout-${input.orderId}` },
+      )
       .catch((error: unknown) => {
         throw failureOf(error);
       });

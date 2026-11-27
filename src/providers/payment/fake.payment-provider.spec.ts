@@ -41,6 +41,7 @@ describe('FakePaymentProvider', () => {
     const { id } = await provider.createCheckoutSession(input);
 
     const { rawBody, signature } = provider.webhookFor(id, 'completed');
+    expect(provider.sessionById(id)?.status).toBe('open');
 
     await expect(provider.parseWebhookEvent(rawBody, signature)).resolves.toEqual({
       id: `evt_fake_${id}_completed`,

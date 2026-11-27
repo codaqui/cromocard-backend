@@ -47,30 +47,37 @@ describe('StripePaymentProvider.createCheckoutSession', () => {
       id: 'cs_test_1',
       url: 'https://checkout.stripe.com/c/pay/cs_test_1',
     });
-    expect(create).toHaveBeenCalledWith({
-      mode: 'payment',
-      allowed_payment_method_types: ['card'],
-      client_reference_id: 'pedido-1',
-      metadata: { orderId: 'pedido-1' },
-      line_items: [
-        {
-          quantity: 1,
-          price_data: { currency: 'brl', unit_amount: 15000, product_data: { name: 'Charizard' } },
-        },
-        {
-          quantity: 1,
-          price_data: {
-            currency: 'brl',
-            unit_amount: 1890,
-            product_data: { name: 'Frete Correios PAC' },
+    expect(create).toHaveBeenCalledWith(
+      {
+        mode: 'payment',
+        allowed_payment_method_types: ['card'],
+        client_reference_id: 'pedido-1',
+        metadata: { orderId: 'pedido-1' },
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'brl',
+              unit_amount: 15000,
+              product_data: { name: 'Charizard' },
+            },
           },
-        },
-      ],
-      expires_at: Math.floor(input.expiresAt.getTime() / 1000),
-      success_url: input.successUrl,
-      cancel_url: input.cancelUrl,
-      customer_email: 'comprador@exemplo.com',
-    });
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'brl',
+              unit_amount: 1890,
+              product_data: { name: 'Frete Correios PAC' },
+            },
+          },
+        ],
+        expires_at: Math.floor(input.expiresAt.getTime() / 1000),
+        success_url: input.successUrl,
+        cancel_url: input.cancelUrl,
+        customer_email: 'comprador@exemplo.com',
+      },
+      { idempotencyKey: 'checkout-pedido-1' },
+    );
   });
 
   it.each([
@@ -143,6 +150,16 @@ describe('StripePaymentProvider.parseWebhookEvent', () => {
       chargeId: 'ch_123',
     });
     expect(retrieve).toHaveBeenCalledWith('pi_123');
+  });
+
+  it('usa o client_reference_id quando o metadata não traz o pedido', async () => {
+    const webhook = signedWebhook('checkout.session.expired', {
+      client_reference_id: 'pedido-2',
+    });
+
+    await expect(
+      provider.parseWebhookEvent(webhook.rawBody, webhook.signature),
+    ).resolves.toMatchObject({ type: 'expired', orderId: 'pedido-2' });
   });
 
   it('lê a cobrança expandida e aceita sessão sem PaymentIntent nem metadata', async () => {
