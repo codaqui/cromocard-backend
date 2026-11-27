@@ -33,6 +33,13 @@ enum StripeAccountStatus {
   @@map("stripe_account_status")
 }
 
+enum Privacy {
+  PUBLIC
+  PRIVATE
+
+  @@map("privacy")
+}
+
 model User {
   id                  String               @id @default(dbgenerated("uuidv7()")) @db.Uuid
   name                String               @db.VarChar(120)
@@ -56,6 +63,7 @@ model User {
   updatedAt           DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt           DateTime?            @map("deleted_at") @db.Timestamptz(6)
 
+  profile                         Profile?
   createdGroups                   Group[]
   groupMemberships                GroupMember[]
   authoredGroupMessages           GroupMessage[]
@@ -86,6 +94,22 @@ model User {
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
+}
+
+model Profile {
+  id               String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId           String    @unique @map("user_id") @db.Uuid
+  bio              String?
+  avatarUrl        String?   @map("avatar_url") @db.VarChar(255)
+  city             String?   @db.VarChar(120)
+  portfolioPrivacy Privacy   @default(PUBLIC) @map("portfolio_privacy")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_profiles_user_id")
+
+  @@map("profiles")
 }
 
 model Address {

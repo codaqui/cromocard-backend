@@ -25,9 +25,11 @@ export const SeedNamespace = {
   priceHistory: 35,
   listingMessages: 36,
   cardConditions: 37,
-  collections: 38,
-  userAlbums: 39,
-  collectionCards: 40,
+  profiles: 38,
+  profileAddresses: 39,
+  collections: 40,
+  userAlbums: 41,
+  collectionCards: 42,
 } as const;
 
 type SeedNamespaceValue = (typeof SeedNamespace)[keyof typeof SeedNamespace];
