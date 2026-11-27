@@ -27,7 +27,7 @@ export class PaymentsWebhookService {
   }
 
   async handle(rawBody: Buffer, signature: string | undefined): Promise<void> {
-    const event = this.deps.provider.parseWebhookEvent(rawBody, signature);
+    const event = await this.deps.provider.parseWebhookEvent(rawBody, signature);
     logger.info({ eventId: event.id, type: event.type }, 'Webhook de pagamento recebido');
     await (this.handlers[event.type] ?? ignore)(event);
   }

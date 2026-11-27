@@ -9,7 +9,7 @@ export interface ShippingQuoteInput {
   fromZipCode: string;
   toZipCode: string;
   package: ShippingPackage;
-  declaredValue: number;
+  declaredValueInCents: number;
 }
 
 export type Carrier = 'Correios' | 'Jadlog';
@@ -18,7 +18,7 @@ export interface ShippingOption {
   serviceId: string;
   carrier: Carrier;
   service: string;
-  price: number;
+  priceInCents: number;
   deliveryDays: number;
 }
 

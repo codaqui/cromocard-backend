@@ -1,4 +1,6 @@
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
+
+import { logger } from '@/config/logger';
 
 import { InvalidSignatureError, PaymentProviderError } from './payment.errors';
 import type {
@@ -11,26 +13,38 @@ import type {
 } from './payment.provider';
 
 const CURRENCY = 'brl';
+const CARD_ONLY: Stripe.Checkout.SessionCreateParams.AllowedPaymentMethodType[] = ['card'];
+
 const CONNECTED_ACCOUNT_COUNTRY = 'BR';
 
-type StripeClient = Pick<Stripe, 'checkout' | 'webhooks' | 'accounts' | 'accountLinks'>;
+type StripeClient = Pick<
+  Stripe,
+  'checkout' | 'webhooks' | 'paymentIntents' | 'accounts' | 'accountLinks'
+>;
 type StripeSession = Stripe.Checkout.Session;
+type StripeReference = string | { id: string } | null;
 
-function chargeIdOf(session: StripeSession): string | undefined {
-  const intent = session.payment_intent;
-  if (!intent) return undefined;
-  return typeof intent === 'string' ? intent : intent.id;
+function idOf(reference: StripeReference): string | undefined {
+  if (!reference) return undefined;
+  return typeof reference === 'string' ? reference : reference.id;
 }
 
-function sessionEvent(event: Stripe.Event, type: PaymentEvent['type']): PaymentEvent {
-  const session = event.data.object as StripeSession;
-  return {
-    id: event.id,
-    type,
-    sessionId: session.id,
-    orderId: session.metadata?.orderId ?? undefined,
-    chargeId: type === 'completed' ? chargeIdOf(session) : undefined,
-  };
+function isPaid(session: StripeSession): boolean {
+  return session.payment_status === 'paid';
+}
+
+function failureOf(error: unknown): PaymentProviderError {
+  const detail =
+    error instanceof Stripe.errors.StripeError
+      ? { code: error.code, type: error.type, statusCode: error.statusCode }
+      : { type: 'unexpected', name: error instanceof Error ? error.name : typeof error };
+  logger.warn({ provider: 'stripe', ...detail }, 'Falha na chamada à Stripe');
+  return new PaymentProviderError();
+}
+
+function sessionEvent(event: Stripe.Event, session: StripeSession, type: PaymentEvent['type']) {
+  const orderId = session.metadata?.orderId ?? session.client_reference_id ?? undefined;
+  return { id: event.id, type, sessionId: session.id, orderId };
 }
 
 function toConnectedAccount(account: Stripe.Account): ConnectedAccount {
@@ -43,82 +57,98 @@ function toConnectedAccount(account: Stripe.Account): ConnectedAccount {
   };
 }
 
-const rejectAsProviderError = (): never => {
-  throw new PaymentProviderError();
+const rejectAsProviderError = (error: unknown): never => {
+  throw failureOf(error);
 };
-
-function toPaymentEvent(event: Stripe.Event): PaymentEvent {
-  switch (event.type) {
-    case 'checkout.session.completed':
-      return event.data.object.payment_status === 'paid'
-        ? sessionEvent(event, 'completed')
-        : sessionEvent(event, 'ignored');
-    case 'checkout.session.async_payment_succeeded':
-      return sessionEvent(event, 'completed');
-    case 'account.updated':
-      return {
-        id: event.id,
-        type: 'account-updated',
-        account: toConnectedAccount(event.data.object),
-      };
-    case 'checkout.session.expired':
-    case 'checkout.session.async_payment_failed':
-      return sessionEvent(event, 'expired');
-    default:
-      return { id: event.id, type: 'ignored' };
-  }
-}
 
 export class StripePaymentProvider implements PaymentProvider {
   constructor(
     private readonly stripe: StripeClient,
-    private readonly webhookSecrets: readonly string[],
+    private readonly webhookSecrets: string[],
   ) {}
 
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession> {
     const session = await this.stripe.checkout.sessions
-      .create({
-        mode: 'payment',
-        client_reference_id: input.orderId,
-        metadata: { orderId: input.orderId },
-        line_items: input.lineItems.map(({ name, amountInCents, quantity }) => ({
-          quantity,
-          price_data: { currency: CURRENCY, unit_amount: amountInCents, product_data: { name } },
-        })),
-        expires_at: Math.floor(input.expiresAt.getTime() / 1000),
-        success_url: input.successUrl,
-        cancel_url: input.cancelUrl,
-        customer_email: input.customerEmail,
-      })
-      .catch(() => {
-        throw new PaymentProviderError();
+      .create(
+        {
+          mode: 'payment',
+          allowed_payment_method_types: CARD_ONLY,
+          client_reference_id: input.orderId,
+          metadata: { orderId: input.orderId },
+          line_items: input.lineItems.map(({ name, amountInCents, quantity }) => ({
+            quantity,
+            price_data: { currency: CURRENCY, unit_amount: amountInCents, product_data: { name } },
+          })),
+          expires_at: Math.floor(input.expiresAt.getTime() / 1000),
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
+          customer_email: input.customerEmail,
+        },
+        { idempotencyKey: `checkout-${input.orderId}` },
+      )
+      .catch((error: unknown) => {
+        throw failureOf(error);
       });
     if (!session.url) throw new PaymentProviderError();
     return { id: session.id, url: session.url };
   }
 
   async expireCheckoutSession(sessionId: string): Promise<void> {
-    await this.stripe.checkout.sessions.expire(sessionId).catch(() => {
-      throw new PaymentProviderError();
+    await this.stripe.checkout.sessions.expire(sessionId).catch((error: unknown) => {
+      throw failureOf(error);
     });
   }
 
-  parseWebhookEvent(rawBody: Buffer, signature: string | undefined): PaymentEvent {
-    if (!signature) throw new InvalidSignatureError();
-    const event = this.webhookSecrets.reduce<Stripe.Event | undefined>(
-      (verified, secret) => verified ?? this.verifiedEvent(rawBody, signature, secret),
-      undefined,
-    );
-    if (!event) throw new InvalidSignatureError();
-    return toPaymentEvent(event);
+  async parseWebhookEvent(rawBody: Buffer, signature: string | undefined): Promise<PaymentEvent> {
+    const event = this.verifiedEvent(rawBody, signature);
+    if (event.type === 'checkout.session.completed' && isPaid(event.data.object)) {
+      const session = event.data.object;
+      return {
+        ...sessionEvent(event, session, 'completed'),
+        chargeId: await this.chargeIdOf(session),
+      };
+    }
+    if (event.type === 'checkout.session.expired') {
+      return sessionEvent(event, event.data.object, 'expired');
+    }
+    if (event.type === 'account.updated') {
+      return {
+        id: event.id,
+        type: 'account-updated',
+        account: toConnectedAccount(event.data.object),
+      };
+    }
+    return { id: event.id, type: 'ignored' };
   }
 
-  private verifiedEvent(rawBody: Buffer, signature: string, secret: string) {
+  private verifiedEvent(rawBody: Buffer, signature: string | undefined): Stripe.Event {
+    if (!signature) throw new InvalidSignatureError();
+    const event = this.webhookSecrets
+      .map((secret) => this.eventSignedWith(rawBody, signature, secret))
+      .find(Boolean);
+    if (!event) throw new InvalidSignatureError();
+    return event;
+  }
+
+  private eventSignedWith(
+    rawBody: Buffer,
+    signature: string,
+    secret: string,
+  ): Stripe.Event | undefined {
     try {
       return this.stripe.webhooks.constructEvent(rawBody, signature, secret);
     } catch {
       return undefined;
     }
+  }
+
+  private async chargeIdOf(session: StripeSession): Promise<string | undefined> {
+    const intentId = idOf(session.payment_intent);
+    if (!intentId) return undefined;
+    const intent = await this.stripe.paymentIntents.retrieve(intentId).catch((error: unknown) => {
+      throw failureOf(error);
+    });
+    return idOf(intent.latest_charge);
   }
 
   async createConnectedAccount({ email }: { email: string }): Promise<{ id: string }> {

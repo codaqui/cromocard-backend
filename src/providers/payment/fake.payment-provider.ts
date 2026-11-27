@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { z } from '@/lib/zod';
+
 import { InvalidSignatureError, PaymentProviderError } from './payment.errors';
 import type {
   CheckoutSession,
@@ -22,10 +24,39 @@ export interface FakeWebhook {
   signature: string;
 }
 
+const connectedAccountSchema = z.object({
+  id: z.string().min(1),
+  detailsSubmitted: z.boolean(),
+  transfersEnabled: z.boolean(),
+  requirementsDue: z.number().int().nonnegative(),
+  disabledReason: z.string().nullable(),
+});
+
+const paymentEventSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(['completed', 'expired', 'account-updated', 'ignored']),
+  sessionId: z.string().optional(),
+  orderId: z.string().optional(),
+  chargeId: z.string().optional(),
+  account: connectedAccountSchema.optional(),
+});
+
+function jsonOf(rawBody: Buffer): unknown {
+  try {
+    return JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
 export class FakePaymentProvider implements PaymentProvider {
-  readonly sessions = new Map<string, FakeCheckoutSession>();
+  private readonly sessions = new Map<string, FakeCheckoutSession>();
   readonly accounts = new Map<string, ConnectedAccount>();
   private sequence = 0;
+
+  sessionById(sessionId: string): FakeCheckoutSession | undefined {
+    return this.sessions.get(sessionId);
+  }
 
   createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession> {
     this.sequence += 1;
@@ -42,24 +73,30 @@ export class FakePaymentProvider implements PaymentProvider {
 
   webhookFor(sessionId: string, type: 'completed' | 'expired'): FakeWebhook {
     const session = this.sessions.get(sessionId);
-    if (session) session.status = type === 'completed' ? 'complete' : 'expired';
     const event: PaymentEvent = {
       id: `evt_fake_${sessionId}_${type}`,
       type,
       sessionId,
       orderId: session?.orderId,
-      chargeId: type === 'completed' ? `pi_fake_${sessionId}` : undefined,
+      chargeId: type === 'completed' ? `ch_fake_${sessionId}` : undefined,
     };
     return { rawBody: Buffer.from(JSON.stringify(event)), signature: FAKE_WEBHOOK_SIGNATURE };
   }
 
-  parseWebhookEvent(rawBody: Buffer, signature: string | undefined): PaymentEvent {
-    if (signature !== FAKE_WEBHOOK_SIGNATURE) throw new InvalidSignatureError();
-    try {
-      return JSON.parse(rawBody.toString('utf8')) as PaymentEvent;
-    } catch {
-      throw new InvalidSignatureError();
-    }
+  parseWebhookEvent(rawBody: Buffer, signature: string | undefined): Promise<PaymentEvent> {
+    const event =
+      signature === FAKE_WEBHOOK_SIGNATURE
+        ? paymentEventSchema.safeParse(jsonOf(rawBody))
+        : undefined;
+    if (!event?.success) return Promise.reject(new InvalidSignatureError());
+    this.applyToSession(event.data);
+    return Promise.resolve(event.data);
+  }
+
+  private applyToSession({ type, sessionId }: PaymentEvent): void {
+    const session = sessionId ? this.sessions.get(sessionId) : undefined;
+    if (!session || type === 'ignored' || type === 'account-updated') return;
+    session.status = type === 'completed' ? 'complete' : 'expired';
   }
 
   createConnectedAccount(): Promise<{ id: string }> {

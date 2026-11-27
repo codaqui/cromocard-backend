@@ -29,7 +29,7 @@ x-mail: &mail
   MAIL_PASSWORD: ${MAIL_PASSWORD:-}
 
 # Pagamento e frete do marketplace (ADR-066, ADR-067). Como o e-mail, a api e o ws carregam o mesmo env.ts,
-# que recusa as versões falsas com APP_ENV=production: os dois recebem os mesmos valores.
+# que recusa as versões falsas com APP_ENV=homolog ou production: os dois recebem os mesmos valores.
 x-marketplace: &marketplace
   PAYMENT_DRIVER: ${PAYMENT_DRIVER:-fake}
   STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}

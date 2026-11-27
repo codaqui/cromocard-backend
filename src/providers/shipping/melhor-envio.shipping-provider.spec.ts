@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MelhorEnvioShippingProvider } from './melhor-envio.shipping-provider';
+import {
+  MelhorEnvioShippingProvider,
+  SHIPPING_QUOTE_TIMEOUT_MS,
+} from './melhor-envio.shipping-provider';
 import { ShippingProviderError } from './shipping.errors';
 import type { ShippingQuoteInput } from './shipping.provider';
 
@@ -8,7 +11,7 @@ const input: ShippingQuoteInput = {
   fromZipCode: '01310-100',
   toZipCode: '20040-020',
   package: { heightCm: 2, widthCm: 11, lengthCm: 16, weightKg: 0.1 },
-  declaredValue: 150,
+  declaredValueInCents: 15000,
 };
 
 const calculateResponse = [
@@ -60,18 +63,36 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 describe('MelhorEnvioShippingProvider', () => {
-  it('cota só Correios e Jadlog, sem os serviços com erro ou sem prazo, e prefere o preço e o prazo customizados', async () => {
+  it('cota só Correios e Jadlog em centavos, sem os serviços com erro ou sem prazo, e prefere o preço e o prazo customizados', async () => {
     const { provider } = providerReplying(() => Promise.resolve(json(calculateResponse)));
 
     await expect(provider.quote(input)).resolves.toEqual([
-      { serviceId: '1', carrier: 'Correios', service: 'PAC', price: 17.5, deliveryDays: 8 },
-      { serviceId: '2', carrier: 'Correios', service: 'SEDEX', price: 32.5, deliveryDays: 3 },
-      { serviceId: '3', carrier: 'Jadlog', service: '.Package', price: 21.4, deliveryDays: 6 },
-      { serviceId: '17', carrier: 'Correios', service: 'Mini Envios', price: 9, deliveryDays: 12 },
+      { serviceId: '1', carrier: 'Correios', service: 'PAC', priceInCents: 1750, deliveryDays: 8 },
+      {
+        serviceId: '2',
+        carrier: 'Correios',
+        service: 'SEDEX',
+        priceInCents: 3250,
+        deliveryDays: 3,
+      },
+      {
+        serviceId: '3',
+        carrier: 'Jadlog',
+        service: '.Package',
+        priceInCents: 2140,
+        deliveryDays: 6,
+      },
+      {
+        serviceId: '17',
+        carrier: 'Correios',
+        service: 'Mini Envios',
+        priceInCents: 900,
+        deliveryDays: 12,
+      },
     ]);
   });
 
-  it('chama o calculate com o token, os CEPs só com dígitos, a caixa e o valor declarado', async () => {
+  it('chama o calculate com o token, os CEPs só com dígitos, a caixa, o valor declarado em reais e o tempo limite', async () => {
     const { provider, fetch } = providerReplying(() => Promise.resolve(json([])));
 
     await provider.quote(input);
@@ -79,6 +100,7 @@ describe('MelhorEnvioShippingProvider', () => {
     const [url, init] = fetch.mock.calls[0] ?? [];
     expect(url).toBe('https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate');
     expect(init?.method).toBe('POST');
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
     expect(init?.headers).toMatchObject({
       Authorization: 'Bearer token-teste',
       'User-Agent': 'CromoCard',
@@ -91,14 +113,57 @@ describe('MelhorEnvioShippingProvider', () => {
     });
   });
 
-  it('usa o fetch global quando nenhum é passado', () => {
-    const provider = new MelhorEnvioShippingProvider({ baseUrl: 'https://x', token: 't' });
+  describe('sem fetch injetado', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
 
-    expect(provider).toBeInstanceOf(MelhorEnvioShippingProvider);
+    it('chama o fetch global', async () => {
+      const globalFetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json([]));
+      vi.stubGlobal('fetch', globalFetch);
+      const provider = new MelhorEnvioShippingProvider({ baseUrl: 'https://x', token: 't' });
+
+      await provider.quote(input);
+
+      expect(globalFetch).toHaveBeenCalledWith(
+        'https://x/api/v2/me/shipment/calculate',
+        expect.anything(),
+      );
+    });
+  });
+
+  it.each([
+    ['o preço vazio', { price: '' }],
+    ['o preço que não é número', { price: 'abc' }],
+  ])('descarta só o serviço com %s e mantém os outros', async (_case, broken) => {
+    const sedex = {
+      id: 2,
+      name: 'SEDEX',
+      price: '32.50',
+      delivery_time: 3,
+      company: { name: 'Correios' },
+    };
+    const { provider } = providerReplying(() =>
+      Promise.resolve(json([{ ...sedex, id: 1, name: 'PAC', ...broken }, sedex])),
+    );
+
+    await expect(provider.quote(input)).resolves.toEqual([
+      {
+        serviceId: '2',
+        carrier: 'Correios',
+        service: 'SEDEX',
+        priceInCents: 3250,
+        deliveryDays: 3,
+      },
+    ]);
   });
 
   it.each<[string, () => Promise<Response>]>([
     ['a rede falha', () => Promise.reject(new TypeError('fetch failed'))],
+    [
+      'o Melhor Envio passa do tempo limite',
+      () => Promise.reject(new DOMException(`${SHIPPING_QUOTE_TIMEOUT_MS} ms`, 'TimeoutError')),
+    ],
     ['a API responde erro', () => Promise.resolve(json({ message: 'Unauthenticated.' }, 401))],
     ['o corpo não é JSON', () => Promise.resolve(new Response('<html>', { status: 200 }))],
     ['o formato muda', () => Promise.resolve(json({ data: [] }))],

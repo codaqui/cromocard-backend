@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 
 import { env } from '@/config/env';
 
-import { signAccessToken, signPurposeToken, verifyAccessToken, verifyPurposeToken } from './jwt';
+import {
+  accessTokenExpiresAt,
+  signAccessToken,
+  signPurposeToken,
+  verifyAccessToken,
+  verifyPurposeToken,
+} from './jwt';
 
 const user = { id: '0190a000-0000-7001-8000-000000000001', role: 'CUSTOMER' as const };
 
@@ -16,6 +22,13 @@ describe('jwt', () => {
     expect(Object.keys(payload?.payload ?? {}).sort()).toEqual(['exp', 'iat', 'role', 'sub']);
     const { exp, iat } = payload?.payload as jwt.JwtPayload;
     expect((exp ?? 0) - (iat ?? 0)).toBe(env.JWT_ACCESS_TTL);
+  });
+
+  it('devolve em milissegundos quando o access token vence', () => {
+    const token = signAccessToken(user);
+    const { exp } = jwt.decode(token) as { exp: number };
+
+    expect(accessTokenExpiresAt(token)).toBe(exp * 1000);
   });
 
   it('devolve o usuário de um token válido', () => {

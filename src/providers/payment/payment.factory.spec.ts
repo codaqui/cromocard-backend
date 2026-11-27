@@ -30,6 +30,13 @@ describe('createPaymentProvider', () => {
     expect(createPaymentProvider()).toBeInstanceOf(StripePaymentProvider);
   });
 
+  it('fixa a versão da API da Stripe que o SDK instalado conhece', async () => {
+    const { STRIPE_API_VERSION } = await loadFactory({ PAYMENT_DRIVER: 'fake' });
+    const { default: Stripe } = await import('stripe');
+
+    expect(STRIPE_API_VERSION).toBe(Stripe.API_VERSION);
+  });
+
   it('confere o webhook também com o segredo do destino das contas conectadas', async () => {
     const { createPaymentProvider } = await loadFactory({
       PAYMENT_DRIVER: 'stripe',
@@ -48,8 +55,8 @@ describe('createPaymentProvider', () => {
       secret: 'whsec_contas',
     });
 
-    expect(
+    await expect(
       createPaymentProvider().parseWebhookEvent(Buffer.from(payload), signature),
-    ).toMatchObject({ type: 'account-updated', account: { id: 'acct_1' } });
+    ).resolves.toMatchObject({ type: 'account-updated', account: { id: 'acct_1' } });
   });
 });
