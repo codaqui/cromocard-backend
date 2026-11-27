@@ -28,6 +28,16 @@ x-mail: &mail
   MAIL_USER: ${MAIL_USER:-}
   MAIL_PASSWORD: ${MAIL_PASSWORD:-}
 
+# Pagamento e frete do marketplace (ADR-066, ADR-067). Como o e-mail, a api e o ws carregam o mesmo env.ts,
+# que recusa as versões falsas com APP_ENV=homolog ou production: os dois recebem os mesmos valores.
+x-marketplace: &marketplace
+  PAYMENT_DRIVER: ${PAYMENT_DRIVER:-fake}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  SHIPPING_DRIVER: ${SHIPPING_DRIVER:-fake}
+  MELHOR_ENVIO_TOKEN: ${MELHOR_ENVIO_TOKEN:-}
+  MELHOR_ENVIO_BASE_URL: ${MELHOR_ENVIO_BASE_URL:-https://sandbox.melhorenvio.com.br}
+
 services:
   postgres:
     <<: *hardening
@@ -67,7 +77,7 @@ services:
     <<: *hardening
     image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-api:${BACKEND_TAG:?}
     environment:
-      <<: [*database-url, *mail]
+      <<: [*database-url, *mail, *marketplace]
       NODE_ENV: production
       # Qual ambiente é (ADR-018); o compose.hml.yml troca para homolog
       APP_ENV: production
@@ -98,7 +108,7 @@ services:
     <<: *hardening
     image: ${REGISTRY:-ghcr.io/codaqui}/cromocard-ws:${BACKEND_TAG:?}
     environment:
-      <<: [*database-url, *mail]
+      <<: [*database-url, *mail, *marketplace]
       NODE_ENV: production
       APP_ENV: production
       PORT: "3001"
