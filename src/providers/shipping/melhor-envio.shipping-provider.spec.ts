@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   MelhorEnvioShippingProvider,
@@ -113,10 +113,49 @@ describe('MelhorEnvioShippingProvider', () => {
     });
   });
 
-  it('usa o fetch global quando nenhum é passado', () => {
-    const provider = new MelhorEnvioShippingProvider({ baseUrl: 'https://x', token: 't' });
+  describe('sem fetch injetado', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
 
-    expect(provider).toBeInstanceOf(MelhorEnvioShippingProvider);
+    it('chama o fetch global', async () => {
+      const globalFetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json([]));
+      vi.stubGlobal('fetch', globalFetch);
+      const provider = new MelhorEnvioShippingProvider({ baseUrl: 'https://x', token: 't' });
+
+      await provider.quote(input);
+
+      expect(globalFetch).toHaveBeenCalledWith(
+        'https://x/api/v2/me/shipment/calculate',
+        expect.anything(),
+      );
+    });
+  });
+
+  it.each([
+    ['o preço vazio', { price: '' }],
+    ['o preço que não é número', { price: 'abc' }],
+  ])('descarta só o serviço com %s e mantém os outros', async (_case, broken) => {
+    const sedex = {
+      id: 2,
+      name: 'SEDEX',
+      price: '32.50',
+      delivery_time: 3,
+      company: { name: 'Correios' },
+    };
+    const { provider } = providerReplying(() =>
+      Promise.resolve(json([{ ...sedex, id: 1, name: 'PAC', ...broken }, sedex])),
+    );
+
+    await expect(provider.quote(input)).resolves.toEqual([
+      {
+        serviceId: '2',
+        carrier: 'Correios',
+        service: 'SEDEX',
+        priceInCents: 3250,
+        deliveryDays: 3,
+      },
+    ]);
   });
 
   it.each<[string, () => Promise<Response>]>([

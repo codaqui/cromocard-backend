@@ -17,7 +17,7 @@ export const SHIPPING_QUOTE_TIMEOUT_MS = 10_000;
 const CENTS_PER_REAL = 100;
 
 const moneyInCents = z
-  .union([z.string(), z.number()])
+  .union([z.string().trim().min(1), z.number()])
   .transform(Number)
   .pipe(z.number().nonnegative())
   .transform((reais) => Math.round(reais * CENTS_PER_REAL));
@@ -35,7 +35,7 @@ const quotedServiceSchema = z.object({
 
 type QuotedService = z.infer<typeof quotedServiceSchema>;
 
-const calculateResponseSchema = z.array(quotedServiceSchema);
+const calculateResponseSchema = z.array(z.unknown());
 
 export interface MelhorEnvioConfig {
   baseUrl: string;
@@ -50,6 +50,13 @@ function isCarrier(name: string): name is Carrier {
 function failure(reason: string, status?: number): ShippingProviderError {
   logger.warn({ provider: 'melhor-envio', reason, status }, 'Falha na cotação do Melhor Envio');
   return new ShippingProviderError();
+}
+
+function quotedServiceOf(item: unknown): QuotedService[] {
+  const service = quotedServiceSchema.safeParse(item);
+  if (service.success) return [service.data];
+  logger.warn({ provider: 'melhor-envio' }, 'Serviço do Melhor Envio com formato inesperado');
+  return [];
 }
 
 function toOptions(service: QuotedService): ShippingOption[] {
@@ -99,7 +106,7 @@ export class MelhorEnvioShippingProvider implements ShippingProvider {
   async quote(input: ShippingQuoteInput): Promise<ShippingOption[]> {
     const services = calculateResponseSchema.safeParse(await this.calculate(input));
     if (!services.success) throw failure('formato inesperado');
-    return services.data.flatMap(toOptions);
+    return services.data.flatMap(quotedServiceOf).flatMap(toOptions);
   }
 
   private async calculate(input: ShippingQuoteInput): Promise<unknown> {
