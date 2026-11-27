@@ -12,3 +12,8 @@ b66f29bce87bc2cbf799bf2b61fa9111e9352f68:.env.example:generic-api-key:6
 7e6fbf5c4d6ebdea6cd473746f4cdf172d3a0036:database/seeds/data/marketplace.json:generic-api-key:144
 # database/seeds/data/marketplace.json (feature/601-indicadores-financeiros): o campo "key" é o identificador legível do pedido de exemplo do seed, não uma chave
 53e0e457f14bb099c94886f2c4bbe42d56733719:database/seeds/data/marketplace.json:generic-api-key:144
+# database/seeds/data/marketplace.json (72be6ad, CCD030): o campo "key" é o identificador legível do anúncio e do pedido de exemplo do seed, não uma chave
+72be6ad181a00ee57b4df0ba0c9d635fcea65038:database/seeds/data/marketplace.json:generic-api-key:98
+72be6ad181a00ee57b4df0ba0c9d635fcea65038:database/seeds/data/marketplace.json:generic-api-key:106
+# database/seeds/data/cards.json (5636d20, seed da coleção): o campo "key" é o identificador legível da carta de exemplo, não uma chave
+5636d20332ce7acb31c11105236902346ceb325e:database/seeds/data/cards.json:generic-api-key:116
