@@ -84,11 +84,14 @@ const requireStripeKeys = ({
 const requireMelhorEnvioToken = ({ SHIPPING_DRIVER, MELHOR_ENVIO_TOKEN }: EnvInput) =>
   SHIPPING_DRIVER !== 'melhor-envio' || Boolean(MELHOR_ENVIO_TOKEN);
 
-const requireRealPaymentInProduction = ({ APP_ENV, PAYMENT_DRIVER }: EnvInput) =>
-  APP_ENV !== 'production' || PAYMENT_DRIVER === 'stripe';
+const isPublicEnvironment = (appEnv: EnvInput['APP_ENV']) =>
+  appEnv === 'homolog' || appEnv === 'production';
 
-const requireRealShippingInProduction = ({ APP_ENV, SHIPPING_DRIVER }: EnvInput) =>
-  APP_ENV !== 'production' || SHIPPING_DRIVER === 'melhor-envio';
+const requireRealPaymentWhenPublic = ({ APP_ENV, PAYMENT_DRIVER }: EnvInput) =>
+  !isPublicEnvironment(APP_ENV) || PAYMENT_DRIVER === 'stripe';
+
+const requireRealShippingWhenPublic = ({ APP_ENV, SHIPPING_DRIVER }: EnvInput) =>
+  !isPublicEnvironment(APP_ENV) || SHIPPING_DRIVER === 'melhor-envio';
 
 const envWithPublicUrlSchema = envSchema
   .refine(requirePublicUrlInProduction, {
@@ -112,13 +115,13 @@ const envWithPublicUrlSchema = envSchema
     path: ['MELHOR_ENVIO_TOKEN'],
     message: 'Obrigatório com SHIPPING_DRIVER=melhor-envio',
   })
-  .refine(requireRealPaymentInProduction, {
+  .refine(requireRealPaymentWhenPublic, {
     path: ['PAYMENT_DRIVER'],
-    message: 'Em produção (APP_ENV=production) só stripe: o fake não cobra ninguém',
+    message: 'Em homologação e produção só stripe: o webhook falso aceita qualquer um (ADR-066)',
   })
-  .refine(requireRealShippingInProduction, {
+  .refine(requireRealShippingWhenPublic, {
     path: ['SHIPPING_DRIVER'],
-    message: 'Em produção (APP_ENV=production) só melhor-envio: o fake inventa o frete',
+    message: 'Em homologação e produção só melhor-envio: o fake inventa o frete (ADR-067)',
   })
   .transform(({ API_PUBLIC_URL = DEVELOPMENT_API_PUBLIC_URL, FRONTEND_URL, ...rest }) => ({
     ...rest,

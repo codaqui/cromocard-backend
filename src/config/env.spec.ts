@@ -26,7 +26,7 @@ describe('env: e-mail em produção', () => {
   });
 
   it('aceita o Ethereal em homologação', async () => {
-    const { env } = await loadEnv({ APP_ENV: 'homolog', MAIL_DRIVER: 'ethereal' });
+    const { env } = await loadEnv({ ...REAL_MARKETPLACE, APP_ENV: 'homolog', MAIL_DRIVER: 'ethereal' });
 
     expect(env.MAIL_DRIVER).toBe('ethereal');
   });
@@ -126,24 +126,34 @@ describe('env: pagamento e frete (CCD072 R22)', () => {
   });
 
   it.each([
-    ['o pagamento falso', { PAYMENT_DRIVER: 'fake' }, /PAYMENT_DRIVER/],
-    ['o frete falso', { SHIPPING_DRIVER: 'fake' }, /SHIPPING_DRIVER/],
-  ])('recusa %s em produção', async (_case, driver, field) => {
+    ['o pagamento falso', 'production', { PAYMENT_DRIVER: 'fake' }, /PAYMENT_DRIVER/],
+    ['o frete falso', 'production', { SHIPPING_DRIVER: 'fake' }, /SHIPPING_DRIVER/],
+    ['o pagamento falso', 'homolog', { PAYMENT_DRIVER: 'fake' }, /PAYMENT_DRIVER/],
+    ['o frete falso', 'homolog', { SHIPPING_DRIVER: 'fake' }, /SHIPPING_DRIVER/],
+  ])('recusa %s com APP_ENV=%s', async (_case, appEnv, driver, field) => {
     await expect(
       loadEnv({
         ...REAL_MARKETPLACE,
         ...driver,
-        APP_ENV: 'production',
+        APP_ENV: appEnv,
         MAIL_DRIVER: 'smtp',
         MAIL_HOST: 'smtp.exemplo.com',
       }),
     ).rejects.toThrow(field);
   });
 
-  it('aceita as versões falsas em homologação', async () => {
-    const { env } = await loadEnv({ APP_ENV: 'homolog' });
+  it('aceita Stripe e Melhor Envio em homologação', async () => {
+    const { env } = await loadEnv({ ...REAL_MARKETPLACE, APP_ENV: 'homolog' });
+
+    expect(env.PAYMENT_DRIVER).toBe('stripe');
+    expect(env.SHIPPING_DRIVER).toBe('melhor-envio');
+  });
+
+  it.each(['local', 'test'])('aceita as versões falsas com APP_ENV=%s', async (appEnv) => {
+    const { env } = await loadEnv({ APP_ENV: appEnv });
 
     expect(env.PAYMENT_DRIVER).toBe('fake');
+    expect(env.SHIPPING_DRIVER).toBe('fake');
   });
 
   it('aceita Stripe e Melhor Envio e tira a barra final da URL', async () => {
