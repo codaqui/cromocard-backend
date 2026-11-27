@@ -170,7 +170,7 @@ describe('GET /api/v1/cards/:cardId/listings', () => {
     expect(items[0]).toMatchObject({ condition: { name: MARKER }, seller: { username: MARKER } });
   });
 
-  it('CA2: esconde anúncios de vendedor suspenso ou excluído', async () => {
+  it('L21: esconde anúncios de vendedor suspenso ou excluído', async () => {
     const res = await request(app).get(`${CARDS}/${ids.card}/listings`);
     const usernames = dataOf<ListingItem[]>(res).map((item) => item.seller.username);
 
