@@ -16,7 +16,7 @@ export interface SellerAccount {
 
 export interface ConnectedAccountsRepository {
   findSeller(sellerId: string): Promise<SellerAccount | null>;
-  linkAccount(sellerId: string, stripeAccountId: string): Promise<void>;
+  linkAccount(sellerId: string, stripeAccountId: string): Promise<boolean>;
   saveStatus(sellerId: string, status: StripeAccountStatus): Promise<void>;
   saveStatusByAccount(stripeAccountId: string, status: StripeAccountStatus): Promise<number>;
 }
@@ -31,11 +31,12 @@ export class PrismaConnectedAccountsRepository implements ConnectedAccountsRepos
     });
   }
 
-  async linkAccount(sellerId: string, stripeAccountId: string): Promise<void> {
-    await this.prisma.user.update({
-      where: { id: sellerId },
+  async linkAccount(sellerId: string, stripeAccountId: string): Promise<boolean> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { id: sellerId, stripeAccountId: null },
       data: { stripeAccountId, stripeAccountStatus: 'PENDING' },
     });
+    return count > 0;
   }
 
   async saveStatus(sellerId: string, stripeAccountStatus: StripeAccountStatus): Promise<void> {

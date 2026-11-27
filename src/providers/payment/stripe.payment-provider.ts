@@ -7,6 +7,7 @@ import type {
   CheckoutSession,
   ConnectedAccount,
   CreateCheckoutSessionInput,
+  CreateConnectedAccountInput,
   OnboardingLinkInput,
   PaymentEvent,
   PaymentProvider,
@@ -42,7 +43,7 @@ function failureOf(error: unknown): PaymentProviderError {
   return new PaymentProviderError();
 }
 
-function sessionEvent(event: Stripe.Event, session: StripeSession, type: PaymentEvent['type']) {
+function sessionEvent(event: Stripe.Event, session: StripeSession, type: 'completed' | 'expired') {
   const orderId = session.metadata?.orderId ?? session.client_reference_id ?? undefined;
   return { id: event.id, type, sessionId: session.id, orderId };
 }
@@ -115,7 +116,7 @@ export class StripePaymentProvider implements PaymentProvider {
       return {
         id: event.id,
         type: 'account-updated',
-        account: toConnectedAccount(event.data.object),
+        accountId: event.data.object.id,
       };
     }
     return { id: event.id, type: 'ignored' };
@@ -151,14 +152,20 @@ export class StripePaymentProvider implements PaymentProvider {
     return idOf(intent.latest_charge);
   }
 
-  async createConnectedAccount({ email }: { email: string }): Promise<{ id: string }> {
+  async createConnectedAccount({
+    sellerId,
+    email,
+  }: CreateConnectedAccountInput): Promise<{ id: string }> {
     const account = await this.stripe.accounts
-      .create({
-        type: 'express',
-        country: CONNECTED_ACCOUNT_COUNTRY,
-        email,
-        capabilities: { transfers: { requested: true } },
-      })
+      .create(
+        {
+          type: 'express',
+          country: CONNECTED_ACCOUNT_COUNTRY,
+          email,
+          capabilities: { transfers: { requested: true } },
+        },
+        { idempotencyKey: `connected-account-${sellerId}` },
+      )
       .catch(rejectAsProviderError);
     return { id: account.id };
   }

@@ -1,3 +1,4 @@
+import { env } from '@/config/env';
 import type { PrismaClient } from '@/generated/prisma/client';
 import { StripeAccountStatus, UserRole, UserStatus } from '@/generated/prisma/enums';
 import { hashPassword } from '@/lib/password';
@@ -47,10 +48,11 @@ export async function assertSeedEmailsAvailable(prisma: PrismaClient): Promise<v
 export async function seedUsers(prisma: PrismaClient, password: string): Promise<void> {
   const passwordHash = await hashPassword(password);
 
-  for (const { key, createdDaysAgo, ...user } of users) {
+  for (const { key, createdDaysAgo, stripeAccountId, stripeAccountStatus, ...user } of users) {
     const id = userIdOf(key);
     const data = {
       ...user,
+      ...(env.PAYMENT_DRIVER === 'fake' && { stripeAccountId, stripeAccountStatus }),
       id,
       passwordHash,
       termsAccepted: true,

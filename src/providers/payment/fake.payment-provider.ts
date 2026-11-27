@@ -7,6 +7,7 @@ import type {
   CheckoutSession,
   ConnectedAccount,
   CreateCheckoutSessionInput,
+  CreateConnectedAccountInput,
   OnboardingLinkInput,
   PaymentEvent,
   PaymentProvider,
@@ -24,22 +25,19 @@ export interface FakeWebhook {
   signature: string;
 }
 
-const connectedAccountSchema = z.object({
-  id: z.string().min(1),
-  detailsSubmitted: z.boolean(),
-  transfersEnabled: z.boolean(),
-  requirementsDue: z.number().int().nonnegative(),
-  disabledReason: z.string().nullable(),
-});
+const eventId = z.string().min(1);
 
-const paymentEventSchema = z.object({
-  id: z.string().min(1),
-  type: z.enum(['completed', 'expired', 'account-updated', 'ignored']),
-  sessionId: z.string().optional(),
-  orderId: z.string().optional(),
-  chargeId: z.string().optional(),
-  account: connectedAccountSchema.optional(),
-});
+const paymentEventSchema = z.union([
+  z.object({
+    id: eventId,
+    type: z.enum(['completed', 'expired']),
+    sessionId: z.string().min(1),
+    orderId: z.string().optional(),
+    chargeId: z.string().optional(),
+  }),
+  z.object({ id: eventId, type: z.literal('account-updated'), accountId: z.string().min(1) }),
+  z.object({ id: eventId, type: z.literal('ignored') }),
+]);
 
 function jsonOf(rawBody: Buffer): unknown {
   try {
@@ -52,6 +50,7 @@ function jsonOf(rawBody: Buffer): unknown {
 export class FakePaymentProvider implements PaymentProvider {
   private readonly sessions = new Map<string, FakeCheckoutSession>();
   readonly accounts = new Map<string, ConnectedAccount>();
+  private readonly accountBySeller = new Map<string, string>();
   private sequence = 0;
 
   sessionById(sessionId: string): FakeCheckoutSession | undefined {
@@ -93,14 +92,16 @@ export class FakePaymentProvider implements PaymentProvider {
     return Promise.resolve(event.data);
   }
 
-  private applyToSession({ type, sessionId }: PaymentEvent): void {
-    const session = sessionId ? this.sessions.get(sessionId) : undefined;
-    if (!session || type === 'ignored' || type === 'account-updated') return;
-    session.status = type === 'completed' ? 'complete' : 'expired';
+  private applyToSession(event: PaymentEvent): void {
+    if (event.type !== 'completed' && event.type !== 'expired') return;
+    const session = this.sessions.get(event.sessionId);
+    if (session) session.status = event.type === 'completed' ? 'complete' : 'expired';
   }
 
-  createConnectedAccount(): Promise<{ id: string }> {
-    const { id } = this.updateAccount(`acct_fake_${randomUUID()}`, {});
+  createConnectedAccount({ sellerId }: CreateConnectedAccountInput): Promise<{ id: string }> {
+    const id = this.accountBySeller.get(sellerId) ?? `acct_fake_${randomUUID()}`;
+    this.accountBySeller.set(sellerId, id);
+    this.updateAccount(id, {});
     return Promise.resolve({ id });
   }
 
@@ -135,10 +136,11 @@ export class FakePaymentProvider implements PaymentProvider {
     accountId: string,
     changes: Partial<Omit<ConnectedAccount, 'id'>>,
   ): FakeWebhook {
+    this.updateAccount(accountId, changes);
     const event: PaymentEvent = {
       id: `evt_fake_${randomUUID()}`,
       type: 'account-updated',
-      account: this.updateAccount(accountId, changes),
+      accountId,
     };
     return { rawBody: Buffer.from(JSON.stringify(event)), signature: FAKE_WEBHOOK_SIGNATURE };
   }

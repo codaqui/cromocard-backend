@@ -1,34 +1,32 @@
 import { logger } from '@/config/logger';
-import type {
-  PaymentEvent,
-  PaymentEventType,
-  PaymentProvider,
-} from '@/providers/payment/payment.provider';
+import type { PaymentEvent, PaymentProvider } from '@/providers/payment/payment.provider';
 
 import type { ConnectedAccountsService } from './connected-accounts.service';
 
-type EventHandler = (event: PaymentEvent) => Promise<unknown>;
+type AccountUpdated = Extract<PaymentEvent, { type: 'account-updated' }>;
 
 export interface PaymentsWebhookDeps {
-  provider: Pick<PaymentProvider, 'parseWebhookEvent'>;
+  provider: Pick<PaymentProvider, 'parseWebhookEvent' | 'getConnectedAccount'>;
   connectedAccounts: Pick<ConnectedAccountsService, 'applyAccountUpdate'>;
 }
 
-const ignore: EventHandler = () => Promise.resolve();
-
 export class PaymentsWebhookService {
-  private readonly handlers: Partial<Record<PaymentEventType, EventHandler>>;
-
-  constructor(private readonly deps: PaymentsWebhookDeps) {
-    this.handlers = {
-      'account-updated': ({ account }) =>
-        account ? this.deps.connectedAccounts.applyAccountUpdate(account) : Promise.resolve(),
-    };
-  }
+  constructor(private readonly deps: PaymentsWebhookDeps) {}
 
   async handle(rawBody: Buffer, signature: string | undefined): Promise<void> {
     const event = await this.deps.provider.parseWebhookEvent(rawBody, signature);
     logger.info({ eventId: event.id, type: event.type }, 'Webhook de pagamento recebido');
-    await (this.handlers[event.type] ?? ignore)(event);
+    if (event.type === 'account-updated') await this.applyCurrentAccount(event);
+  }
+
+  private async applyCurrentAccount({ id, accountId }: AccountUpdated): Promise<void> {
+    const current = await this.deps.provider.getConnectedAccount(accountId);
+    const applied = await this.deps.connectedAccounts.applyAccountUpdate(current);
+    if (!applied) {
+      logger.warn(
+        { eventId: id, stripeAccountId: accountId },
+        'account.updated de conta sem vendedor',
+      );
+    }
   }
 }

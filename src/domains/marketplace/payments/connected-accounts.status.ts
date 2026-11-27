@@ -1,19 +1,26 @@
 import type { StripeAccountStatus } from '@/generated/prisma/enums';
+import { z } from '@/lib/zod';
 import type { ConnectedAccount } from '@/providers/payment/payment.provider';
 
-export type StripeAccountState = StripeAccountStatus | 'NOT_CONNECTED';
-export type PendingReason = 'NOT_SUBMITTED' | 'MORE_INFO_REQUIRED' | 'REJECTED';
+export const stripeAccountStateSchema = z.enum(['NOT_CONNECTED', 'PENDING', 'VERIFYING', 'READY']);
+export const pendingReasonSchema = z.enum(['NOT_SUBMITTED', 'MORE_INFO_REQUIRED', 'REJECTED']);
+
+export type StripeAccountState = z.infer<typeof stripeAccountStateSchema>;
+export type PendingReason = z.infer<typeof pendingReasonSchema>;
 
 export interface StripeAccountView {
   status: StripeAccountState;
   pendingReason: PendingReason | null;
 }
 
-const PENDING_VERIFICATION = 'requirements.pending_verification';
+const REVIEW_REASONS: ReadonlySet<string> = new Set([
+  'requirements.pending_verification',
+  'under_review',
+]);
 const REJECTED_PREFIX = 'rejected.';
 
 function isBlockedByStripe({ disabledReason }: ConnectedAccount): boolean {
-  return disabledReason !== null && disabledReason !== PENDING_VERIFICATION;
+  return disabledReason !== null && !REVIEW_REASONS.has(disabledReason);
 }
 
 function isUnderReview(account: ConnectedAccount): boolean {

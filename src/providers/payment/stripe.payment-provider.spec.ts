@@ -280,20 +280,23 @@ describe('StripePaymentProvider: conta conectada Express (CCD108)', () => {
     vi.restoreAllMocks();
   });
 
-  it('cria a conta Express no Brasil, com o e-mail e pedindo transferências', async () => {
+  it('cria a conta Express no Brasil, com o e-mail, pedindo transferências e uma chave por vendedor', async () => {
     const create = vi
       .spyOn(stripe.accounts, 'create')
       .mockResolvedValue({ id: 'acct_123' } as never);
 
     await expect(
-      provider.createConnectedAccount({ email: 'elisa@cromocard.dev' }),
+      provider.createConnectedAccount({ sellerId: 'vendedor-1', email: 'elisa@cromocard.dev' }),
     ).resolves.toEqual({ id: 'acct_123' });
-    expect(create).toHaveBeenCalledWith({
-      type: 'express',
-      country: 'BR',
-      email: 'elisa@cromocard.dev',
-      capabilities: { transfers: { requested: true } },
-    });
+    expect(create).toHaveBeenCalledWith(
+      {
+        type: 'express',
+        country: 'BR',
+        email: 'elisa@cromocard.dev',
+        capabilities: { transfers: { requested: true } },
+      },
+      { idempotencyKey: 'connected-account-vendedor-1' },
+    );
   });
 
   it('cria o link de cadastro com a volta, a renovação e todos os dados de uma vez', async () => {
@@ -353,7 +356,7 @@ describe('StripePaymentProvider: conta conectada Express (CCD108)', () => {
     [
       'criar a conta',
       () => vi.spyOn(stripe.accounts, 'create'),
-      () => provider.createConnectedAccount({ email: 'a@b.c' }),
+      () => provider.createConnectedAccount({ sellerId: 'v1', email: 'a@b.c' }),
     ],
     [
       'criar o link',
@@ -376,7 +379,7 @@ describe('StripePaymentProvider: conta conectada Express (CCD108)', () => {
     await expect(call()).rejects.toBeInstanceOf(PaymentProviderError);
   });
 
-  it('traduz o account.updated do destino das contas conectadas com o estado atual da conta', async () => {
+  it('traduz o account.updated do destino das contas conectadas no id da conta, para reconsultar', async () => {
     const payload = JSON.stringify({
       id: 'evt_account',
       object: 'event',
@@ -399,13 +402,7 @@ describe('StripePaymentProvider: conta conectada Express (CCD108)', () => {
     await expect(provider.parseWebhookEvent(Buffer.from(payload), signature)).resolves.toEqual({
       id: 'evt_account',
       type: 'account-updated',
-      account: {
-        id: 'acct_123',
-        detailsSubmitted: true,
-        transfersEnabled: true,
-        requirementsDue: 0,
-        disabledReason: null,
-      },
+      accountId: 'acct_123',
     });
   });
 });

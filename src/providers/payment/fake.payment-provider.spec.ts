@@ -62,11 +62,11 @@ describe('FakePaymentProvider', () => {
 
     const expired = await provider.parseWebhookEvent(known.rawBody, known.signature);
     expect(expired).toMatchObject({ type: 'expired', orderId: 'pedido-1' });
-    expect(expired.chargeId).toBeUndefined();
+    expect(expired).not.toHaveProperty('chargeId');
     expect(provider.sessionById(id)?.status).toBe('expired');
     const orphan = await provider.parseWebhookEvent(unknown.rawBody, unknown.signature);
-    expect(orphan.sessionId).toBe('cs_fake_outra');
-    expect(orphan.orderId).toBeUndefined();
+    expect(orphan).toMatchObject({ sessionId: 'cs_fake_outra' });
+    expect(orphan).not.toHaveProperty('orderId');
   });
 
   it.each([
@@ -74,6 +74,16 @@ describe('FakePaymentProvider', () => {
     ['corpo que não é JSON', Buffer.from('não é json'), FAKE_WEBHOOK_SIGNATURE],
     ['evento sem id', Buffer.from('{"type":"completed"}'), FAKE_WEBHOOK_SIGNATURE],
     ['tipo desconhecido', Buffer.from('{"id":"evt_1","type":"pago"}'), FAKE_WEBHOOK_SIGNATURE],
+    [
+      'checkout sem a sessão',
+      Buffer.from('{"id":"evt_1","type":"completed"}'),
+      FAKE_WEBHOOK_SIGNATURE,
+    ],
+    [
+      'account.updated sem a conta',
+      Buffer.from('{"id":"evt_1","type":"account-updated"}'),
+      FAKE_WEBHOOK_SIGNATURE,
+    ],
   ])('recusa %s, como o provider real', async (_case, rawBody, signature) => {
     const provider = new FakePaymentProvider();
 
@@ -84,11 +94,11 @@ describe('FakePaymentProvider', () => {
 });
 
 describe('FakePaymentProvider: conta conectada (CCD108)', () => {
-  it('cria contas novas sem cadastro e o link leva direto à volta, com o cadastro enviado', async () => {
+  it('cria uma conta por vendedor, sem cadastro, e o link leva direto à volta', async () => {
     const provider = new FakePaymentProvider();
 
-    const { id } = await provider.createConnectedAccount();
-    const other = await provider.createConnectedAccount();
+    const { id } = await provider.createConnectedAccount({ sellerId: 'v1', email: 'a@b.c' });
+    const other = await provider.createConnectedAccount({ sellerId: 'v2', email: 'c@d.e' });
     const url = await provider.createOnboardingLink({
       accountId: id,
       returnUrl: 'http://localhost:5173/vendedor/stripe/retorno',
@@ -107,24 +117,41 @@ describe('FakePaymentProvider: conta conectada (CCD108)', () => {
     });
   });
 
+  it('devolve a mesma conta ao repetir a criação do mesmo vendedor, como a idempotência da Stripe', async () => {
+    const provider = new FakePaymentProvider();
+
+    const [first, second] = await Promise.all([
+      provider.createConnectedAccount({ sellerId: 'v1', email: 'a@b.c' }),
+      provider.createConnectedAccount({ sellerId: 'v1', email: 'a@b.c' }),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    expect(provider.accounts.size).toBe(1);
+  });
+
   it('recusa ler uma conta que não existe, como a Stripe', async () => {
     await expect(new FakePaymentProvider().getConnectedAccount('acct_x')).rejects.toBeInstanceOf(
       PaymentProviderError,
     );
   });
 
-  it('monta o account.updated com o estado novo, que o parseWebhookEvent lê', async () => {
+  it('monta o account.updated, que só traz o id da conta, e guarda o estado novo na conta', async () => {
     const provider = new FakePaymentProvider();
-    const { id } = await provider.createConnectedAccount();
+    const { id } = await provider.createConnectedAccount({ sellerId: 'v1', email: 'a@b.c' });
 
     const { rawBody, signature } = provider.accountUpdatedWebhook(id, {
       detailsSubmitted: true,
       transfersEnabled: true,
     });
 
-    await expect(provider.parseWebhookEvent(rawBody, signature)).resolves.toMatchObject({
+    await expect(provider.parseWebhookEvent(rawBody, signature)).resolves.toEqual({
+      id: expect.stringMatching(/^evt_fake_/) as string,
       type: 'account-updated',
-      account: { id, detailsSubmitted: true, transfersEnabled: true, requirementsDue: 0 },
+      accountId: id,
+    });
+    await expect(provider.getConnectedAccount(id)).resolves.toMatchObject({
+      detailsSubmitted: true,
+      transfersEnabled: true,
     });
   });
 });

@@ -13,11 +13,11 @@ import { createPaymentsWebhookRoutes, PAYMENTS_BASE_PATH } from './payments-webh
 import { PaymentsWebhookService } from './payments-webhook.service';
 import { registerPaymentsWebhookDocs } from './payments-webhook.swagger';
 
-const provider = createPaymentProvider();
+export const paymentProvider = createPaymentProvider();
 
 export const connectedAccountsService = new ConnectedAccountsService({
   repository: new PrismaConnectedAccountsRepository(prisma),
-  provider,
+  provider: paymentProvider,
   urls: {
     returnUrl: `${env.FRONTEND_URL}/vendedor/stripe/retorno`,
     refreshUrl: `${env.FRONTEND_URL}/vendedor/stripe/renovar`,
@@ -31,7 +31,7 @@ export const connectedAccountsModule: DomainModule = {
 };
 
 const webhookService = new PaymentsWebhookService({
-  provider,
+  provider: paymentProvider,
   connectedAccounts: connectedAccountsService,
 });
 

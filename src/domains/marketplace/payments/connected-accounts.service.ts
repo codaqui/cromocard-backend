@@ -1,3 +1,4 @@
+import { logger } from '@/config/logger';
 import type { ConnectedAccount, PaymentProvider } from '@/providers/payment/payment.provider';
 import { UnauthorizedError } from '@/shared/errors/http-errors';
 
@@ -75,15 +76,26 @@ export class ConnectedAccountsService {
   private async accountIdCreatingIfMissing(sellerId: string): Promise<string> {
     const { email, stripeAccountId } = await this.sellerOf(sellerId);
     if (stripeAccountId) return stripeAccountId;
-    const { id } = await this.deps.provider.createConnectedAccount({ email });
-    await this.deps.repository.linkAccount(sellerId, id);
-    return id;
+    const { id } = await this.deps.provider.createConnectedAccount({ sellerId, email });
+    const linked = await this.deps.repository.linkAccount(sellerId, id);
+    return linked ? id : this.linkedAccountIdOf(sellerId, id);
+  }
+
+  private async linkedAccountIdOf(sellerId: string, created: string): Promise<string> {
+    const { stripeAccountId } = await this.sellerOf(sellerId);
+    if (stripeAccountId !== created) {
+      logger.warn({ stripeAccountId: created }, 'Conta conectada criada em paralelo e descartada');
+    }
+    return stripeAccountId ?? created;
   }
 
   private pendingReasonOf(stripeAccountId: string) {
     return this.deps.provider
       .getConnectedAccount(stripeAccountId)
       .then(pendingReasonOf)
-      .catch(() => null);
+      .catch(() => {
+        logger.warn({ stripeAccountId }, 'Motivo da conta pendente indisponível na Stripe');
+        return null;
+      });
   }
 }

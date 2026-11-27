@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { StripeAccountStatus } from '@/generated/prisma/enums';
 import { PaymentProviderError } from '@/providers/payment/payment.errors';
@@ -26,8 +26,9 @@ class InMemoryAccounts implements ConnectedAccountsRepository {
   }
 
   linkAccount(sellerId: string, stripeAccountId: string) {
-    this.patch(sellerId, { stripeAccountId, stripeAccountStatus: 'PENDING' });
-    return Promise.resolve();
+    const free = this.sellers.get(sellerId)?.stripeAccountId === null;
+    if (free) this.patch(sellerId, { stripeAccountId, stripeAccountStatus: 'PENDING' });
+    return Promise.resolve(free);
   }
 
   saveStatus(sellerId: string, stripeAccountStatus: StripeAccountStatus) {
@@ -88,7 +89,7 @@ describe('getAccount', () => {
   });
 
   it('CA7: conta pendente traz o motivo lido na Stripe', async () => {
-    const { id } = await provider.createConnectedAccount();
+    const { id } = await provider.createConnectedAccount({ sellerId: SELLER, email: 'a@b.c' });
     provider.updateAccount(id, { detailsSubmitted: true, requirementsDue: 2 });
     givenSeller({ stripeAccountId: id, stripeAccountStatus: 'PENDING' });
 
@@ -134,6 +135,30 @@ describe('createOnboardingLink', () => {
     expect(repository.sellers.get(SELLER)?.stripeAccountId).toBe(first);
   });
 
+  it('R7: dois pedidos ao mesmo tempo ficam com uma conta só na Stripe e no banco', async () => {
+    givenSeller();
+
+    await Promise.all([service.createOnboardingLink(SELLER), service.createOnboardingLink(SELLER)]);
+
+    expect(provider.accounts.size).toBe(1);
+    expect(repository.sellers.get(SELLER)?.stripeAccountId).toBe([...provider.accounts.keys()][0]);
+  });
+
+  it('R7: se a Stripe criar duas contas, os dois pedidos usam a que foi gravada primeiro', async () => {
+    givenSeller();
+    let created = 0;
+    provider.createConnectedAccount = () => {
+      created += 1;
+      return Promise.resolve({ id: `acct_${created}` });
+    };
+    const links = vi.spyOn(provider, 'createOnboardingLink');
+
+    await Promise.all([service.createOnboardingLink(SELLER), service.createOnboardingLink(SELLER)]);
+
+    expect(repository.sellers.get(SELLER)?.stripeAccountId).toBe('acct_1');
+    expect(links.mock.calls.map(([{ accountId }]) => accountId)).toEqual(['acct_1', 'acct_1']);
+  });
+
   it('CA9: com a Stripe fora do ar, lança PAYMENT_PROVIDER_ERROR e não grava nada', async () => {
     givenSeller();
     provider.createConnectedAccount = () => Promise.reject(new PaymentProviderError());
@@ -156,7 +181,7 @@ describe('refresh', () => {
   });
 
   it('CA6: na volta sem terminar o cadastro, mantém PENDING com o motivo', async () => {
-    const { id } = await provider.createConnectedAccount();
+    const { id } = await provider.createConnectedAccount({ sellerId: SELLER, email: 'a@b.c' });
     givenSeller({ stripeAccountId: id, stripeAccountStatus: 'PENDING' });
 
     await expect(service.refresh(SELLER)).resolves.toEqual({
@@ -204,6 +229,22 @@ describe('applyAccountUpdate', () => {
       service.applyAccountUpdate(provider.updateAccount('acct_outra', {})),
     ).resolves.toBe(false);
     expect(repository.sellers.get(SELLER)?.stripeAccountStatus).toBe('VERIFYING');
+  });
+});
+
+describe('CA12: conta suspensa pela Stripe', () => {
+  it('volta a PENDING e passa a recusar a criação de anúncio com 422', async () => {
+    givenSeller({ stripeAccountId: 'acct_1', stripeAccountStatus: 'READY' });
+    await expect(service.assertReady(SELLER)).resolves.toBeUndefined();
+
+    await service.applyAccountUpdate(
+      provider.updateAccount('acct_1', {
+        detailsSubmitted: true,
+        disabledReason: 'requirements.past_due',
+      }),
+    );
+
+    await expect(service.assertReady(SELLER)).rejects.toBeInstanceOf(StripeAccountNotReadyError);
   });
 });
 

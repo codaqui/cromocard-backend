@@ -2,6 +2,8 @@ import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openap
 
 import { z } from '@/lib/zod';
 
+import { pendingReasonSchema, stripeAccountStateSchema } from './connected-accounts.status';
+
 const tags = ['Marketplace - Conta de recebimento'];
 const security = [{ bearerAuth: [] }];
 const json = (schema: z.ZodType) => ({ content: { 'application/json': { schema } } });
@@ -12,11 +14,10 @@ const accessErrors = {
 };
 
 const account = z.object({
-  status: z
-    .enum(['NOT_CONNECTED', 'PENDING', 'VERIFYING', 'READY'])
-    .openapi({ description: 'NOT_CONNECTED = ainda sem conta conectada (CCD108, L3)' }),
-  pendingReason: z
-    .enum(['NOT_SUBMITTED', 'MORE_INFO_REQUIRED', 'REJECTED'])
+  status: stripeAccountStateSchema.openapi({
+    description: 'NOT_CONNECTED = ainda sem conta conectada (CCD108, L3)',
+  }),
+  pendingReason: pendingReasonSchema
     .nullable()
     .openapi({ description: 'Só com PENDING; nulo se a Stripe não respondeu' }),
 });

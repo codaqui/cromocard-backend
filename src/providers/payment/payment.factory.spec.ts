@@ -57,6 +57,6 @@ describe('createPaymentProvider', () => {
 
     await expect(
       createPaymentProvider().parseWebhookEvent(Buffer.from(payload), signature),
-    ).resolves.toMatchObject({ type: 'account-updated', account: { id: 'acct_1' } });
+    ).resolves.toMatchObject({ type: 'account-updated', accountId: 'acct_1' });
   });
 });
