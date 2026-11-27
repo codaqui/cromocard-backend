@@ -42,6 +42,7 @@ const envSchema = z.object({
   PAYMENT_DRIVER: z.enum(['fake', 'stripe']).default('fake'),
   STRIPE_SECRET_KEY: optionalText,
   STRIPE_WEBHOOK_SECRET: optionalText,
+  STRIPE_CONNECT_WEBHOOK_SECRET: optionalText,
   SHIPPING_DRIVER: z.enum(['fake', 'melhor-envio']).default('fake'),
   MELHOR_ENVIO_TOKEN: optionalText,
   MELHOR_ENVIO_BASE_URL: z.url().default('https://sandbox.melhorenvio.com.br'),

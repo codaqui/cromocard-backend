@@ -72,7 +72,7 @@ function toPaymentEvent(event: Stripe.Event): PaymentEvent {
 export class StripePaymentProvider implements PaymentProvider {
   constructor(
     private readonly stripe: StripeClient,
-    private readonly webhookSecret: string,
+    private readonly webhookSecrets: readonly string[],
   ) {}
 
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession> {
@@ -105,12 +105,19 @@ export class StripePaymentProvider implements PaymentProvider {
 
   parseWebhookEvent(rawBody: Buffer, signature: string | undefined): PaymentEvent {
     if (!signature) throw new InvalidSignatureError();
+    const event = this.webhookSecrets.reduce<Stripe.Event | undefined>(
+      (verified, secret) => verified ?? this.verifiedEvent(rawBody, signature, secret),
+      undefined,
+    );
+    if (!event) throw new InvalidSignatureError();
+    return toPaymentEvent(event);
+  }
+
+  private verifiedEvent(rawBody: Buffer, signature: string, secret: string) {
     try {
-      return toPaymentEvent(
-        this.stripe.webhooks.constructEvent(rawBody, signature, this.webhookSecret),
-      );
+      return this.stripe.webhooks.constructEvent(rawBody, signature, secret);
     } catch {
-      throw new InvalidSignatureError();
+      return undefined;
     }
   }
 

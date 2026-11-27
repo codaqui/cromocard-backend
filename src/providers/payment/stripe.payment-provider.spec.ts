@@ -6,8 +6,9 @@ import type { CreateCheckoutSessionInput } from './payment.provider';
 import { StripePaymentProvider } from './stripe.payment-provider';
 
 const WEBHOOK_SECRET = 'whsec_teste';
+const CONNECT_WEBHOOK_SECRET = 'whsec_contas_conectadas';
 const stripe = new Stripe('sk_test_teste');
-const provider = new StripePaymentProvider(stripe, WEBHOOK_SECRET);
+const provider = new StripePaymentProvider(stripe, [WEBHOOK_SECRET, CONNECT_WEBHOOK_SECRET]);
 
 const input: CreateCheckoutSessionInput = {
   orderId: 'pedido-1',
@@ -21,14 +22,14 @@ const input: CreateCheckoutSessionInput = {
   customerEmail: 'comprador@exemplo.com',
 };
 
-function signedWebhook(type: string, session: Record<string, unknown>) {
+function signedWebhook(type: string, session: Record<string, unknown>, secret = WEBHOOK_SECRET) {
   const payload = JSON.stringify({
     id: `evt_${type}`,
     object: 'event',
     type,
     data: { object: { id: 'cs_test_1', object: 'checkout.session', ...session } },
   });
-  const signature = stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET });
+  const signature = stripe.webhooks.generateTestHeaderString({ payload, secret });
   return { rawBody: Buffer.from(payload), signature };
 }
 
@@ -190,6 +191,22 @@ describe('StripePaymentProvider.parseWebhookEvent', () => {
     });
   });
 
+  it('aceita o webhook assinado com o segredo do destino das contas conectadas', () => {
+    const { rawBody, signature } = signedWebhook(
+      'checkout.session.expired',
+      { metadata: { orderId: 'pedido-1' } },
+      CONNECT_WEBHOOK_SECRET,
+    );
+
+    expect(provider.parseWebhookEvent(rawBody, signature)).toMatchObject({ type: 'expired' });
+  });
+
+  it('recusa o webhook assinado com um segredo que não é de nenhum destino', () => {
+    const { rawBody, signature } = signedWebhook('checkout.session.completed', {}, 'whsec_outro');
+
+    expect(() => provider.parseWebhookEvent(rawBody, signature)).toThrow(InvalidSignatureError);
+  });
+
   it.each([
     ['sem assinatura', undefined],
     ['com assinatura de outro segredo', 't=1,v1=assinatura-falsa'],
@@ -301,7 +318,7 @@ describe('StripePaymentProvider: conta conectada Express (CCD108)', () => {
     await expect(call()).rejects.toBeInstanceOf(PaymentProviderError);
   });
 
-  it('traduz o account.updated com o estado atual da conta', () => {
+  it('traduz o account.updated do destino das contas conectadas com o estado atual da conta', () => {
     const payload = JSON.stringify({
       id: 'evt_account',
       object: 'event',
@@ -316,7 +333,10 @@ describe('StripePaymentProvider: conta conectada Express (CCD108)', () => {
         },
       },
     });
-    const signature = stripe.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET });
+    const signature = stripe.webhooks.generateTestHeaderString({
+      payload,
+      secret: CONNECT_WEBHOOK_SECRET,
+    });
 
     expect(provider.parseWebhookEvent(Buffer.from(payload), signature)).toEqual({
       id: 'evt_account',
