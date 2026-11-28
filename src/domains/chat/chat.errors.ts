@@ -1,5 +1,4 @@
-import { AppError } from '@/shared/errors/app-error';
-import { NotFoundError } from '@/shared/errors/http-errors';
+import { BusinessRuleError, NotFoundError } from '@/shared/errors/http-errors';
 
 export class ConversationNotFoundError extends NotFoundError {
   constructor() {
@@ -13,12 +12,8 @@ export class ContactNotFoundError extends NotFoundError {
   }
 }
 
-export class ConversationBlockedError extends AppError {
+export class ContactBlockedError extends BusinessRuleError {
   constructor() {
-    super({
-      statusCode: 403,
-      code: 'CONVERSATION_BLOCKED',
-      message: 'Não é possível enviar mensagem nesta conversa',
-    });
+    super('Vocês não podem mais trocar mensagens.', 'CONTACT_BLOCKED');
   }
 }

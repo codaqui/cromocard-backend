@@ -16,5 +16,6 @@ export const uploadsModule: DomainModule = {
 };
 
 export { MissingFileError } from './uploads.errors';
-export { parseSingleFile } from './uploads.middleware';
+export { detectImageType, type ImageType } from './image-type';
+export { parseImageFiles, parseSingleFile } from './uploads.middleware';
 export { MAX_UPLOAD_SIZE_IN_MEGABYTES } from './uploads.validator';

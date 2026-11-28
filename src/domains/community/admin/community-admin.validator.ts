@@ -18,6 +18,10 @@ export const communityAdminIdParamSchema = z.object({
   id: z.uuid(),
 });
 
+export const reportEvidenceParamSchema = communityAdminIdParamSchema.extend({
+  evidenceId: z.uuid(),
+});
+
 export const listGroupsQuerySchema = paginationQuerySchema.extend({
   q: z.string().trim().min(1).max(GROUP_NAME_MAX_LENGTH).optional(),
   status: z.enum(GroupStatus).optional(),
@@ -26,13 +30,21 @@ export const listGroupsQuerySchema = paginationQuerySchema.extend({
 export const REPORT_CATEGORIES = {
   SPAM: 'Spam/Golpe',
   HATE_SPEECH: 'Discurso de ódio/Ameaça',
+  CHAT_SCAM: 'Golpe / pagamento externo',
+  CHAT_HARASSMENT: 'Assédio',
+  CHAT_SPAM: 'Spam',
 } as const;
 
 const reportSeveritySchema = z.enum(['CRITICAL', 'SPAM']);
 
 export const SEVERITY_CATEGORIES: Record<z.infer<typeof reportSeveritySchema>, string[]> = {
-  CRITICAL: [REPORT_CATEGORIES.SPAM, REPORT_CATEGORIES.HATE_SPEECH],
-  SPAM: [REPORT_CATEGORIES.SPAM],
+  CRITICAL: [
+    REPORT_CATEGORIES.SPAM,
+    REPORT_CATEGORIES.HATE_SPEECH,
+    REPORT_CATEGORIES.CHAT_SCAM,
+    REPORT_CATEGORIES.CHAT_HARASSMENT,
+  ],
+  SPAM: [REPORT_CATEGORIES.SPAM, REPORT_CATEGORIES.CHAT_SPAM],
 };
 
 export const listGroupMessageReportsQuerySchema = paginationQuerySchema.extend({

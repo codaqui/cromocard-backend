@@ -41,6 +41,9 @@ const conversation = z.object({
     .object({ content: z.string(), fromMe: z.boolean(), createdAt: z.iso.datetime() })
     .nullable(),
   unreadCount: count,
+  block: z.enum(['BY_ME', 'BY_CONTACT']).nullable().openapi({
+    description: 'Quem bloqueou: o usuário (BY_ME), o contato (BY_CONTACT) ou ninguém (CCD047)',
+  }),
   createdAt: z.iso.datetime(),
 });
 

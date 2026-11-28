@@ -5,14 +5,25 @@ import { createStorageProvider } from '@/providers/storage/storage.factory';
 
 import { seedAdmin } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
-import { seedChat } from './chat.seed';
+import { seedChat, seedChatReports } from './chat.seed';
 import { seedCollection } from './collection.seed';
 import { seedCommunity } from './community.seed';
 import { seedMarketplace } from './marketplace.seed';
-import { uploadSampleImages } from './sample-images';
+import { uploadSampleEvidence, uploadSampleImages } from './sample-images';
 import { seedOptionsFrom } from './seed-options';
 import { seedSellerVerifications } from './seller-verifications.seed';
 import { assertSeedEmailsAvailable, seedProfiles, seedUsers } from './users.seed';
+
+/** Só o banco local recebe as imagens de exemplo; o compartilhado fica sem elas. */
+async function seedWithSampleImages(isLocalDatabase: boolean): Promise<void> {
+  const images = isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
+  const evidenceKey = isLocalDatabase
+    ? await uploadSampleEvidence(createStorageProvider('private'))
+    : undefined;
+  await seedAdmin(prisma, images);
+  await seedChatReports(prisma, evidenceKey);
+  await seedProfiles(prisma, images.avatarUrl);
+}
 
 async function seed(): Promise<void> {
   if (env.NODE_ENV === 'production') {
@@ -32,9 +43,7 @@ async function seed(): Promise<void> {
   await seedSellerVerifications(prisma);
   await seedMarketplace(prisma);
   await seedChat(prisma);
-  const images = options.isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
-  await seedAdmin(prisma, images);
-  await seedProfiles(prisma, images.avatarUrl);
+  await seedWithSampleImages(options.isLocalDatabase);
 
   logger.info(
     options.isLocalDatabase

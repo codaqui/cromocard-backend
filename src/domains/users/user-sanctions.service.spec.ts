@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { Transaction } from '@/lib/transaction';
+
 import {
   AlreadyBlockedError,
   AlreadySuspendedError,
@@ -31,6 +33,7 @@ import type {
 import {
   type SanctionAuditLog,
   type SanctionAuthService,
+  type ContactReportResolverPort,
   type SanctionNotifier,
   UserSanctionsService,
 } from './user-sanctions.service';
@@ -217,21 +220,35 @@ class FakeNotifier implements SanctionNotifier {
 
 const NOW = new Date('2026-11-15T12:00:00Z');
 
+type Resolution = Parameters<ContactReportResolverPort['resolveForSanction']>[0];
+
+class FakeContactReports implements ContactReportResolverPort {
+  resolved: { resolution: Resolution; tx: Transaction }[] = [];
+
+  resolveForSanction(resolution: Resolution, tx: Transaction): Promise<void> {
+    this.resolved = [...this.resolved, { resolution, tx }];
+    return Promise.resolve();
+  }
+}
+
 describe('UserSanctionsService', () => {
   let repository: InMemoryUsersRepository;
   let authService: FakeAuthService;
   let auditLog: FakeAuditLog;
   let notifier: FakeNotifier;
   let service: UserSanctionsService;
+  let contactReports: FakeContactReports;
   const adminId = crypto.randomUUID();
 
   beforeEach(() => {
     repository = new InMemoryUsersRepository();
+    contactReports = new FakeContactReports();
     authService = new FakeAuthService();
     auditLog = new FakeAuditLog();
     notifier = new FakeNotifier();
     service = new UserSanctionsService({
       usersRepository: repository,
+      contactReports,
       authService,
       auditLogService: auditLog,
       notifier,
@@ -398,6 +415,45 @@ describe('UserSanctionsService', () => {
       await expect(
         service.block(lastAdmin.id, { reason: 'Golpe confirmado' }, adminId),
       ).rejects.toBeInstanceOf(LastAdminError);
+    });
+  });
+
+  describe('sanção a partir da denúncia do chat (CCD047, R19)', () => {
+    const reportId = crypto.randomUUID();
+    const sanctions = [
+      [
+        'advertência',
+        (id: string) => service.warn(id, { reason: 'Golpe no chat', reportId }, adminId),
+      ],
+      [
+        'suspensão',
+        (id: string) =>
+          service.suspend(id, { reason: 'Golpe no chat', days: 7, reportId }, adminId),
+      ],
+      [
+        'banimento',
+        (id: string) => service.block(id, { reason: 'Golpe no chat', reportId }, adminId),
+      ],
+    ] as const;
+
+    it.each(sanctions)('CA18: a %s resolve a denúncia na mesma transação', async (_case, apply) => {
+      const user = buildUser();
+      repository.users = [user];
+
+      await apply(user.id);
+
+      expect(contactReports.resolved).toEqual([
+        { resolution: { reportId, userId: user.id, adminId }, tx: TRANSACTION },
+      ]);
+    });
+
+    it('sem a denúncia, a sanção não resolve nada', async () => {
+      const user = buildUser();
+      repository.users = [user];
+
+      await service.block(user.id, { reason: 'Golpe confirmado' }, adminId);
+
+      expect(contactReports.resolved).toEqual([]);
     });
   });
 

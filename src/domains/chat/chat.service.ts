@@ -1,8 +1,8 @@
 import { buildPaginationMeta, toSkipTake } from '@/shared/utils/pagination';
 
 import {
+  ContactBlockedError,
   ContactNotFoundError,
-  ConversationBlockedError,
   ConversationNotFoundError,
 } from './chat.errors';
 import type { ChatRepository } from './chat.repository';
@@ -27,7 +27,7 @@ export type ChatStore = Pick<
   | 'listPartnerIds'
 >;
 
-export type ContactsStore = Pick<ContactsRepository, 'search' | 'isReachable' | 'isBlockedBetween'>;
+export type ContactsStore = Pick<ContactsRepository, 'search' | 'isReachable'>;
 
 export interface StartedConversation {
   conversation: ConversationSummary;
@@ -79,10 +79,8 @@ export class ChatService {
     userId: string,
     { conversationId, content }: SendMessageInput,
   ): Promise<SentMessage> {
-    const { contact } = await this.conversationOf(userId, conversationId);
-    if (await this.contacts.isBlockedBetween(userId, contact.id)) {
-      throw new ConversationBlockedError();
-    }
+    const { contact, block } = await this.conversationOf(userId, conversationId);
+    if (block) throw new ContactBlockedError();
     const message = await this.repository.createMessage(conversationId, userId, content);
     return { message, recipientId: contact.id };
   }

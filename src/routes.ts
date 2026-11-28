@@ -5,6 +5,10 @@ import { API_PREFIX } from '@/config/api';
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
 import { chatModule } from '@/domains/chat/chat.module';
+import {
+  contactBlocksModule,
+  contactReportsModule,
+} from '@/domains/chat/contact-moderation.module';
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { cardsModule } from '@/domains/catalog/cards/cards.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
@@ -45,6 +49,7 @@ const sharedModules: DomainModule[] = [
   globalNotificationsModule,
   sellerVerificationsModule,
   chatModule,
+  contactBlocksModule,
   connectedAccountsModule,
   paymentsWebhookModule,
 ];
@@ -55,7 +60,8 @@ export interface RoutesOptions {
 }
 
 export function createRoutes({ withUploads }: RoutesOptions): Router {
-  const domainModules = withUploads ? [...sharedModules, uploadsModule] : sharedModules;
+  const uploadModules = [uploadsModule, contactReportsModule];
+  const domainModules = withUploads ? [...sharedModules, ...uploadModules] : sharedModules;
   const routes = Router();
 
   domainModules.forEach(({ basePath, router }) => routes.use(`${API_PREFIX}${basePath}`, router));

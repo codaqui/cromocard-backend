@@ -22,6 +22,7 @@ interface Summary {
   };
   lastMessage: { content: string; fromMe: boolean } | null;
   unreadCount: number;
+  block: 'BY_ME' | 'BY_CONTACT' | null;
 }
 interface ListMeta {
   total: number;
@@ -168,6 +169,21 @@ describe('GET /me/conversations', () => {
     );
 
     expect(items[0]?.lastMessage).toMatchObject({ content: '', fromMe: false });
+  });
+
+  it('R8 e R17: cada lado vê de quem é o bloqueio, e a conversa sem bloqueio vem nula', async () => {
+    const gabriel = await fx.createUser('gabriel');
+    const marcos = await fx.createUser('marcos');
+    await fx.createConversation(gabriel, marcos);
+    await fx.block(gabriel, marcos);
+
+    const blockOf = async (user: TestUser) =>
+      dataOf<Summary[]>(await request(app).get(BASE).set(as(user)))[0]?.block;
+
+    expect(await blockOf(gabriel)).toBe('BY_ME');
+    expect(await blockOf(marcos)).toBe('BY_CONTACT');
+    const anaList = dataOf<Summary[]>(await request(app).get(BASE).set(as(ana)));
+    expect(anaList.every(({ block }) => block === null)).toBe(true);
   });
 
   it('CA7: 401 sem token e 403 para o administrador', async () => {

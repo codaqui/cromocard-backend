@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ContactBlockedError,
   ContactNotFoundError,
-  ConversationBlockedError,
   ConversationNotFoundError,
 } from './chat.errors';
 import { ChatService, type ChatStore, type ContactsStore } from './chat.service';
@@ -14,6 +14,7 @@ const CONVERSATION = '0199a000-0000-7000-8000-000000000001';
 const summary = (changes: Partial<ConversationSummary> = {}): ConversationSummary => ({
   id: CONVERSATION,
   contact: { id: 'elisa', name: 'Elisa', username: 'elisa.raras', avatarUrl: null, verified: true },
+  block: null,
   lastMessage: { content: 'Combinado, compro pelo anúncio.', fromMe: true, createdAt: new Date() },
   unreadCount: 0,
   createdAt: new Date(),
@@ -47,7 +48,6 @@ beforeEach(() => {
   contacts = {
     search: vi.fn().mockResolvedValue([]),
     isReachable: vi.fn().mockResolvedValue(true),
-    isBlockedBetween: vi.fn().mockResolvedValue(false),
   };
   service = new ChatService(store as unknown as ChatStore, contacts as unknown as ContactsStore);
 });
@@ -116,17 +116,19 @@ describe('mensagens', () => {
       recipientId: 'elisa',
     });
     expect(store.createMessage).toHaveBeenCalledWith(CONVERSATION, ANA, 'Oi');
-    expect(contacts.isBlockedBetween).toHaveBeenCalledWith(ANA, 'elisa');
   });
 
-  it('L18: recusa o envio quando há bloqueio entre os dois, sem gravar a mensagem', async () => {
-    contacts.isBlockedBetween.mockResolvedValue(true);
+  it.each(['BY_ME', 'BY_CONTACT'] as const)(
+    'CA5: recusa a mensagem com o contato bloqueado (%s), sem gravar',
+    async (block) => {
+      store.findConversation.mockResolvedValue(summary({ block }));
 
-    await expect(
-      service.sendMessage(ANA, { conversationId: CONVERSATION, content: 'Oi' }),
-    ).rejects.toBeInstanceOf(ConversationBlockedError);
-    expect(store.createMessage).not.toHaveBeenCalled();
-  });
+      await expect(
+        service.sendMessage(ANA, { conversationId: CONVERSATION, content: 'Oi' }),
+      ).rejects.toBeInstanceOf(ContactBlockedError);
+      expect(store.createMessage).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('Nova conversa (R13)', () => {

@@ -12,9 +12,12 @@ export interface LastMessage {
   createdAt: Date;
 }
 
+export type ContactBlock = 'BY_ME' | 'BY_CONTACT' | null;
+
 export interface ConversationSummary {
   id: string;
   contact: Contact;
+  block: ContactBlock;
   lastMessage: LastMessage | null;
   unreadCount: number;
   createdAt: Date;

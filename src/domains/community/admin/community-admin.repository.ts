@@ -33,7 +33,9 @@ const groupMessageReportSelect = {
   id: true,
   reason: true,
   description: true,
-  reporter: { select: { name: true } },
+  reporter: { select: { name: true, username: true } },
+  targetUser: { select: { id: true, name: true, username: true, createdAt: true } },
+  evidences: { where: notDeleted, select: { id: true }, orderBy: { sortOrder: 'asc' } },
   groupMessage: {
     select: {
       id: true,
@@ -56,14 +58,15 @@ type GroupSummaryRow = Prisma.GroupGetPayload<{ select: typeof groupSummarySelec
 type GroupDetailRow = Prisma.GroupGetPayload<{ select: typeof groupDetailSelect }>;
 type GroupMessageReportRow = Prisma.ReportGetPayload<{ select: typeof groupMessageReportSelect }>;
 type ReportedMessageRow = NonNullable<GroupMessageReportRow['groupMessage']>;
+type ReportedUserRow = NonNullable<GroupMessageReportRow['targetUser']>;
 
 function flattenGroup<T extends GroupSummaryRow>({ creator, _count, ...group }: T) {
   return { ...group, membersCount: _count.members, creatorName: creator.name };
 }
 
-interface MessageStats {
-  authorWarnings: number;
-  reportersCount: number;
+interface QueueStats {
+  warningsOf: (userId: string) => number;
+  reportersOf: (messageId: string) => number;
 }
 
 function unique(values: string[]): string[] {
@@ -74,34 +77,47 @@ function countIn(counts: Map<string | null, number>, key: string): number {
   return counts.get(key) ?? 0;
 }
 
+const accountAgeDays = (createdAt: Date, now: Date) =>
+  Math.floor((now.getTime() - createdAt.getTime()) / DAY_IN_MS);
+
 function toReportedMessage(
   { author, group, ...message }: ReportedMessageRow,
   now: Date,
-  { authorWarnings, reportersCount }: MessageStats,
+  stats: QueueStats,
 ) {
-  const authorAccountAgeDays = Math.floor((now.getTime() - author.createdAt.getTime()) / DAY_IN_MS);
   return {
     ...message,
     authorId: author.id,
     authorName: author.name,
     groupName: group.name,
-    authorAccountAgeDays,
-    authorWarnings,
-    reportersCount,
+    authorAccountAgeDays: accountAgeDays(author.createdAt, now),
+    authorWarnings: stats.warningsOf(author.id),
+    reportersCount: stats.reportersOf(message.id),
+  };
+}
+
+function toReportedUser({ createdAt, ...user }: ReportedUserRow, now: Date, stats: QueueStats) {
+  return {
+    ...user,
+    accountAgeDays: accountAgeDays(createdAt, now),
+    warnings: stats.warningsOf(user.id),
   };
 }
 
 function toGroupMessageReport(
-  { reporter, groupMessage, ...report }: GroupMessageReportRow,
+  { reporter, groupMessage, targetUser, evidences, ...report }: GroupMessageReportRow,
   now: Date,
-  statsOf: (authorId: string, messageId: string) => MessageStats,
+  stats: QueueStats,
 ) {
+  const fromChat = groupMessage === null;
   return {
     ...report,
+    origin: fromChat ? ('CHAT' as const) : ('GROUP' as const),
     reporterName: reporter.name,
-    message:
-      groupMessage &&
-      toReportedMessage(groupMessage, now, statsOf(groupMessage.author.id, groupMessage.id)),
+    reporterUsername: reporter.username,
+    message: groupMessage && toReportedMessage(groupMessage, now, stats),
+    reportedUser: fromChat && targetUser ? toReportedUser(targetUser, now, stats) : null,
+    evidences,
   };
 }
 
@@ -144,6 +160,8 @@ export interface CommunityAdminRepository {
     now: Date,
   ): Promise<Page<GroupMessageReport>>;
   findGroupMessageReportState(id: string): Promise<ReportState | null>;
+  findQueueReportStatus(id: string): Promise<ReportStatus | null>;
+  findEvidenceKey(reportId: string, evidenceId: string): Promise<string | null>;
   removeReportedMessage(removal: MessageRemoval, tx: Transaction): Promise<string[]>;
   dismissReport(reportId: string, moderatorId: string): Promise<boolean>;
 }
@@ -166,6 +184,25 @@ const reportedMessageStillVisible = {
   groupMessage: { ...notDeleted, group: notDeleted },
 } satisfies Prisma.ReportWhereInput;
 
+const chatReports = {
+  ...notDeleted,
+  targetType: ReportTargetType.USER,
+  targetUserId: { not: null },
+  evidences: { some: notDeleted },
+} satisfies Prisma.ReportWhereInput;
+
+const reportedUserStillVisible = { targetUser: notDeleted } satisfies Prisma.ReportWhereInput;
+
+function queueReports(onlyVisible: boolean): Prisma.ReportWhereInput {
+  const groups = { ...groupMessageReports, ...(onlyVisible && reportedMessageStillVisible) };
+  const chats = { ...chatReports, ...(onlyVisible && reportedUserStillVisible) };
+  return { OR: [groups, chats] };
+}
+
+function openQueueReport(id: string): Prisma.ReportWhereInput {
+  return { id, ...queueReports(true), status: { in: [...OPEN_REPORT_STATUSES] } };
+}
+
 function openReport(id: string): Prisma.ReportWhereInput {
   return {
     id,
@@ -179,9 +216,8 @@ function reportsQueueFilter({
   status,
   severity,
 }: ListGroupMessageReportsQuery): Prisma.ReportWhereInput {
-  const visibility = isOpenReportStatus(status) ? reportedMessageStillVisible : {};
   const severityFilter = severity ? { reason: { in: SEVERITY_CATEGORIES[severity] } } : {};
-  return { ...groupMessageReports, ...visibility, ...severityFilter, status };
+  return { ...queueReports(isOpenReportStatus(status)), ...severityFilter, status };
 }
 
 function resolution(status: ReportStatus, moderatorId: string) {
@@ -242,13 +278,7 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
       this.prisma.groupMessage.count({
         where: { ...notDeleted, createdAt: { gte: messagesSince }, group: notDeleted },
       }),
-      this.prisma.report.count({
-        where: {
-          ...groupMessageReports,
-          ...reportedMessageStillVisible,
-          status: ReportStatus.PENDING,
-        },
-      }),
+      this.prisma.report.count({ where: { ...queueReports(true), status: ReportStatus.PENDING } }),
     ]);
 
     return { activeGroups, messagesLast7Days, pendingReports };
@@ -286,8 +316,8 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
       this.prisma.report.count({ where }),
     ]);
 
-    const statsOf = await this.messageStatsOf(rows);
-    return { items: rows.map((row) => toGroupMessageReport(row, now, statsOf)), total };
+    const stats = await this.queueStatsOf(rows);
+    return { items: rows.map((row) => toGroupMessageReport(row, now, stats)), total };
   }
 
   private countWarningsByAuthor(authorIds: string[]) {
@@ -306,25 +336,41 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
     });
   }
 
-  private async messageStatsOf(
-    rows: GroupMessageReportRow[],
-  ): Promise<(authorId: string, messageId: string) => MessageStats> {
+  private async queueStatsOf(rows: GroupMessageReportRow[]): Promise<QueueStats> {
     const messages = rows.map((row) => row.groupMessage).filter((message) => message !== null);
-    const authorIds = unique(messages.map((message) => message.author.id));
-    const messageIds = unique(messages.map((message) => message.id));
-
-    const [warningsByAuthor, reportsByMessage] = await Promise.all([
-      this.countWarningsByAuthor(authorIds),
-      this.countReportsByMessage(messageIds),
+    const reported = rows.map((row) => row.targetUser).filter((user) => user !== null);
+    const userIds = unique([
+      ...messages.map(({ author }) => author.id),
+      ...reported.map(({ id }) => id),
     ]);
 
-    const warningsMap = new Map(warningsByAuthor.map((row) => [row.userId, row._count]));
-    const reportersMap = new Map(reportsByMessage.map((row) => [row.groupMessageId, row._count]));
+    const [warningsByUser, reportsByMessage] = await Promise.all([
+      this.countWarningsByAuthor(userIds),
+      this.countReportsByMessage(unique(messages.map(({ id }) => id))),
+    ]);
 
-    return (authorId, messageId) => ({
-      authorWarnings: countIn(warningsMap, authorId),
-      reportersCount: countIn(reportersMap, messageId),
+    const warningsMap = new Map(warningsByUser.map((row) => [row.userId, row._count]));
+    const reportersMap = new Map(reportsByMessage.map((row) => [row.groupMessageId, row._count]));
+    return {
+      warningsOf: (userId) => countIn(warningsMap, userId),
+      reportersOf: (messageId) => countIn(reportersMap, messageId),
+    };
+  }
+
+  async findQueueReportStatus(id: string): Promise<ReportStatus | null> {
+    const report = await this.prisma.report.findFirst({
+      where: { id, ...queueReports(true) },
+      select: { status: true },
     });
+    return report?.status ?? null;
+  }
+
+  async findEvidenceKey(reportId: string, evidenceId: string): Promise<string | null> {
+    const evidence = await this.prisma.reportEvidence.findFirst({
+      where: { id: evidenceId, reportId, ...notDeleted, report: notDeleted },
+      select: { url: true },
+    });
+    return evidence?.url ?? null;
   }
 
   findGroupMessageReportState(id: string): Promise<ReportState | null> {
@@ -351,7 +397,7 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
 
   async dismissReport(reportId: string, moderatorId: string): Promise<boolean> {
     const { count } = await this.prisma.report.updateMany({
-      where: openReport(reportId),
+      where: openQueueReport(reportId),
       data: resolution(ReportStatus.DISMISSED, moderatorId),
     });
     return count > 0;

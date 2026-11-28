@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@/generated/prisma/client';
+import { ReportTargetType } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 
 import { loadSeedData, seedKey } from './load-seed-data';
@@ -25,6 +26,15 @@ const chatSchema = z.object({
     }),
   ),
   blocks: z.array(z.object({ key: seedKey, blocker: seedKey, blocked: seedKey })),
+  reports: z.array(
+    z.object({
+      key: seedKey,
+      reporter: seedKey,
+      target: seedKey,
+      reason: z.string().max(90),
+      description: z.string().max(500),
+    }),
+  ),
 });
 
 type SeedConversation = z.infer<typeof chatSchema>['conversations'][number];
@@ -77,6 +87,32 @@ export async function seedChat(prisma: PrismaClient): Promise<void> {
       where: { id: data.id },
       create: data,
       update: { deletedAt: null },
+    });
+  }
+}
+
+export async function seedChatReports(prisma: PrismaClient, evidenceKey?: string): Promise<void> {
+  if (!evidenceKey) return;
+  for (const { key, reporter, target, reason, description } of chat.reports) {
+    const id = seedId(SeedNamespace.contactReports, key);
+    const data = {
+      id,
+      reporterId: userIdOf(reporter),
+      targetUserId: userIdOf(target),
+      targetType: ReportTargetType.USER,
+      reason,
+      description,
+    };
+    await prisma.report.upsert({ where: { id }, create: data, update: data });
+    const evidence = {
+      id: seedId(SeedNamespace.reportEvidences, key),
+      reportId: id,
+      url: evidenceKey,
+    };
+    await prisma.reportEvidence.upsert({
+      where: { id: evidence.id },
+      create: evidence,
+      update: evidence,
     });
   }
 }

@@ -84,17 +84,4 @@ export class ContactsRepository {
     });
     return count > 0;
   }
-
-  async isBlockedBetween(userId: string, contactId: string): Promise<boolean> {
-    const count = await this.prisma.userBlock.count({
-      where: {
-        ...notDeleted,
-        OR: [
-          { blockerId: userId, blockedId: contactId },
-          { blockerId: contactId, blockedId: userId },
-        ],
-      },
-    });
-    return count > 0;
-  }
 }
