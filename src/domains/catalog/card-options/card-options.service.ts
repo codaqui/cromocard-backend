@@ -1,10 +1,10 @@
 import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 
-import type { CardCondition, CardOption, PublicCardsRepository } from './public-cards.repository';
-import type { SearchCardsQuery } from './public-cards.validator';
+import type { CardCondition, CardOption, CardOptionsRepository } from './card-options.repository';
+import type { SearchCardsQuery } from './card-options.validator';
 
-export class PublicCardsService {
-  constructor(private readonly repository: PublicCardsRepository) {}
+export class CardOptionsService {
+  constructor(private readonly repository: CardOptionsRepository) {}
 
   async searchCards(query: SearchCardsQuery): Promise<Paginated<CardOption>> {
     const { items, total } = await this.repository.searchCards(query);

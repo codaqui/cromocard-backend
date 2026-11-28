@@ -12,7 +12,10 @@ import {
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { cardsModule } from '@/domains/catalog/cards/cards.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
-import { cardConditionsModule, publicCardsModule } from '@/domains/catalog/public-cards.module';
+import {
+  cardConditionsModule,
+  cardOptionsModule,
+} from '@/domains/catalog/card-options/card-options.module';
 import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
 import { catalogRequestsModule } from '@/domains/catalog/requests/catalog-requests.module';
 import { collectionModule } from '@/domains/collection/collection.module';
@@ -40,7 +43,7 @@ const sharedModules: DomainModule[] = [
   financeModule,
   catalogModule,
   cardsModule,
-  publicCardsModule,
+  cardOptionsModule,
   cardConditionsModule,
   catalogRequestsModule,
   catalogRequestVotesModule,

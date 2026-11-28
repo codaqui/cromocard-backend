@@ -2,7 +2,7 @@ import type { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openap
 
 import { z } from '@/lib/zod';
 
-import { searchCardsQuerySchema } from './public-cards.validator';
+import { searchCardsQuerySchema } from './card-options.validator';
 
 const tags = ['Catálogo'];
 const security = [{ bearerAuth: [] }];
@@ -59,7 +59,7 @@ const conditionsPath: RouteConfig = {
   },
 };
 
-export function registerPublicCardsDocs(registry: OpenAPIRegistry): void {
+export function registerCardOptionsDocs(registry: OpenAPIRegistry): void {
   registry.registerPath(searchPath);
 }
 

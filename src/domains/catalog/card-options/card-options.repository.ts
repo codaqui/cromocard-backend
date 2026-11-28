@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted } from '@/shared/utils/soft-delete';
 
-import type { SearchCardsQuery } from './public-cards.validator';
+import type { SearchCardsQuery } from './card-options.validator';
 
 const cardOptionSelect = {
   id: true,
@@ -27,12 +27,12 @@ export interface CardOptionsPage {
   total: number;
 }
 
-export interface PublicCardsRepository {
+export interface CardOptionsRepository {
   searchCards(query: SearchCardsQuery): Promise<CardOptionsPage>;
   listConditions(): Promise<CardCondition[]>;
 }
 
-export class PrismaPublicCardsRepository implements PublicCardsRepository {
+export class PrismaCardOptionsRepository implements CardOptionsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async searchCards(query: SearchCardsQuery): Promise<CardOptionsPage> {

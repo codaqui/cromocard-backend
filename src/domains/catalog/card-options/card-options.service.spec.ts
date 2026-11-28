@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { CardOption, PublicCardsRepository } from './public-cards.repository';
-import { PublicCardsService } from './public-cards.service';
-import { searchCardsQuerySchema } from './public-cards.validator';
+import type { CardOption, CardOptionsRepository } from './card-options.repository';
+import { CardOptionsService } from './card-options.service';
+import { searchCardsQuerySchema } from './card-options.validator';
 
 const charizard: CardOption = {
   id: '0190a000-0000-7000-8000-000000000001',
@@ -13,7 +13,7 @@ const charizard: CardOption = {
   category: { id: '0190a000-0000-7000-8000-000000000003', name: 'Pokémon TCG' },
 };
 
-function makeRepository(overrides: Partial<PublicCardsRepository> = {}): PublicCardsRepository {
+function makeRepository(overrides: Partial<CardOptionsRepository> = {}): CardOptionsRepository {
   return {
     searchCards: vi.fn().mockResolvedValue({ items: [charizard], total: 21 }),
     listConditions: vi.fn().mockResolvedValue([]),
@@ -21,13 +21,13 @@ function makeRepository(overrides: Partial<PublicCardsRepository> = {}): PublicC
   };
 }
 
-describe('PublicCardsService.searchCards', () => {
+describe('CardOptionsService.searchCards', () => {
   it('devolve as cartas com o álbum e a categoria e a paginação', async () => {
     const searchCards = vi.fn().mockResolvedValue({ items: [charizard], total: 21 });
     const repository = makeRepository({ searchCards });
     const query = searchCardsQuerySchema.parse({ q: 'char', pageSize: '10', page: '2' });
 
-    const result = await new PublicCardsService(repository).searchCards(query);
+    const result = await new CardOptionsService(repository).searchCards(query);
 
     expect(searchCards).toHaveBeenCalledWith({ q: 'char', page: 2, pageSize: 10 });
     expect(result).toEqual({
@@ -37,12 +37,12 @@ describe('PublicCardsService.searchCards', () => {
   });
 });
 
-describe('PublicCardsService.listConditions', () => {
+describe('CardOptionsService.listConditions', () => {
   it('devolve as condições do repositório', async () => {
     const conditions = [{ id: '0190a000-0000-7000-8000-000000000004', name: 'Mint', sortOrder: 1 }];
     const repository = makeRepository({ listConditions: vi.fn().mockResolvedValue(conditions) });
 
-    await expect(new PublicCardsService(repository).listConditions()).resolves.toEqual(conditions);
+    await expect(new CardOptionsService(repository).listConditions()).resolves.toEqual(conditions);
   });
 });
 

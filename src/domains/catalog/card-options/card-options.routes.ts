@@ -2,9 +2,9 @@ import { Router } from 'express';
 
 import { authenticate } from '@/shared/middlewares/authenticate';
 
-import type { PublicCardsController } from './public-cards.controller';
+import type { CardOptionsController } from './card-options.controller';
 
-export function createPublicCardsRoutes(controller: PublicCardsController): Router {
+export function createCardOptionsRoutes(controller: CardOptionsController): Router {
   const router = Router();
 
   router.get('/', authenticate, controller.searchCards);
@@ -12,7 +12,7 @@ export function createPublicCardsRoutes(controller: PublicCardsController): Rout
   return router;
 }
 
-export function createCardConditionsRoutes(controller: PublicCardsController): Router {
+export function createCardConditionsRoutes(controller: CardOptionsController): Router {
   const router = Router();
 
   router.get('/', authenticate, controller.listConditions);

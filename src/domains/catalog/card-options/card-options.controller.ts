@@ -2,11 +2,11 @@ import type { Request, Response } from 'express';
 
 import { ok, paginated } from '@/shared/utils/http-response';
 
-import type { PublicCardsService } from './public-cards.service';
-import { searchCardsQuerySchema } from './public-cards.validator';
+import type { CardOptionsService } from './card-options.service';
+import { searchCardsQuerySchema } from './card-options.validator';
 
-export class PublicCardsController {
-  constructor(private readonly service: PublicCardsService) {}
+export class CardOptionsController {
+  constructor(private readonly service: CardOptionsService) {}
 
   searchCards = async (req: Request, res: Response): Promise<void> => {
     const { items, meta } = await this.service.searchCards(searchCardsQuerySchema.parse(req.query));
