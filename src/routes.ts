@@ -5,6 +5,7 @@ import { API_PREFIX } from '@/config/api';
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
 import { authModule, authService } from '@/domains/auth/auth.module';
+import { cardsModule } from '@/domains/catalog/cards/cards.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
 import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
 import { catalogRequestsModule } from '@/domains/catalog/requests/catalog-requests.module';
@@ -31,6 +32,7 @@ const sharedModules: DomainModule[] = [
   dashboardModule,
   financeModule,
   catalogModule,
+  cardsModule,
   catalogRequestsModule,
   catalogRequestVotesModule,
   collectionModule,

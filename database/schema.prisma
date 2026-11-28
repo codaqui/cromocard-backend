@@ -246,21 +246,22 @@ model Album {
 }
 
 model Card {
-  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  albumId       String?   @map("album_id") @db.Uuid
-  categoryId    String?   @map("category_id") @db.Uuid
-  rarityId      String?   @map("rarity_id") @db.Uuid
-  languageId    String?   @map("language_id") @db.Uuid
-  name          String    @db.VarChar(160)
-  number        String?   @db.VarChar(20)
+  id            String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  albumId       String?    @map("album_id") @db.Uuid
+  categoryId    String?    @map("category_id") @db.Uuid
+  rarityId      String?    @map("rarity_id") @db.Uuid
+  languageId    String?    @map("language_id") @db.Uuid
+  name          String     @db.VarChar(160)
+  number        String?    @db.VarChar(20)
   description   String?
-  frontImageUrl String?   @map("front_image_url") @db.VarChar(255)
-  backImageUrl  String?   @map("back_image_url") @db.VarChar(255)
-  code          String?   @db.VarChar(30)
-  variants      String?   @db.VarChar(120)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  frontImageUrl String?    @map("front_image_url") @db.VarChar(255)
+  backImageUrl  String?    @map("back_image_url") @db.VarChar(255)
+  code          String?    @db.VarChar(30)
+  variants      String?    @db.VarChar(120)
+  status        CardStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
   album           Album?           @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_album_id")
   category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_category_id")
@@ -759,6 +760,7 @@ model Listing {
   groupMessages GroupMessage[]
   reports       Report[]
 
+  @@index([cardId, status, price], map: "idx_listings_card_id_status_price")
   @@map("listings")
 }
 
@@ -858,7 +860,15 @@ model PriceHistory {
 
   card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_price_history_card_id")
 
+  @@index([cardId, source, referenceDate], map: "idx_price_history_card_id_source_reference_date")
   @@map("price_history")
+}
+
+enum CardStatus {
+  DRAFT
+  ACTIVE
+
+  @@map("card_status")
 }
 
 model Collection {
