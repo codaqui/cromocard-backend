@@ -1,5 +1,6 @@
 import { afterCommit, type Transaction } from '@/lib/transaction';
 
+import { newMessageNotification, type NewMessageEvent } from './new-message.notification';
 import { typesIn } from './notification-types';
 import {
   countsOf,
@@ -67,6 +68,16 @@ export class NotificationsService {
     afterCommit(tx, () => {
       this.deps.publisher.publish([record]);
     });
+  }
+
+  async notifyOnce(notification: NewNotification & { referenceLink: string }): Promise<void> {
+    const { userId, type, referenceLink } = notification;
+    if (await this.deps.repository.hasUnread(userId, type, referenceLink)) return;
+    await this.notify(notification);
+  }
+
+  notifyNewMessage(event: NewMessageEvent): Promise<void> {
+    return this.notifyOnce(newMessageNotification(event));
   }
 
   async publishDispatch(globalNotificationId: string): Promise<void> {

@@ -37,6 +37,18 @@ export class InMemoryNotificationsRepository implements NotificationsRepository 
     return full;
   }
 
+  hasUnread(userId: string, type: string, referenceLink: string): Promise<boolean> {
+    return Promise.resolve(
+      this.records.some(
+        (record) =>
+          record.userId === userId &&
+          record.type === type &&
+          record.referenceLink === referenceLink &&
+          !record.isRead,
+      ),
+    );
+  }
+
   create(notification: NewNotification): Promise<NotificationRecord> {
     return Promise.resolve(this.seed({ ...notification, createdAt: new Date() }));
   }

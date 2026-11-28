@@ -177,4 +177,56 @@ describe('NotificationsService', () => {
       expect(published.map(({ userId }) => userId).sort()).toEqual([ANA, BRUNO].sort());
     });
   });
+
+  describe('notifyNewMessage', () => {
+    const fromBruno = (content: string, conversationId = 'c-1') => ({
+      recipientId: ANA,
+      conversationId,
+      author: { name: 'Bruno', username: 'bruno' },
+      content,
+    });
+    const newMessagesOf = (userId: string) =>
+      repository.records.filter(
+        (record) => record.userId === userId && record.type === 'NEW_MESSAGE',
+      );
+
+    it('CA16: duas mensagens seguidas da mesma conversa geram uma notificação só, com o trecho da primeira', async () => {
+      await service.notifyNewMessage(fromBruno('Primeira'));
+      await service.notifyNewMessage(fromBruno('Segunda'));
+
+      expect(newMessagesOf(ANA)).toHaveLength(1);
+      expect(newMessagesOf(ANA)[0]).toMatchObject({
+        title: '@bruno',
+        message: 'Primeira',
+        referenceLink: '/mensagens?conversa=c-1',
+      });
+      expect(published).toHaveLength(1);
+    });
+
+    it('CA16: depois de lida, a próxima mensagem gera outra notificação', async () => {
+      await service.notifyNewMessage(fromBruno('Primeira'));
+      const [first] = newMessagesOf(ANA);
+      await service.markAsRead(ANA, first?.id ?? '');
+
+      await service.notifyNewMessage(fromBruno('Terceira'));
+
+      expect(newMessagesOf(ANA)).toHaveLength(2);
+    });
+
+    it('outra conversa gera a própria notificação', async () => {
+      await service.notifyNewMessage(fromBruno('Oi'));
+      await service.notifyNewMessage(fromBruno('Oi', 'c-2'));
+
+      expect(newMessagesOf(ANA)).toHaveLength(2);
+    });
+
+    it('CA23: com mensagens diretas desligadas no site, nada é gravado nem publicado', async () => {
+      blockedInApp.add(`${ANA}:NEW_MESSAGE`);
+
+      await service.notifyNewMessage(fromBruno('Oi'));
+
+      expect(newMessagesOf(ANA)).toHaveLength(0);
+      expect(published).toHaveLength(0);
+    });
+  });
 });

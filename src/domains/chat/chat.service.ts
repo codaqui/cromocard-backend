@@ -34,6 +34,15 @@ export interface StartedConversation {
   created: boolean;
 }
 
+export interface NewMessageNotifier {
+  notifyNewMessage(event: {
+    recipientId: string;
+    conversationId: string;
+    author: { name: string; username: string | null };
+    content: string;
+  }): Promise<void>;
+}
+
 export interface SentMessage {
   message: ChatMessage;
   recipientId: string;
@@ -43,6 +52,7 @@ export class ChatService {
   constructor(
     private readonly repository: ChatStore,
     private readonly contacts: ContactsStore,
+    private readonly notifier: NewMessageNotifier,
   ) {}
 
   listContacts(userId: string, query: ContactsQuery) {
@@ -84,6 +94,12 @@ export class ChatService {
       throw new ConversationBlockedError();
     }
     const message = await this.repository.createMessage(conversationId, userId, content);
+    await this.notifier.notifyNewMessage({
+      recipientId: contact.id,
+      conversationId,
+      author: message.author,
+      content: message.content,
+    });
     return { message, recipientId: contact.id };
   }
 

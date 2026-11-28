@@ -1,3 +1,4 @@
+import { notificationsService } from '@/domains/notifications/notifications.module';
 import { prisma } from '@/lib/prisma';
 import type { DomainModule } from '@/shared/types/domain-module';
 
@@ -13,6 +14,7 @@ import { PresenceRegistry } from './presence.registry';
 export const chatService = new ChatService(
   new ChatRepository(prisma),
   new ContactsRepository(prisma),
+  notificationsService,
 );
 
 export const chatModule: DomainModule = {

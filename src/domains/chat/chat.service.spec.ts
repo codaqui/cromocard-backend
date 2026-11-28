@@ -5,7 +5,12 @@ import {
   ConversationBlockedError,
   ConversationNotFoundError,
 } from './chat.errors';
-import { ChatService, type ChatStore, type ContactsStore } from './chat.service';
+import {
+  ChatService,
+  type ChatStore,
+  type ContactsStore,
+  type NewMessageNotifier,
+} from './chat.service';
 import type { ChatMessage, ConversationSummary } from './chat.types';
 
 const ANA = 'ana';
@@ -31,6 +36,7 @@ const message: ChatMessage = {
 
 let store: { [K in keyof ChatStore]: ReturnType<typeof vi.fn> };
 let contacts: { [K in keyof ContactsStore]: ReturnType<typeof vi.fn> };
+let notifier: { notifyNewMessage: ReturnType<typeof vi.fn> };
 let service: ChatService;
 
 beforeEach(() => {
@@ -49,7 +55,12 @@ beforeEach(() => {
     isReachable: vi.fn().mockResolvedValue(true),
     isBlockedBetween: vi.fn().mockResolvedValue(false),
   };
-  service = new ChatService(store as unknown as ChatStore, contacts as unknown as ContactsStore);
+  notifier = { notifyNewMessage: vi.fn().mockResolvedValue(undefined) };
+  service = new ChatService(
+    store as unknown as ChatStore,
+    contacts as unknown as ContactsStore,
+    notifier as unknown as NewMessageNotifier,
+  );
 });
 
 describe('listConversations', () => {
@@ -126,6 +137,18 @@ describe('mensagens', () => {
       service.sendMessage(ANA, { conversationId: CONVERSATION, content: 'Oi' }),
     ).rejects.toBeInstanceOf(ConversationBlockedError);
     expect(store.createMessage).not.toHaveBeenCalled();
+    expect(notifier.notifyNewMessage).not.toHaveBeenCalled();
+  });
+
+  it('CCD053 CA16: depois de gravar, avisa quem recebe com o autor e o texto da mensagem', async () => {
+    await service.sendMessage(ANA, { conversationId: CONVERSATION, content: 'Oi' });
+
+    expect(notifier.notifyNewMessage).toHaveBeenCalledWith({
+      recipientId: 'elisa',
+      conversationId: CONVERSATION,
+      author: message.author,
+      content: 'Oi',
+    });
   });
 });
 

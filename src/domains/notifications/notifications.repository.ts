@@ -43,6 +43,7 @@ export interface NotificationsRepository {
   countByType(userId: string): Promise<TypeReadCount[]>;
   markAsRead(userId: string, id: string): Promise<NotificationRecord | null>;
   findByGlobalNotification(globalNotificationId: string): Promise<NotificationRecord[]>;
+  hasUnread(userId: string, type: NotificationType, referenceLink: string): Promise<boolean>;
 }
 
 const NOTIFICATION_SELECT = {
@@ -111,5 +112,13 @@ export class PrismaNotificationsRepository implements NotificationsRepository {
       where: { globalNotificationId, ...notDeleted },
       select: NOTIFICATION_SELECT,
     });
+  }
+
+  async hasUnread(userId: string, type: NotificationType, referenceLink: string): Promise<boolean> {
+    const found = await this.prisma.notification.findFirst({
+      where: { userId, type, referenceLink, isRead: false, ...notDeleted },
+      select: { id: true },
+    });
+    return found !== null;
   }
 }
