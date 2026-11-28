@@ -32,6 +32,8 @@ export interface Recipient {
   id: string;
   name: string;
   email: string;
+  wantsInApp: boolean;
+  wantsEmail: boolean;
 }
 
 export interface DispatchData {
@@ -45,6 +47,7 @@ export interface DispatchData {
 
 export interface Delivery {
   recipientIds: string[];
+  inAppRecipientIds: string[];
   inApp: boolean;
   sentAt: Date;
 }
@@ -82,10 +85,10 @@ function batchesOf<T>(items: T[], size: number): T[][] {
 async function createNotifications(
   tx: Transaction,
   dispatch: NotificationContent,
-  { recipientIds, inApp }: Delivery,
+  { inAppRecipientIds, inApp }: Delivery,
 ): Promise<void> {
   if (!inApp) return;
-  for (const batch of batchesOf(recipientIds, NOTIFICATIONS_BATCH_SIZE)) {
+  for (const batch of batchesOf(inAppRecipientIds, NOTIFICATIONS_BATCH_SIZE)) {
     await tx.notification.createMany({
       data: batch.map((userId) => ({
         userId,
@@ -99,6 +102,20 @@ async function createNotifications(
   }
 }
 
+const channelsSelect = {
+  where: { event: 'ALL', ...notDeleted },
+  select: { inApp: true, email: true },
+} satisfies Prisma.User$notificationPreferencesArgs;
+
+type UserWithChannels = { id: string; name: string; email: string } & {
+  notificationPreferences: { inApp: boolean; email: boolean }[];
+};
+
+function toRecipient({ notificationPreferences, ...user }: UserWithChannels): Recipient {
+  const [channels] = notificationPreferences;
+  return { ...user, wantsInApp: channels?.inApp ?? true, wantsEmail: channels?.email ?? true };
+}
+
 const sentFields = ({ recipientIds, sentAt }: Delivery) => ({
   status: 'SENT' as const,
   sentAt,
@@ -108,11 +125,16 @@ const sentFields = ({ recipientIds, sentAt }: Delivery) => ({
 export class PrismaGlobalNotificationsRepository implements GlobalNotificationsRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
-  findRecipients(audience: NotificationAudience, senderId: string, now: Date) {
-    return this.prisma.user.findMany({
+  async findRecipients(
+    audience: NotificationAudience,
+    senderId: string,
+    now: Date,
+  ): Promise<Recipient[]> {
+    const users = await this.prisma.user.findMany({
       where: recipientsWhere(audience, senderId, now),
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, notificationPreferences: channelsSelect },
     });
+    return users.map(toRecipient);
   }
 
   async countRecipients(senderId: string, now: Date): Promise<RecipientsCount> {

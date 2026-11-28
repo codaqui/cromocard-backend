@@ -5,11 +5,15 @@ import { createApp } from '@/app';
 import { env } from '@/config/env';
 import { logger } from '@/config/logger';
 import { pingDatabase, prisma } from '@/lib/prisma';
+import { createPostgresAdapter } from '@/lib/socket-emitter';
 import { socketHandlers } from '@/socket/socket-handlers';
 import { createSocketServer } from '@/socket/socket-server';
 
 const server = createServer(createApp({ pingDatabase }));
-const io = createSocketServer(server, { handlers: socketHandlers });
+const io = createSocketServer(server, {
+  handlers: socketHandlers,
+  adapter: createPostgresAdapter(),
+});
 
 server.listen(env.PORT, () => {
   logger.info(`WS rodando em http://localhost:${env.PORT}`);

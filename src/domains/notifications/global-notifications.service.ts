@@ -9,6 +9,7 @@ import {
   NotScheduledError,
 } from './global-notifications.errors';
 import type {
+  Delivery,
   DispatchData,
   GlobalNotificationRecord,
   GlobalNotificationsRepository,
@@ -36,6 +37,7 @@ export interface GlobalNotificationsServiceDeps {
   mail: MailProvider;
   logger: GlobalNotificationsLogger;
   frontendUrl: string;
+  realtime: { publishDispatch(globalNotificationId: string): Promise<void> };
   clock?: () => Date;
   runInBackground?: (task: () => Promise<void>) => void;
 }
@@ -48,6 +50,15 @@ export type GlobalNotificationView = Omit<GlobalNotificationRecord, 'audience' |
 const AUDIT_ENTITY = 'global_notification';
 const CHANNEL_SEPARATOR = ',';
 const EMAIL_BATCH_SIZE = 50;
+
+function deliveryTo(recipients: Recipient[], inApp: boolean, sentAt: Date): Delivery {
+  return {
+    recipientIds: recipients.map(({ id }) => id),
+    inAppRecipientIds: recipients.filter(({ wantsInApp }) => wantsInApp).map(({ id }) => id),
+    inApp,
+    sentAt,
+  };
+}
 
 const defaultRunInBackground = (task: () => Promise<void>) => {
   setImmediate(() => void task());
@@ -106,11 +117,10 @@ export class GlobalNotificationsService {
     const data = dispatchDataOf(adminId, input);
     if (input.scheduledAt) return this.schedule(data, input.scheduledAt);
 
-    const record = await this.deps.repository.createSent(data, {
-      recipientIds: recipients.map(({ id }) => id),
-      inApp: input.channels.includes('IN_APP'),
-      sentAt: this.clock(),
-    });
+    const record = await this.deps.repository.createSent(
+      data,
+      deliveryTo(recipients, input.channels.includes('IN_APP'), this.clock()),
+    );
     await this.afterDelivery(record, recipients);
     return toView(record);
   }
@@ -165,8 +175,10 @@ export class GlobalNotificationsService {
         recipientCount: record.recipientCount,
       },
     });
+    await this.deps.realtime.publishDispatch(record.id);
     if (channelsOf(record).includes('EMAIL')) {
-      this.runInBackground(() => this.sendEmails(record, recipients));
+      const emailRecipients = recipients.filter(({ wantsEmail }) => wantsEmail);
+      this.runInBackground(() => this.sendEmails(record, emailRecipients));
     }
   }
 
@@ -176,11 +188,10 @@ export class GlobalNotificationsService {
       scheduled.admin.id,
       now,
     );
-    const record = await this.deps.repository.deliverScheduled(scheduled.id, {
-      recipientIds: recipients.map(({ id }) => id),
-      inApp: channelsOf(scheduled).includes('IN_APP'),
-      sentAt: now,
-    });
+    const record = await this.deps.repository.deliverScheduled(
+      scheduled.id,
+      deliveryTo(recipients, channelsOf(scheduled).includes('IN_APP'), now),
+    );
     if (!record) return false;
     await this.afterDelivery(record, recipients);
     return true;

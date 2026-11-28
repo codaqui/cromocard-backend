@@ -64,4 +64,8 @@ export class InMemoryNotificationsRepository implements NotificationsRepository 
     if (record) record.isRead = true;
     return Promise.resolve(record ?? null);
   }
+
+  findByGlobalNotification(): Promise<NotificationRecord[]> {
+    return Promise.resolve(this.records.filter(({ type }) => type === 'GLOBAL'));
+  }
 }

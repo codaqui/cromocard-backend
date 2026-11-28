@@ -23,6 +23,7 @@ describe('PrismaGlobalNotificationsRepository', () => {
 
     const delivered = await repository.deliverScheduled('dispatch-1', {
       recipientIds: ['user-1'],
+      inAppRecipientIds: ['user-1'],
       inApp: true,
       sentAt: new Date(),
     });

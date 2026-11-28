@@ -42,6 +42,7 @@ export interface NotificationsRepository {
   findPage(query: NotificationPageQuery): Promise<NotificationRecord[]>;
   countByType(userId: string): Promise<TypeReadCount[]>;
   markAsRead(userId: string, id: string): Promise<NotificationRecord | null>;
+  findByGlobalNotification(globalNotificationId: string): Promise<NotificationRecord[]>;
 }
 
 const NOTIFICATION_SELECT = {
@@ -101,6 +102,13 @@ export class PrismaNotificationsRepository implements NotificationsRepository {
     if (count === 0) return null;
     return this.prisma.notification.findUniqueOrThrow({
       where: { id },
+      select: NOTIFICATION_SELECT,
+    });
+  }
+
+  findByGlobalNotification(globalNotificationId: string): Promise<NotificationRecord[]> {
+    return this.prisma.notification.findMany({
+      where: { globalNotificationId, ...notDeleted },
       select: NOTIFICATION_SELECT,
     });
   }

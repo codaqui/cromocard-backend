@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { InMemoryNotificationsRepository } from './notifications.doubles';
 import { NotificationNotFoundError } from './notifications.errors';
+import type { NotificationRecord } from './notifications.repository';
 import { NotificationsService } from './notifications.service';
 import { type ListNotificationsQuery, NOTIFICATIONS_PAGE_SIZE } from './notifications.validator';
 
@@ -17,10 +18,20 @@ const query = (overrides: Partial<ListNotificationsQuery> = {}): ListNotificatio
 describe('NotificationsService', () => {
   let repository: InMemoryNotificationsRepository;
   let service: NotificationsService;
+  let published: NotificationRecord[];
+  let blockedInApp: Set<string>;
 
   beforeEach(() => {
     repository = new InMemoryNotificationsRepository();
-    service = new NotificationsService({ repository });
+    published = [];
+    blockedInApp = new Set();
+    service = new NotificationsService({
+      repository,
+      preferences: {
+        allowsInApp: (userId, type) => Promise.resolve(!blockedInApp.has(`${userId}:${type}`)),
+      },
+      publisher: { publish: (records) => published.push(...records) },
+    });
   });
 
   describe('list', () => {
@@ -118,6 +129,52 @@ describe('NotificationsService', () => {
         NotificationNotFoundError,
       );
       expect(repository.records[0]?.isRead).toBe(false);
+    });
+  });
+
+  describe('notify', () => {
+    const message = {
+      userId: ANA,
+      title: '@bruno',
+      message: 'Oi, ainda tem a carta?',
+      type: 'NEW_MESSAGE' as const,
+      referenceLink: '/mensagens?conversa=1',
+    };
+
+    it('CA6: grava a notificação e publica só para o destinatário', async () => {
+      await service.notify(message);
+
+      expect(repository.records).toHaveLength(1);
+      expect(published.map(({ userId, title }) => ({ userId, title }))).toEqual([
+        { userId: ANA, title: '@bruno' },
+      ]);
+    });
+
+    it('CA23: com o site desligado para o evento, não grava nem publica', async () => {
+      blockedInApp.add(`${ANA}:NEW_MESSAGE`);
+
+      await service.notify(message);
+
+      expect(repository.records).toHaveLength(0);
+      expect(published).toHaveLength(0);
+    });
+
+    it('CA6: se a gravação falha, nada é publicado', async () => {
+      repository.create = () => Promise.reject(new Error('banco fora do ar'));
+
+      await expect(service.notify(message)).rejects.toThrow('banco fora do ar');
+      expect(published).toHaveLength(0);
+    });
+  });
+
+  describe('publishDispatch', () => {
+    it('CA21: publica as notificações gravadas pelo disparo global', async () => {
+      repository.seed({ userId: ANA, type: 'GLOBAL' });
+      repository.seed({ userId: BRUNO, type: 'GLOBAL' });
+
+      await service.publishDispatch('disparo-1');
+
+      expect(published.map(({ userId }) => userId).sort()).toEqual([ANA, BRUNO].sort());
     });
   });
 });

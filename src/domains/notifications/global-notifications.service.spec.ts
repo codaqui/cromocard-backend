@@ -33,6 +33,8 @@ const people = (prefix: string, total: number): Recipient[] =>
     id: `${prefix}-${index}`,
     name: `${prefix} ${index}`,
     email: `${prefix}${index}@cromocard.dev`,
+    wantsInApp: true,
+    wantsEmail: true,
   }));
 
 const AUDIENCES: Record<NotificationAudience, Recipient[]> = {
@@ -52,6 +54,7 @@ const input = (overrides: Partial<DispatchGlobalNotificationInput> = {}) =>
   }) satisfies DispatchGlobalNotificationInput;
 
 class InMemoryRepository implements GlobalNotificationsRepository {
+  audiences: Record<NotificationAudience, Recipient[]> = { ...AUDIENCES };
   records = new Map<string, GlobalNotificationRecord>();
   notifications: { userId: string; globalNotificationId: string }[] = [];
   recipientsBySender: { audience: NotificationAudience; senderId: string }[] = [];
@@ -59,7 +62,7 @@ class InMemoryRepository implements GlobalNotificationsRepository {
 
   findRecipients(audience: NotificationAudience, senderId: string) {
     this.recipientsBySender.push({ audience, senderId });
-    return Promise.resolve(AUDIENCES[audience]);
+    return Promise.resolve(this.audiences[audience]);
   }
 
   countRecipients() {
@@ -128,11 +131,14 @@ class InMemoryRepository implements GlobalNotificationsRepository {
     return record;
   }
 
-  private deliver(record: GlobalNotificationRecord, { recipientIds, inApp }: Delivery) {
+  private deliver(
+    record: GlobalNotificationRecord,
+    { recipientIds, inAppRecipientIds, inApp }: Delivery,
+  ) {
     const delivered = { ...record, recipientCount: recipientIds.length };
     this.records.set(record.id, delivered);
     if (inApp) {
-      recipientIds.forEach((userId) =>
+      inAppRecipientIds.forEach((userId) =>
         this.notifications.push({ userId, globalNotificationId: record.id }),
       );
     }
@@ -148,6 +154,7 @@ describe('GlobalNotificationsService', () => {
   let mailFailure: Error | null;
   let syncMailFailure: Error | null;
   let logger: { error: Mock<GlobalNotificationsLogger['error']> };
+  let published: string[];
   let clock: Date;
   let service: GlobalNotificationsService;
 
@@ -161,6 +168,7 @@ describe('GlobalNotificationsService', () => {
     mailFailure = null;
     syncMailFailure = null;
     logger = { error: vi.fn<GlobalNotificationsLogger['error']>() };
+    published = [];
     clock = NOW;
     service = new GlobalNotificationsService({
       repository,
@@ -176,6 +184,12 @@ describe('GlobalNotificationsService', () => {
       },
       logger,
       frontendUrl: 'https://cromocard.dev',
+      realtime: {
+        publishDispatch: (id) => {
+          published.push(id);
+          return Promise.resolve();
+        },
+      },
       clock: () => clock,
       runInBackground: (task) => background.push(task),
     });
@@ -207,6 +221,36 @@ describe('GlobalNotificationsService', () => {
       }),
     ]);
     expect(background).toHaveLength(0);
+  });
+
+  it('CCD053 CA21: publica em tempo real as notificações do disparo entregue', async () => {
+    const view = await service.dispatch(ADMIN.id, input());
+
+    expect(published).toEqual([view.id]);
+  });
+
+  it('CCD053 CA23: quem desligou o site na chave geral não recebe na central nem conta a menos', async () => {
+    repository.audiences.ALL = AUDIENCES.ALL.map((person) => ({
+      ...person,
+      wantsInApp: person.id !== 'user-1',
+    }));
+
+    const view = await service.dispatch(ADMIN.id, input());
+
+    expect(view.recipientCount).toBe(3);
+    expect(repository.notifications.map(({ userId }) => userId)).toEqual(['user-0', 'user-2']);
+  });
+
+  it('CCD053: quem desligou o e-mail na chave geral não recebe o e-mail do disparo', async () => {
+    repository.audiences.ALL = AUDIENCES.ALL.map((person) => ({
+      ...person,
+      wantsEmail: person.id !== 'user-2',
+    }));
+
+    await service.dispatch(ADMIN.id, input({ channels: ['EMAIL'] }));
+    await runBackground();
+
+    expect(sent.map(({ to }) => to)).toEqual(['user0@cromocard.dev', 'user1@cromocard.dev']);
   });
 
   it('CA4: os destinatários saem do público sem o próprio admin', async () => {
@@ -382,6 +426,7 @@ describe('GlobalNotificationsService', () => {
       mail,
       logger,
       frontendUrl: 'https://cromocard.dev',
+      realtime: { publishDispatch: () => Promise.resolve() },
     });
 
     await standalone.dispatch(ADMIN.id, input({ channels: ['EMAIL'] }));

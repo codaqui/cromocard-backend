@@ -1,4 +1,4 @@
-import type { Transaction } from '@/lib/transaction';
+import { afterCommit, type Transaction } from '@/lib/transaction';
 
 import { typesIn } from './notification-types';
 import {
@@ -11,6 +11,7 @@ import { NotificationNotFoundError } from './notifications.errors';
 import type {
   NewNotification,
   NotificationPageQuery,
+  NotificationRecord,
   NotificationsRepository,
 } from './notifications.repository';
 import type { ListNotificationsQuery, NotificationFilter } from './notifications.validator';
@@ -23,6 +24,8 @@ export interface NotificationsPage {
 
 export interface NotificationsServiceDeps {
   repository: NotificationsRepository;
+  preferences: { allowsInApp(userId: string, type: string): Promise<boolean> };
+  publisher: { publish(records: readonly NotificationRecord[]): void };
 }
 
 function filterCriteria(filter: NotificationFilter): Partial<NotificationPageQuery> {
@@ -58,6 +61,17 @@ export class NotificationsService {
   }
 
   async notify(notification: NewNotification, tx?: Transaction): Promise<void> {
-    await this.deps.repository.create(notification, tx);
+    const allowed = await this.deps.preferences.allowsInApp(notification.userId, notification.type);
+    if (!allowed) return;
+    const record = await this.deps.repository.create(notification, tx);
+    afterCommit(tx, () => {
+      this.deps.publisher.publish([record]);
+    });
+  }
+
+  async publishDispatch(globalNotificationId: string): Promise<void> {
+    this.deps.publisher.publish(
+      await this.deps.repository.findByGlobalNotification(globalNotificationId),
+    );
   }
 }
