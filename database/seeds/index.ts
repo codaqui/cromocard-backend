@@ -5,6 +5,7 @@ import { createStorageProvider } from '@/providers/storage/storage.factory';
 
 import { seedAdmin } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
+import { seedChat } from './chat.seed';
 import { seedCollection } from './collection.seed';
 import { seedCommunity } from './community.seed';
 import { seedMarketplace } from './marketplace.seed';
@@ -13,6 +14,15 @@ import { uploadSampleImages } from './sample-images';
 import { seedOptionsFrom } from './seed-options';
 import { seedSellerVerifications } from './seller-verifications.seed';
 import { assertSeedEmailsAvailable, seedProfiles, seedUsers } from './users.seed';
+
+async function seedDomains(): Promise<void> {
+  await seedCatalog(prisma);
+  await seedCollection(prisma);
+  await seedCommunity(prisma);
+  await seedSellerVerifications(prisma);
+  await seedMarketplace(prisma);
+  await seedChat(prisma);
+}
 
 async function seed(): Promise<void> {
   if (env.NODE_ENV === 'production') {
@@ -26,11 +36,7 @@ async function seed(): Promise<void> {
 
   await assertSeedEmailsAvailable(prisma);
   await seedUsers(prisma, options.userPassword);
-  await seedCatalog(prisma);
-  await seedCollection(prisma);
-  await seedCommunity(prisma);
-  await seedSellerVerifications(prisma);
-  await seedMarketplace(prisma);
+  await seedDomains();
   const images = options.isLocalDatabase ? await uploadSampleImages(createStorageProvider()) : {};
   await seedAdmin(prisma, images);
   await seedNotifications(prisma);
