@@ -42,8 +42,7 @@ beforeEach(() => {
     listMessages: vi.fn().mockResolvedValue({ items: [message], nextCursor: null }),
     markAsRead: vi.fn().mockResolvedValue(undefined),
     createMessage: vi.fn().mockResolvedValue(message),
-    findDirectConversationId: vi.fn().mockResolvedValue(null),
-    createDirectConversation: vi.fn().mockResolvedValue(CONVERSATION),
+    findOrCreateDirectConversation: vi.fn().mockResolvedValue({ id: CONVERSATION, created: true }),
     listPartnerIds: vi.fn().mockResolvedValue(['elisa']),
   };
   contacts = {
@@ -136,17 +135,16 @@ describe('Nova conversa (R13)', () => {
   it('CA13: cria a conversa com quem ainda não tinha', async () => {
     const result = await service.startConversation(ANA, 'renan');
 
-    expect(store.createDirectConversation).toHaveBeenCalledWith(ANA, 'renan');
+    expect(store.findOrCreateDirectConversation).toHaveBeenCalledWith(ANA, 'renan');
     expect(result).toMatchObject({ conversation: { id: CONVERSATION }, created: true });
   });
 
   it('CA13: reaproveita a conversa que já existe, sem criar outra', async () => {
-    store.findDirectConversationId.mockResolvedValue(CONVERSATION);
+    store.findOrCreateDirectConversation.mockResolvedValue({ id: CONVERSATION, created: false });
 
     const result = await service.startConversation(ANA, 'elisa');
 
-    expect(store.createDirectConversation).not.toHaveBeenCalled();
-    expect(result.created).toBe(false);
+    expect(result).toMatchObject({ conversation: { id: CONVERSATION }, created: false });
   });
 
   it('CA14: recusa com 404 quem está bloqueado, suspenso ou não existe', async () => {
@@ -155,7 +153,7 @@ describe('Nova conversa (R13)', () => {
     await expect(service.startConversation(ANA, 'gabriela')).rejects.toBeInstanceOf(
       ContactNotFoundError,
     );
-    expect(store.createDirectConversation).not.toHaveBeenCalled();
+    expect(store.findOrCreateDirectConversation).not.toHaveBeenCalled();
   });
 
   it('repassa a busca de contatos com a aba', async () => {

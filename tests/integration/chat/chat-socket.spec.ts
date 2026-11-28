@@ -194,6 +194,15 @@ describe('presença (R15)', () => {
     expect(await offline).toEqual({ userId: elisa.id, online: false });
   });
 
+  it('CA15: a lista não revela a presença de quem não conversa com ele', async () => {
+    const carlaSocket = await online(carla);
+    await online(elisa);
+
+    await expect(
+      emit(carlaSocket, 'presence:list', { userIds: [elisa.id, ana.id] }),
+    ).resolves.toEqual({ data: { online: [] } });
+  });
+
   it('quem não tem conversa com ele não é avisado', async () => {
     const carlaSocket = await online(carla);
     const quiet = silence(carlaSocket, 'presence:changed');

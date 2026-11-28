@@ -37,4 +37,32 @@ describe('presença no chat (R15)', () => {
     );
     warn.mockRestore();
   });
+
+  it('numa reconexão rápida, o último aviso mostra o estado de agora, mesmo fora de ordem', async () => {
+    let releaseFirst: (ids: string[]) => void = () => undefined;
+    const firstLookup = new Promise<string[]>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const service = {
+      listPartnerIds: vi.fn().mockReturnValueOnce(firstLookup).mockResolvedValue(['elisa']),
+    };
+    const emitted: unknown[] = [];
+    const io = { to: () => ({ emit: (_event: string, change: unknown) => emitted.push(change) }) };
+    const { socket, listeners } = fakeSocket();
+    const handlers = createChatSocketHandlers({
+      service: service as unknown as ChatSocketService,
+      presence: new PresenceRegistry(),
+    });
+
+    handlers(io as unknown as AppSocketServer, socket);
+    listeners.get('disconnect')?.();
+    await vi.waitFor(() => expect(emitted).toHaveLength(1));
+    releaseFirst(['elisa']);
+
+    await vi.waitFor(() => expect(emitted).toHaveLength(2));
+    expect(emitted).toEqual([
+      { userId: 'ana', online: false },
+      { userId: 'ana', online: false },
+    ]);
+  });
 });

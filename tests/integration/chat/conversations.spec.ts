@@ -13,7 +13,13 @@ const fx = new ChatFixtures(MARKER);
 
 interface Summary {
   id: string;
-  contact: { id: string; name: string; username: string; verified: boolean; avatarUrl: null };
+  contact: {
+    id: string;
+    name: string;
+    username: string;
+    verified: boolean;
+    avatarUrl: string | null;
+  };
   lastMessage: { content: string; fromMe: boolean } | null;
   unreadCount: number;
   block: 'BY_ME' | 'BY_CONTACT' | null;
@@ -291,6 +297,37 @@ describe('POST /me/conversations (Nova conversa)', () => {
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: 'USER_NOT_FOUND' });
     expect(self.status).toBe(404);
+  });
+
+  it('CA13: dois pedidos ao mesmo tempo para a mesma pessoa criam uma conversa só', async () => {
+    const tiago = await fx.createUser('tiago');
+
+    const [first, second] = await Promise.all([
+      request(app).post(BASE).set(as(ana)).send({ userId: tiago.id }),
+      request(app).post(BASE).set(as(ana)).send({ userId: tiago.id }),
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([200, 201]);
+    expect(dataOf<Summary>(first).id).toBe(dataOf<Summary>(second).id);
+    const between = await prisma.conversation.count({
+      where: {
+        AND: [ana, tiago].map(({ id }) => ({ participants: { some: { userId: id } } })),
+      },
+    });
+    expect(between).toBe(1);
+  });
+
+  it('L17: traz a foto do perfil do contato, e null para quem não tem foto', async () => {
+    const photo = 'https://cdn.cromocard.dev/avatars/paula.png';
+    const paula = await fx.createUser('paula', 'CUSTOMER', {
+      profile: { create: { avatarUrl: photo } },
+    });
+
+    const res = await request(app).post(BASE).set(as(ana)).send({ userId: paula.id });
+    const list = await request(app).get(BASE).set(as(ana)).query({ q: 'elisa' });
+
+    expect(dataOf<Summary>(res).contact.avatarUrl).toBe(photo);
+    expect(dataOf<Summary[]>(list)[0]?.contact.avatarUrl).toBeNull();
   });
 
   it('recusa userId que não é UUID', async () => {

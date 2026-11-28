@@ -13,6 +13,7 @@ const fx = new ChatFixtures(MARKER);
 
 interface ContactResult {
   id: string;
+  avatarUrl: string | null;
   role: string;
   verified: boolean;
   commonGroups: string[];
@@ -149,6 +150,22 @@ describe('GET /me/contacts', () => {
     const deals = await request(app).get(BASE).set(as(ana)).query({ scope: 'deals' });
 
     expect(idsOf(deals)).toEqual([comprador.id]);
+  });
+
+  it('L17: o contato vem com a foto do perfil', async () => {
+    const photo = 'https://cdn.cromocard.dev/avatars/rita.png';
+    const rita = await fx.createUser('rita', 'CUSTOMER', {
+      profile: { create: { avatarUrl: photo } },
+    });
+
+    const res = await request(app)
+      .get(BASE)
+      .set(as(ana))
+      .query({ q: `${MARKER} rita` });
+
+    expect((res.body as { data: ContactResult[] }).data).toMatchObject([
+      { id: rita.id, avatarUrl: photo },
+    ]);
   });
 
   it('recusa aba desconhecida e o administrador', async () => {

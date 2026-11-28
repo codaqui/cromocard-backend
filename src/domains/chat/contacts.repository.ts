@@ -47,6 +47,7 @@ const contactSelect = (userId: string) =>
     name: true,
     username: true,
     role: true,
+    profile: { select: { avatarUrl: true, deletedAt: true } },
     sellerVerification: { select: { status: true, deletedAt: true } },
     groupMemberships: { where: sharedGroup(userId), select: { group: { select: { name: true } } } },
   }) satisfies Prisma.UserSelect;
@@ -57,7 +58,7 @@ const toContact = (row: ContactRow): ContactResult => ({
   id: row.id,
   name: row.name,
   username: row.username,
-  avatarUrl: null,
+  avatarUrl: row.profile?.deletedAt === null ? row.profile.avatarUrl : null,
   verified:
     row.sellerVerification?.status === 'APPROVED' && row.sellerVerification.deletedAt === null,
   role: row.role,

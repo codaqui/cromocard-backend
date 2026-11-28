@@ -16,6 +16,10 @@ export class PresenceRegistry {
     return this.sockets.delete(userId);
   }
 
+  isOnline(userId: string): boolean {
+    return this.sockets.has(userId);
+  }
+
   onlineAmong(userIds: readonly string[]): string[] {
     return userIds.filter((userId) => this.sockets.has(userId));
   }

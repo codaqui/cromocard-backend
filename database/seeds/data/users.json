@@ -15,7 +15,12 @@
     "username": "ana.colecionadora",
     "cpf": "94670928244",
     "phone": "11912345678",
-    "createdDaysAgo": 150
+    "createdDaysAgo": 150,
+    "profile": {
+      "bio": "Colecionadora de Pokémon TCG desde 1999. Foco em cartas holográficas da primeira edição e álbuns completos da Copa.",
+      "city": "São Paulo",
+      "withAvatar": true
+    }
   },
   {
     "key": "bruno",
@@ -47,7 +52,13 @@
     "username": "elisa.raras",
     "cpf": "37723614209",
     "phone": "21987654321",
-    "createdDaysAgo": 35
+    "createdDaysAgo": 35,
+    "profile": {
+      "bio": "Vendo cartas raras com envio rápido e embalagem com sleeve e toploader.",
+      "city": "Rio de Janeiro"
+    },
+    "stripeAccountId": "acct_seed_elisa",
+    "stripeAccountStatus": "READY"
   },
   {
     "key": "fabio",
@@ -56,7 +67,9 @@
     "role": "SELLER",
     "username": "fabio.tcg",
     "phone": "31976543210",
-    "createdDaysAgo": 10
+    "createdDaysAgo": 10,
+    "stripeAccountId": "acct_seed_fabio",
+    "stripeAccountStatus": "READY"
   },
   {
     "key": "helena",
@@ -65,14 +78,27 @@
     "role": "SELLER",
     "username": "helena.cardshop",
     "phone": "41998765432",
-    "createdDaysAgo": 20
+    "createdDaysAgo": 20,
+    "stripeAccountId": "acct_seed_helena",
+    "stripeAccountStatus": "VERIFYING"
   },
   {
     "key": "igor",
     "name": "Igor Colecionáveis",
     "email": "igor@cromocard.dev",
     "role": "SELLER",
-    "createdDaysAgo": 45
+    "createdDaysAgo": 45,
+    "stripeAccountId": "acct_seed_igor",
+    "stripeAccountStatus": "PENDING"
+  },
+  {
+    "key": "rodrigo",
+    "name": "Rodrigo Silva",
+    "email": "rodrigo@cromocard.dev",
+    "role": "SELLER",
+    "username": "rodrigo.silva",
+    "phone": "11965432109",
+    "createdDaysAgo": 1
   },
   {
     "key": "gabriela",
@@ -80,6 +106,11 @@
     "email": "gabriela@cromocard.dev",
     "role": "CUSTOMER",
     "emailVerified": false,
-    "createdDaysAgo": 2
+    "createdDaysAgo": 2,
+    "profile": {
+      "bio": "Monto álbuns de figurinhas com a família. Portfólio só para mim.",
+      "city": "Curitiba",
+      "portfolioPrivacy": "PRIVATE"
+    }
   }
 ]

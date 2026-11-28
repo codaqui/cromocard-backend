@@ -23,8 +23,7 @@ export type ChatStore = Pick<
   | 'listMessages'
   | 'markAsRead'
   | 'createMessage'
-  | 'findDirectConversationId'
-  | 'createDirectConversation'
+  | 'findOrCreateDirectConversation'
   | 'listPartnerIds'
 >;
 
@@ -52,9 +51,8 @@ export class ChatService {
 
   async startConversation(userId: string, contactId: string): Promise<StartedConversation> {
     if (!(await this.contacts.isReachable(userId, contactId))) throw new ContactNotFoundError();
-    const existing = await this.repository.findDirectConversationId(userId, contactId);
-    const id = existing ?? (await this.repository.createDirectConversation(userId, contactId));
-    return { conversation: await this.conversationOf(userId, id), created: existing === null };
+    const { id, created } = await this.repository.findOrCreateDirectConversation(userId, contactId);
+    return { conversation: await this.conversationOf(userId, id), created };
   }
 
   async listConversations(userId: string, query: ListConversationsQuery) {
