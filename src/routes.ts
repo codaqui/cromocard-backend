@@ -4,6 +4,7 @@ import swaggerUi from 'swagger-ui-express';
 import { API_PREFIX } from '@/config/api';
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
+import { chatModule } from '@/domains/chat/chat.module';
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { cardsModule } from '@/domains/catalog/cards/cards.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
@@ -43,6 +44,7 @@ const sharedModules: DomainModule[] = [
   communityAdminModule,
   globalNotificationsModule,
   sellerVerificationsModule,
+  chatModule,
   connectedAccountsModule,
   paymentsWebhookModule,
 ];
