@@ -7,6 +7,7 @@ export const ALLOWED_IMAGE_TYPES_LABEL = 'PNG, JPG ou WEBP';
 export const UPLOAD_FOLDERS = ['cards', 'albums', 'banners', 'listings'] as const;
 
 export const SELLER_UPLOAD_FOLDERS: readonly UploadFolder[] = ['listings'];
+export const OWNER_SCOPED_FOLDERS: readonly UploadFolder[] = ['listings'];
 
 export const uploadImageBodySchema = z.object({
   folder: z.enum(UPLOAD_FOLDERS),

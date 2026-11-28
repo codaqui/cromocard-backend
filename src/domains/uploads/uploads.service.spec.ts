@@ -50,6 +50,7 @@ describe('UploadsService', () => {
     const result = await service.uploadImage({
       folder: 'cards',
       content: pngImage(),
+      uploaderId: 'admin-1',
       uploaderRole: 'ADMIN',
     });
 
@@ -62,11 +63,13 @@ describe('UploadsService', () => {
     const jpg = await service.uploadImage({
       folder: 'albums',
       content: jpegImage(),
+      uploaderId: 'admin-1',
       uploaderRole: 'ADMIN',
     });
     const webp = await service.uploadImage({
       folder: 'banners',
       content: webpImage(),
+      uploaderId: 'admin-1',
       uploaderRole: 'ADMIN',
     });
 
@@ -74,20 +77,22 @@ describe('UploadsService', () => {
     expect(webp.key).toMatch(/^banners\/.+\.webp$/);
   });
 
-  it('CA6: o vendedor guarda a foto do anúncio na pasta listings', async () => {
+  it('CA6: o vendedor guarda a foto do anúncio na própria pasta, dentro de listings', async () => {
     const result = await service.uploadImage({
       folder: 'listings',
       content: pngImage(),
+      uploaderId: 'seller-1',
       uploaderRole: 'SELLER',
     });
 
-    expect(result.key).toMatch(/^listings\/.+\.png$/);
+    expect(result.key).toMatch(/^listings\/seller-1\/[0-9a-f-]{36}\.png$/);
   });
 
   it('recusa o vendedor em outra pasta sem guardar o arquivo', async () => {
     const upload = {
       folder: 'cards' as const,
       content: pngImage(),
+      uploaderId: 'seller-1',
       uploaderRole: 'SELLER' as const,
     };
 
@@ -97,7 +102,7 @@ describe('UploadsService', () => {
 
   it('recusa um arquivo que não é PNG, JPG nem WEBP', async () => {
     await expect(
-      service.uploadImage({ folder: 'cards', content: textFile(), uploaderRole: 'ADMIN' }),
+      service.uploadImage({ folder: 'cards', content: textFile(), uploaderId: 'admin-1', uploaderRole: 'ADMIN' }),
     ).rejects.toThrow(InvalidImageTypeError);
     expect(storage.files).toHaveLength(0);
   });

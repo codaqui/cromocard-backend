@@ -71,8 +71,10 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve(this.users.find((user) => user.id === id && !user.deletedAt) ?? null);
   }
 
+  addresses: Address[] = [];
+
   findAddressesByUserId(): Promise<Address[]> {
-    return Promise.resolve([]);
+    return Promise.resolve(this.addresses);
   }
 
   create(input: Omit<CreateUserInput, 'sendActivation'>): Promise<UserSummary> {
@@ -208,6 +210,15 @@ describe('UsersService', () => {
   beforeEach(() => {
     repository = new InMemoryUsersRepository();
     service = new UsersService(repository);
+  });
+
+  it('CA8: diz se o usuário tem endereço principal', async () => {
+    const address = { isPrimary: false } as Address;
+    repository.addresses = [address];
+    await expect(service.hasPrimaryAddress('user-1')).resolves.toBe(false);
+
+    repository.addresses = [address, { ...address, isPrimary: true }];
+    await expect(service.hasPrimaryAddress('user-1')).resolves.toBe(true);
   });
 
   it('lista os usuários com os dados de paginação', async () => {

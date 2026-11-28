@@ -62,6 +62,11 @@ export class ConnectedAccountsService {
     return updated > 0;
   }
 
+  async isReady(sellerId: string): Promise<boolean> {
+    const seller = await this.deps.repository.findSeller(sellerId);
+    return seller?.stripeAccountStatus === 'READY';
+  }
+
   async assertReady(sellerId: string): Promise<void> {
     const { stripeAccountStatus } = await this.sellerOf(sellerId);
     if (stripeAccountStatus !== 'READY') throw new StripeAccountNotReadyError();

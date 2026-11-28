@@ -29,8 +29,8 @@ interface ErrorBody {
 
 const RUN_ID = crypto.randomUUID().slice(0, 8);
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
-const created = { users: [] as string[], cards: [] as string[] };
-const ids = { card: '', deletedCard: '', mint: '' };
+const created = { users: [] as string[], cards: [] as string[], album: '' };
+const ids = { card: '', deletedCard: '', cardOfDeletedAlbum: '', mint: '' };
 const tokens = { ready: '', noAccount: '', noAddress: '' };
 
 const app = () => createApp({ withUploads: true });
@@ -65,8 +65,8 @@ function createPrimaryAddress(userId: string) {
   });
 }
 
-async function createCard(name: string, deletedAt: Date | null = null) {
-  const card = await prisma.card.create({ data: { name, deletedAt } });
+async function createCard(name: string, deletedAt: Date | null = null, albumId?: string) {
+  const card = await prisma.card.create({ data: { name, deletedAt, albumId } });
   created.cards.push(card.id);
   return card.id;
 }
@@ -102,6 +102,11 @@ beforeAll(async () => {
   tokens.noAddress = await createSeller('sem-endereco', 'READY', false);
   ids.card = await createCard(`Charizard VMAX ${RUN_ID}`);
   ids.deletedCard = await createCard(`Carta excluída ${RUN_ID}`, new Date());
+  const album = await prisma.album.create({
+    data: { title: `Álbum removido ${RUN_ID}`, deletedAt: new Date() },
+  });
+  created.album = album.id;
+  ids.cardOfDeletedAlbum = await createCard(`Carta de álbum removido ${RUN_ID}`, null, album.id);
   const mint = await prisma.cardCondition.findUniqueOrThrow({ where: { name: 'Mint' } });
   ids.mint = mint.id;
 });
@@ -112,6 +117,7 @@ afterAll(async () => {
   await prisma.listing.deleteMany({ where: listingWhere });
   await prisma.address.deleteMany({ where: { userId: { in: created.users } } });
   await prisma.card.deleteMany({ where: { id: { in: created.cards } } });
+  await prisma.album.deleteMany({ where: { id: created.album } });
   await prisma.user.deleteMany({ where: { id: { in: created.users } } });
 });
 
@@ -198,6 +204,27 @@ describe('POST /api/v1/me/listings', () => {
 
     expect(res.status).toBe(404);
     expect((res.body as ErrorBody).error).toBe('CARD_NOT_FOUND');
+  });
+
+  it('recusa carta de álbum excluído com 404, sem gravar', async () => {
+    const cardId = ids.cardOfDeletedAlbum;
+    const res = await postListing({ ...validBody(), cardId }, tokens.ready);
+
+    expect(res.status).toBe(404);
+    expect(await listingsOfCard(cardId)).toBe(0);
+  });
+
+  it('recusa a foto que outro vendedor enviou e o caminho que sai da pasta do vendedor', async () => {
+    const othersPhoto = await uploadPhoto(tokens.noAddress, 'alheia');
+    const ownPhoto = await uploadPhoto(tokens.ready, 'propria');
+    const escaping = ownPhoto.replace(/listings\/[^/]+\//, 'listings/x/../../cards/');
+
+    const foreign = await postListing({ ...validBody(), photoUrls: [othersPhoto] }, tokens.ready);
+    const traversal = await postListing({ ...validBody(), photoUrls: [escaping] }, tokens.ready);
+
+    expect(foreign.status).toBe(400);
+    expect(traversal.status).toBe(400);
+    expect((foreign.body as ErrorBody).details?.[0]?.field).toBe('photoUrls');
   });
 
   it('CA7: recusa o vendedor sem conta de recebimento pronta com 422, sem gravar', async () => {

@@ -128,8 +128,20 @@ describe('POST /api/v1/uploads', () => {
       .attach('file', pngImage(FOUR_MEGABYTES + 1), 'grande.png');
 
     expect(photo.status).toBe(201);
-    expect((photo.body as UploadResponse).data.key).toMatch(/^listings\/.+\.png$/);
+    expect((photo.body as UploadResponse).data.key).toMatch(/^listings\/[^/]+\/.+\.png$/);
     expect(tooLarge.status).toBe(413);
+  });
+
+  it('CA6: recusa o PDF que o vendedor envia como foto do anúncio com 400', async () => {
+    const res = await postUpload(sellerToken)
+      .field('folder', 'listings')
+      .attach('file', Buffer.from('%PDF-1.7'), {
+        filename: 'carta.pdf',
+        contentType: 'application/pdf',
+      });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorResponse).error).toBe('VALIDATION_ERROR');
   });
 
   it('recusa o vendedor fora da pasta listings com 403', async () => {

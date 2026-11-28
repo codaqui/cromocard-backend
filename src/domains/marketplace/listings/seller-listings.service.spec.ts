@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Prisma } from '@/generated/prisma/client';
+import type { Transaction } from '@/lib/transaction';
 
 import {
   CardConditionNotFoundError,
@@ -9,10 +10,10 @@ import {
   PrimaryAddressRequiredError,
   StripeAccountNotReadyError,
 } from './seller-listings.errors';
+import { createOwnListingPhotoPolicy } from './listing-photos';
 import type {
   CreatedListing,
   NewListing,
-  SellerAccount,
   SellerListingsRepository,
 } from './seller-listings.repository';
 import { SellerListingsService } from './seller-listings.service';
@@ -21,9 +22,16 @@ import { createListingSchema, INVALID_PRICE_MESSAGE } from './seller-listings.va
 const SELLER_ID = '0190a000-0000-7000-8000-000000000001';
 const CARD_ID = '0190a000-0000-7000-8000-000000000002';
 const CONDITION_ID = '0190a000-0000-7000-8000-000000000003';
-const STORAGE_URL = 'http://storage.test/uploads/listings/';
+const STORAGE_BASE = 'http://storage.test/uploads/';
+const STORAGE_URL = `${STORAGE_BASE}listings/${SELLER_ID}/`;
+const TX = { tx: true } as unknown as Transaction;
 
-const readyAccount: SellerAccount = { stripeAccountStatus: 'READY', hasPrimaryAddress: true };
+interface SellerState {
+  ready: boolean;
+  primaryAddress: boolean;
+}
+
+const readyAccount: SellerState = { ready: true, primaryAddress: true };
 
 const validInput = {
   cardId: CARD_ID,
@@ -46,19 +54,26 @@ const persisted = (listing: NewListing): CreatedListing => ({
 });
 
 function setup(
-  account: SellerAccount = readyAccount,
+  account: SellerState = readyAccount,
   overrides: Partial<SellerListingsRepository> = {},
 ) {
   const create = vi.fn((listing: NewListing) => Promise.resolve(persisted(listing)));
+  const lockActiveCard = vi.fn().mockResolvedValue(true);
+  const lockActiveCondition = vi.fn().mockResolvedValue(true);
   const repository: SellerListingsRepository = {
-    findSellerAccount: vi.fn().mockResolvedValue(account),
-    cardExists: vi.fn().mockResolvedValue(true),
-    conditionExists: vi.fn().mockResolvedValue(true),
+    lockActiveCard,
+    lockActiveCondition,
     create,
     ...overrides,
   };
-  const isListingPhotoUrl = (url: string) => url.startsWith(STORAGE_URL);
-  return { service: new SellerListingsService({ repository, isListingPhotoUrl }), create };
+  const service = new SellerListingsService({
+    repository,
+    sellerAccounts: { isReady: vi.fn().mockResolvedValue(account.ready) },
+    sellerAddresses: { hasPrimaryAddress: vi.fn().mockResolvedValue(account.primaryAddress) },
+    isOwnListingPhoto: createOwnListingPhotoPolicy((key) => `${STORAGE_BASE}${key}`),
+    runInTransaction: (work) => work(TX),
+  });
+  return { service, create, lockActiveCard, lockActiveCondition };
 }
 
 const createWith = (service: SellerListingsService, input: unknown) =>
@@ -70,7 +85,7 @@ describe('SellerListingsService.create', () => {
 
     const listing = await createWith(service, validInput);
 
-    expect(create).toHaveBeenCalledWith({ ...validInput, sellerId: SELLER_ID });
+    expect(create).toHaveBeenCalledWith({ ...validInput, sellerId: SELLER_ID }, TX);
     expect(listing).toMatchObject({
       status: 'ACTIVE',
       price: '1850.00',
@@ -94,31 +109,28 @@ describe('SellerListingsService.create', () => {
   });
 
   it('CA7: recusa o vendedor sem conta de recebimento pronta, sem gravar', async () => {
-    const { service, create } = setup({
-      stripeAccountStatus: 'VERIFYING',
-      hasPrimaryAddress: true,
-    });
+    const { service, create } = setup({ ready: false, primaryAddress: true });
 
     await expect(createWith(service, validInput)).rejects.toThrow(StripeAccountNotReadyError);
     expect(create).not.toHaveBeenCalled();
   });
 
   it('CA8: recusa o vendedor com conta pronta e sem endereço principal, sem gravar', async () => {
-    const { service, create } = setup({ stripeAccountStatus: 'READY', hasPrimaryAddress: false });
+    const { service, create } = setup({ ready: true, primaryAddress: false });
 
     await expect(createWith(service, validInput)).rejects.toThrow(PrimaryAddressRequiredError);
     expect(create).not.toHaveBeenCalled();
   });
 
   it('confere a conta antes do endereço quando faltam os dois', async () => {
-    const { service } = setup({ stripeAccountStatus: null, hasPrimaryAddress: false });
+    const { service } = setup({ ready: false, primaryAddress: false });
 
     await expect(createWith(service, validInput)).rejects.toThrow(StripeAccountNotReadyError);
   });
 
   it('CA3: recusa carta fora do catálogo com 404', async () => {
     const { service, create } = setup(readyAccount, {
-      cardExists: vi.fn().mockResolvedValue(false),
+      lockActiveCard: vi.fn().mockResolvedValue(false),
     });
 
     await expect(createWith(service, validInput)).rejects.toThrow(ListingCardNotFoundError);
@@ -126,17 +138,32 @@ describe('SellerListingsService.create', () => {
   });
 
   it('recusa condição inexistente com 404', async () => {
-    const conditionExists = vi.fn().mockResolvedValue(false);
-    const { service } = setup(readyAccount, { conditionExists });
+    const lockActiveCondition = vi.fn().mockResolvedValue(false);
+    const { service } = setup(readyAccount, { lockActiveCondition });
 
     await expect(createWith(service, validInput)).rejects.toThrow(CardConditionNotFoundError);
   });
 
-  it('recusa foto que não veio do upload do anúncio', async () => {
-    const { service, create } = setup();
-    const input = { ...validInput, photoUrls: ['https://outro-site.com/carta.png'] };
+  it('confere a carta e a condição na mesma transação da gravação', async () => {
+    const { service, lockActiveCard, lockActiveCondition } = setup();
 
-    await expect(createWith(service, input)).rejects.toThrow(ForeignListingPhotoError);
+    await createWith(service, validInput);
+
+    expect(lockActiveCard).toHaveBeenCalledWith(CARD_ID, TX);
+    expect(lockActiveCondition).toHaveBeenCalledWith(CONDITION_ID, TX);
+  });
+
+  it.each([
+    ['de outro site', 'https://outro-site.com/carta.png'],
+    ['enviada por outro vendedor', `${STORAGE_BASE}listings/outro-vendedor/carta.png`],
+    ['que sai da pasta do vendedor com ..', `${STORAGE_URL}../../cards/carta.png`],
+    ['do seed, fora da pasta do vendedor', `${STORAGE_BASE}listings/seed-listing-front.png`],
+  ])('recusa foto %s', async (_case, url) => {
+    const { service, create } = setup();
+
+    await expect(createWith(service, { ...validInput, photoUrls: [url] })).rejects.toThrow(
+      ForeignListingPhotoError,
+    );
     expect(create).not.toHaveBeenCalled();
   });
 });
@@ -148,7 +175,7 @@ describe('SellerListingsService.getEligibility', () => {
       stripeAccountReady: true,
       hasPrimaryAddress: true,
     });
-    const pending = setup({ stripeAccountStatus: 'PENDING', hasPrimaryAddress: true });
+    const pending = setup({ ready: false, primaryAddress: true });
     await expect(pending.service.getEligibility(SELLER_ID)).resolves.toMatchObject({
       canCreate: false,
       stripeAccountReady: false,

@@ -21,8 +21,8 @@ export class UploadsController {
   uploadImage = async (req: Request, res: Response): Promise<void> => {
     const { folder } = uploadImageBodySchema.parse(req.body);
     const { buffer } = getUploadedFile(req);
-    const { role } = getAuthenticatedUser(req);
-    const upload = { folder, content: buffer, uploaderRole: role };
+    const { id, role } = getAuthenticatedUser(req);
+    const upload = { folder, content: buffer, uploaderId: id, uploaderRole: role };
     created(res, await this.uploadsService.uploadImage(upload));
   };
 }

@@ -51,6 +51,11 @@ export class UsersService {
     return { items, meta: buildPaginationMeta(query, total) };
   }
 
+  async hasPrimaryAddress(userId: string): Promise<boolean> {
+    const addresses = await this.usersRepository.findAddressesByUserId(userId);
+    return addresses.some(({ isPrimary }) => isPrimary);
+  }
+
   async findById(id: string): Promise<UserProfile> {
     const user = await this.usersRepository.findById(id);
 
