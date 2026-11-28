@@ -1,5 +1,6 @@
+import { env } from '@/config/env';
 import type { PrismaClient } from '@/generated/prisma/client';
-import { UserRole, UserStatus } from '@/generated/prisma/enums';
+import { StripeAccountStatus, UserRole, UserStatus } from '@/generated/prisma/enums';
 import { hashPassword } from '@/lib/password';
 import { z } from '@/lib/zod';
 
@@ -18,6 +19,8 @@ const usersSchema = z.array(
     username: z.string().optional(),
     cpf: z.string().optional(),
     phone: z.string().optional(),
+    stripeAccountId: z.string().startsWith('acct_').optional(),
+    stripeAccountStatus: z.enum(StripeAccountStatus).optional(),
   }),
 );
 
@@ -45,10 +48,11 @@ export async function assertSeedEmailsAvailable(prisma: PrismaClient): Promise<v
 export async function seedUsers(prisma: PrismaClient, password: string): Promise<void> {
   const passwordHash = await hashPassword(password);
 
-  for (const { key, createdDaysAgo, ...user } of users) {
+  for (const { key, createdDaysAgo, stripeAccountId, stripeAccountStatus, ...user } of users) {
     const id = userIdOf(key);
     const data = {
       ...user,
+      ...(env.PAYMENT_DRIVER === 'fake' && { stripeAccountId, stripeAccountStatus }),
       id,
       passwordHash,
       termsAccepted: true,

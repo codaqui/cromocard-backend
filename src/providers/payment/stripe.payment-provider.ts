@@ -5,7 +5,10 @@ import { logger } from '@/config/logger';
 import { InvalidSignatureError, PaymentProviderError } from './payment.errors';
 import type {
   CheckoutSession,
+  ConnectedAccount,
   CreateCheckoutSessionInput,
+  CreateConnectedAccountInput,
+  OnboardingLinkInput,
   PaymentEvent,
   PaymentProvider,
 } from './payment.provider';
@@ -13,7 +16,12 @@ import type {
 const CURRENCY = 'brl';
 const CARD_ONLY: Stripe.Checkout.SessionCreateParams.AllowedPaymentMethodType[] = ['card'];
 
-type StripeClient = Pick<Stripe, 'checkout' | 'webhooks' | 'paymentIntents'>;
+const CONNECTED_ACCOUNT_COUNTRY = 'BR';
+
+type StripeClient = Pick<
+  Stripe,
+  'checkout' | 'webhooks' | 'paymentIntents' | 'accounts' | 'accountLinks'
+>;
 type StripeSession = Stripe.Checkout.Session;
 type StripeReference = string | { id: string } | null;
 
@@ -35,15 +43,29 @@ function failureOf(error: unknown): PaymentProviderError {
   return new PaymentProviderError();
 }
 
-function sessionEvent(event: Stripe.Event, session: StripeSession, type: PaymentEvent['type']) {
+function sessionEvent(event: Stripe.Event, session: StripeSession, type: 'completed' | 'expired') {
   const orderId = session.metadata?.orderId ?? session.client_reference_id ?? undefined;
   return { id: event.id, type, sessionId: session.id, orderId };
 }
 
+function toConnectedAccount(account: Stripe.Account): ConnectedAccount {
+  return {
+    id: account.id,
+    detailsSubmitted: account.details_submitted ?? false,
+    transfersEnabled: account.capabilities?.transfers === 'active',
+    requirementsDue: account.requirements?.currently_due?.length ?? 0,
+    disabledReason: account.requirements?.disabled_reason ?? null,
+  };
+}
+
+const rejectAsProviderError = (error: unknown): never => {
+  throw failureOf(error);
+};
+
 export class StripePaymentProvider implements PaymentProvider {
   constructor(
     private readonly stripe: StripeClient,
-    private readonly webhookSecret: string,
+    private readonly webhookSecrets: string[],
   ) {}
 
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession> {
@@ -90,15 +112,34 @@ export class StripePaymentProvider implements PaymentProvider {
     if (event.type === 'checkout.session.expired') {
       return sessionEvent(event, event.data.object, 'expired');
     }
+    if (event.type === 'account.updated') {
+      return {
+        id: event.id,
+        type: 'account-updated',
+        accountId: event.data.object.id,
+      };
+    }
     return { id: event.id, type: 'ignored' };
   }
 
   private verifiedEvent(rawBody: Buffer, signature: string | undefined): Stripe.Event {
     if (!signature) throw new InvalidSignatureError();
+    const event = this.webhookSecrets
+      .map((secret) => this.eventSignedWith(rawBody, signature, secret))
+      .find(Boolean);
+    if (!event) throw new InvalidSignatureError();
+    return event;
+  }
+
+  private eventSignedWith(
+    rawBody: Buffer,
+    signature: string,
+    secret: string,
+  ): Stripe.Event | undefined {
     try {
-      return this.stripe.webhooks.constructEvent(rawBody, signature, this.webhookSecret);
+      return this.stripe.webhooks.constructEvent(rawBody, signature, secret);
     } catch {
-      throw new InvalidSignatureError();
+      return undefined;
     }
   }
 
@@ -109,5 +150,45 @@ export class StripePaymentProvider implements PaymentProvider {
       throw failureOf(error);
     });
     return idOf(intent.latest_charge);
+  }
+
+  async createConnectedAccount({
+    sellerId,
+    email,
+  }: CreateConnectedAccountInput): Promise<{ id: string }> {
+    const account = await this.stripe.accounts
+      .create(
+        {
+          type: 'express',
+          country: CONNECTED_ACCOUNT_COUNTRY,
+          email,
+          capabilities: { transfers: { requested: true } },
+        },
+        { idempotencyKey: `connected-account-${sellerId}` },
+      )
+      .catch(rejectAsProviderError);
+    return { id: account.id };
+  }
+
+  async createOnboardingLink({
+    accountId,
+    returnUrl,
+    refreshUrl,
+  }: OnboardingLinkInput): Promise<string> {
+    const link = await this.stripe.accountLinks
+      .create({
+        account: accountId,
+        type: 'account_onboarding',
+        return_url: returnUrl,
+        refresh_url: refreshUrl,
+        collection_options: { fields: 'eventually_due' },
+      })
+      .catch(rejectAsProviderError);
+    return link.url;
+  }
+
+  async getConnectedAccount(accountId: string): Promise<ConnectedAccount> {
+    const account = await this.stripe.accounts.retrieve(accountId).catch(rejectAsProviderError);
+    return toConnectedAccount(account);
   }
 }

@@ -1,3 +1,4 @@
+import Stripe from 'stripe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 async function loadFactory(overrides: Record<string, string>) {
@@ -34,5 +35,28 @@ describe('createPaymentProvider', () => {
     const { default: Stripe } = await import('stripe');
 
     expect(STRIPE_API_VERSION).toBe(Stripe.API_VERSION);
+  });
+
+  it('confere o webhook também com o segredo do destino das contas conectadas', async () => {
+    const { createPaymentProvider } = await loadFactory({
+      PAYMENT_DRIVER: 'stripe',
+      STRIPE_SECRET_KEY: 'sk_test_exemplo',
+      STRIPE_WEBHOOK_SECRET: 'whsec_exemplo',
+      STRIPE_CONNECT_WEBHOOK_SECRET: 'whsec_contas',
+    });
+    const payload = JSON.stringify({
+      id: 'evt_account',
+      object: 'event',
+      type: 'account.updated',
+      data: { object: { id: 'acct_1', object: 'account' } },
+    });
+    const signature = new Stripe('sk_test_exemplo').webhooks.generateTestHeaderString({
+      payload,
+      secret: 'whsec_contas',
+    });
+
+    await expect(
+      createPaymentProvider().parseWebhookEvent(Buffer.from(payload), signature),
+    ).resolves.toMatchObject({ type: 'account-updated', accountId: 'acct_1' });
   });
 });

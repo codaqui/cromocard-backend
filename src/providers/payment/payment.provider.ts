@@ -18,18 +18,43 @@ export interface CheckoutSession {
   url: string;
 }
 
-export type PaymentEventType = 'completed' | 'expired' | 'ignored';
-
-export interface PaymentEvent {
+export interface ConnectedAccount {
   id: string;
-  type: PaymentEventType;
-  sessionId?: string;
-  orderId?: string;
-  chargeId?: string;
+  detailsSubmitted: boolean;
+  transfersEnabled: boolean;
+  requirementsDue: number;
+  disabledReason: string | null;
 }
+
+export interface OnboardingLinkInput {
+  accountId: string;
+  returnUrl: string;
+  refreshUrl: string;
+}
+
+export interface CreateConnectedAccountInput {
+  sellerId: string;
+  email: string;
+}
+
+export type PaymentEvent =
+  | {
+      id: string;
+      type: 'completed' | 'expired';
+      sessionId: string;
+      orderId?: string;
+      chargeId?: string;
+    }
+  | { id: string; type: 'account-updated'; accountId: string }
+  | { id: string; type: 'ignored' };
+
+export type PaymentEventType = PaymentEvent['type'];
 
 export interface PaymentProvider {
   createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSession>;
   expireCheckoutSession(sessionId: string): Promise<void>;
   parseWebhookEvent(rawBody: Buffer, signature: string | undefined): Promise<PaymentEvent>;
+  createConnectedAccount(input: CreateConnectedAccountInput): Promise<{ id: string }>;
+  createOnboardingLink(input: OnboardingLinkInput): Promise<string>;
+  getConnectedAccount(accountId: string): Promise<ConnectedAccount>;
 }

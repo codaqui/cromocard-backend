@@ -10,6 +10,11 @@ import { StripePaymentProvider } from './stripe.payment-provider';
 export const STRIPE_API_VERSION: Stripe.LatestApiVersion = '2026-10-28.endive';
 const STRIPE_TIMEOUT_MS = 10_000;
 
+const stripeWebhookSecrets = () => [
+  requiredEnv('STRIPE_WEBHOOK_SECRET'),
+  ...(env.STRIPE_CONNECT_WEBHOOK_SECRET ? [env.STRIPE_CONNECT_WEBHOOK_SECRET] : []),
+];
+
 const paymentProviderByDriver: Record<typeof env.PAYMENT_DRIVER, () => PaymentProvider> = {
   fake: () => new FakePaymentProvider(),
   stripe: () =>
@@ -19,7 +24,7 @@ const paymentProviderByDriver: Record<typeof env.PAYMENT_DRIVER, () => PaymentPr
         timeout: STRIPE_TIMEOUT_MS,
         maxNetworkRetries: 1,
       }),
-      requiredEnv('STRIPE_WEBHOOK_SECRET'),
+      stripeWebhookSecrets(),
     ),
 };
 
