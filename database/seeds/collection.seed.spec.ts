@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import type { PrismaClient } from '@/generated/prisma/client';
 import { CollectionCardStatus } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
 
 import { albumIdOf, cardIdOf } from './catalog.seed';
-import { collectionSeed } from './collection.seed';
+import { collectionSeed, seedCollection } from './collection.seed';
 import { DAY_IN_MS, loadSeedData } from './load-seed-data';
 
 const { albums, collectionCards, generatedCards, priceHistory } = collectionSeed;
@@ -117,5 +118,76 @@ describe('collectionSeed', () => {
 
     expect(priceHistory.some(({ cardId }) => missing.has(cardId))).toBe(false);
     expect(new Set(priceHistory.map(({ id }) => id)).size).toBe(priceHistory.length);
+  });
+});
+
+type Row = { id: string } & Record<string, unknown>;
+
+interface UpsertArgs {
+  where: { id: string };
+  create: Row;
+  update: Row;
+}
+
+/** Banco em memória: cada `upsert` grava pela chave `id`, como o Prisma faz com `where: { id }`. */
+function memoryDatabase() {
+  const tables = new Map<string, Map<string, Row>>();
+  const tableOf = (name: string) => {
+    const table = tables.get(name) ?? new Map<string, Row>();
+    tables.set(name, table);
+    return {
+      upsert: ({ where, create, update }: UpsertArgs) => {
+        table.set(where.id, { ...(table.get(where.id) ? update : create) });
+        return Promise.resolve();
+      },
+    };
+  };
+  const prisma = {
+    card: tableOf('card'),
+    collection: tableOf('collection'),
+    userAlbum: tableOf('userAlbum'),
+    collectionCard: tableOf('collectionCard'),
+    priceHistory: tableOf('priceHistory'),
+  } as unknown as PrismaClient;
+  const sizes = () => Object.fromEntries([...tables].map(([name, table]) => [name, table.size]));
+  return { prisma, tables, sizes };
+}
+
+describe('seedCollection', () => {
+  it('grava a coleção, os álbuns, as marcações, as cartas geradas e os preços', async () => {
+    const { prisma, sizes } = memoryDatabase();
+
+    await seedCollection(prisma);
+
+    expect(sizes()).toEqual({
+      card: generatedCards.length,
+      collection: 1,
+      userAlbum: 4,
+      collectionCard: collectionCards.length,
+      priceHistory: priceHistory.length,
+    });
+  });
+
+  it('é idempotente: rodar de novo não cria linha nova', async () => {
+    const { prisma, sizes } = memoryDatabase();
+
+    await seedCollection(prisma);
+    const first = sizes();
+    await seedCollection(prisma);
+
+    expect(sizes()).toEqual(first);
+  });
+
+  it('liga os álbuns e as marcações à coleção do dono', async () => {
+    const { prisma, tables } = memoryDatabase();
+
+    await seedCollection(prisma);
+
+    const [collection] = [...tables.get('collection')!.values()];
+    const linked = [
+      ...tables.get('userAlbum')!.values(),
+      ...tables.get('collectionCard')!.values(),
+    ];
+    expect(linked.every(({ collectionId }) => collectionId === collection!.id)).toBe(true);
   });
 });
