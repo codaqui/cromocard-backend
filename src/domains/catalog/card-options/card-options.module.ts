@@ -22,3 +22,5 @@ export const cardConditionsModule: DomainModule = {
   router: createCardConditionsRoutes(controller),
   registerDocs: registerCardConditionsDocs,
 };
+
+export { activeCardWhere } from './active-card';

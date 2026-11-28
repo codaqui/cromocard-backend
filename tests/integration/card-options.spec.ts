@@ -16,15 +16,15 @@ interface CardOptionBody {
 }
 
 const RUN_ID = crypto.randomUUID().slice(0, 8);
-const created = { cards: [] as string[], album: '', category: '' };
+const created = { cards: [] as string[], album: '', deletedAlbum: '', category: '' };
 const sellerToken = signAccessToken({ id: crypto.randomUUID(), role: 'SELLER' });
 
 const getCards = (query: Record<string, string>, token = sellerToken) =>
   request(createApp()).get('/api/v1/cards').query(query).set('Authorization', `Bearer ${token}`);
 
-async function createCard(name: string, deletedAt: Date | null = null) {
+async function createCard(name: string, deletedAt: Date | null = null, albumId = created.album) {
   const card = await prisma.card.create({
-    data: { name, albumId: created.album, categoryId: created.category, deletedAt },
+    data: { name, albumId, categoryId: created.category, deletedAt },
   });
   created.cards.push(card.id);
 }
@@ -40,11 +40,16 @@ beforeAll(async () => {
   created.album = album.id;
   await createCard(`Charizard Busca ${RUN_ID}`);
   await createCard(`Charizard Excluído ${RUN_ID}`, new Date());
+  const deletedAlbum = await prisma.album.create({
+    data: { title: `Álbum removido ${RUN_ID}`, categoryId: category.id, deletedAt: new Date() },
+  });
+  created.deletedAlbum = deletedAlbum.id;
+  await createCard(`Charizard Álbum Removido ${RUN_ID}`, null, deletedAlbum.id);
 });
 
 afterAll(async () => {
   await prisma.card.deleteMany({ where: { id: { in: created.cards } } });
-  await prisma.album.deleteMany({ where: { id: created.album } });
+  await prisma.album.deleteMany({ where: { id: { in: [created.album, created.deletedAlbum] } } });
   await prisma.category.deleteMany({ where: { id: created.category } });
 });
 
@@ -63,6 +68,12 @@ describe('GET /api/v1/cards', () => {
 
     const deleted = await getCards({ q: `Excluído ${RUN_ID}` });
     expect((deleted.body as CardOptionBody).meta.total).toBe(0);
+  });
+
+  it('não traz carta de álbum excluído', async () => {
+    const res = await getCards({ q: `Álbum Removido ${RUN_ID}` });
+
+    expect((res.body as CardOptionBody).meta.total).toBe(0);
   });
 
   it('recusa busca com menos de 2 caracteres com 400', async () => {

@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { toSkipTake } from '@/shared/utils/pagination';
 import { notDeleted } from '@/shared/utils/soft-delete';
 
+import { activeCardWhere } from './active-card';
 import type { SearchCardsQuery } from './card-options.validator';
 
 const cardOptionSelect = {
@@ -37,7 +38,7 @@ export class PrismaCardOptionsRepository implements CardOptionsRepository {
 
   async searchCards(query: SearchCardsQuery): Promise<CardOptionsPage> {
     const where = {
-      ...notDeleted,
+      ...activeCardWhere,
       name: { contains: query.q, mode: 'insensitive' },
     } satisfies Prisma.CardWhereInput;
     const [items, total] = await this.prisma.$transaction([
