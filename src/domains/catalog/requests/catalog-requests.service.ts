@@ -37,6 +37,7 @@ import {
   toView,
   type ViewContext,
 } from './catalog-requests.view';
+import type { NotificationType } from '@/domains/notifications/notification-types';
 
 export type { CatalogRequestsCatalog, CreatedItem } from './catalog-requests.approvals';
 export { codeOf, itemNameOf } from './catalog-requests.view';
@@ -92,7 +93,7 @@ interface ApprovalRecord {
 }
 
 const AUDIT_ENTITY = 'catalog_request';
-const CATALOG_REQUEST_NOTIFICATION = 'CATALOG_REQUEST';
+const CATALOG_REQUEST_NOTIFICATION: NotificationType = 'CATALOG_REQUEST';
 
 export const approvedNotice = (itemName: string) => ({
   title: 'Sua sugestão foi aprovada',

@@ -12,9 +12,10 @@ import {
 } from './users.errors';
 import type { UserProfile, UserSummary, UsersRepository } from './users.repository';
 import type { BlockUserInput, SuspendUserInput, WarnUserInput } from './users.validator';
+import type { NotificationType } from '@/domains/notifications/notification-types';
 
 const USER_ENTITY = 'user';
-const WARNING_NOTIFICATION_TYPE = 'USER_WARNED';
+const WARNING_NOTIFICATION_TYPE: NotificationType = 'USER_WARNED';
 
 export interface SanctionAuditLog {
   record(

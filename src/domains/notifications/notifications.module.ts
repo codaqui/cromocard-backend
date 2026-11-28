@@ -13,9 +13,9 @@ import { registerGlobalNotificationsDocs } from './global-notifications.swagger'
 import { PrismaNotificationsRepository } from './notifications.repository';
 import { NotificationsService } from './notifications.service';
 
-export const notificationsService = new NotificationsService(
-  new PrismaNotificationsRepository(prisma),
-);
+export const notificationsService = new NotificationsService({
+  repository: new PrismaNotificationsRepository(prisma),
+});
 
 export const globalNotificationsService = new GlobalNotificationsService({
   repository: new PrismaGlobalNotificationsRepository(prisma),

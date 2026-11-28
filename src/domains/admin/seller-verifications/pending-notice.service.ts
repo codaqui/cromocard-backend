@@ -21,8 +21,9 @@ import type {
   SellerVerificationsRepository,
 } from './seller-verifications.repository';
 import type { AdminAuditLog, SellerNotifier } from './seller-verifications.ports';
+import type { NotificationType } from '@/domains/notifications/notification-types';
 
-const SELLER_PENDING_NOTIFICATION_TYPE = 'SELLER_PENDING';
+const SELLER_PENDING_NOTIFICATION_TYPE: NotificationType = 'SELLER_PENDING';
 const HOUR_IN_MS = 60 * 60 * 1000;
 
 const DEADLINE_LABELS: Record<DeadlineHours, string> = {

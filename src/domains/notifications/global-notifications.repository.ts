@@ -7,6 +7,7 @@ import {
   NOTIFICATION_AUDIENCES,
   type NotificationAudience,
 } from './global-notifications.validator';
+import type { NotificationType } from './notification-types';
 
 const globalNotificationSelect = {
   id: true,
@@ -62,7 +63,7 @@ export interface GlobalNotificationsRepository {
   cancelScheduled(id: string): Promise<boolean>;
 }
 
-export const GLOBAL_NOTIFICATION_TYPE = 'GLOBAL';
+export const GLOBAL_NOTIFICATION_TYPE: NotificationType = 'GLOBAL';
 const NOTIFICATIONS_BATCH_SIZE = 1000;
 
 type Transaction = Prisma.TransactionClient;
