@@ -102,7 +102,12 @@ describe('UploadsService', () => {
 
   it('recusa um arquivo que não é PNG, JPG nem WEBP', async () => {
     await expect(
-      service.uploadImage({ folder: 'cards', content: textFile(), uploaderId: 'admin-1', uploaderRole: 'ADMIN' }),
+      service.uploadImage({
+        folder: 'cards',
+        content: textFile(),
+        uploaderId: 'admin-1',
+        uploaderRole: 'ADMIN',
+      }),
     ).rejects.toThrow(InvalidImageTypeError);
     expect(storage.files).toHaveLength(0);
   });
