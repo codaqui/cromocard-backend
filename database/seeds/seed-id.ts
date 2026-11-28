@@ -35,6 +35,7 @@ export const SeedNamespace = {
   userBlocks: 45,
   contactReports: 46,
   reportEvidences: 47,
+  listingPhotos: 48,
 } as const;
 
 type SeedNamespaceValue = (typeof SeedNamespace)[keyof typeof SeedNamespace];

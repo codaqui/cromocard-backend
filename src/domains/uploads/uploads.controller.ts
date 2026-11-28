@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 
+import { getAuthenticatedUser } from '@/shared/middlewares/authenticate';
 import { created } from '@/shared/utils/http-response';
 
 import { MissingFileError } from './uploads.errors';
@@ -20,6 +21,8 @@ export class UploadsController {
   uploadImage = async (req: Request, res: Response): Promise<void> => {
     const { folder } = uploadImageBodySchema.parse(req.body);
     const { buffer } = getUploadedFile(req);
-    created(res, await this.uploadsService.uploadImage({ folder, content: buffer }));
+    const { id, role } = getAuthenticatedUser(req);
+    const upload = { folder, content: buffer, uploaderId: id, uploaderRole: role };
+    created(res, await this.uploadsService.uploadImage(upload));
   };
 }

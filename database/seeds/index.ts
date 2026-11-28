@@ -8,7 +8,7 @@ import { seedCatalog } from './catalog.seed';
 import { seedChat, seedChatReports } from './chat.seed';
 import { seedCollection } from './collection.seed';
 import { seedCommunity } from './community.seed';
-import { seedMarketplace } from './marketplace.seed';
+import { seedMarketplace, uploadListingPhotos } from './marketplace.seed';
 import { uploadSampleEvidence, uploadSampleImages } from './sample-images';
 import { seedOptionsFrom } from './seed-options';
 import { seedSellerVerifications } from './seller-verifications.seed';
@@ -23,6 +23,10 @@ async function seedWithSampleImages(isLocalDatabase: boolean): Promise<void> {
   await seedAdmin(prisma, images);
   await seedChatReports(prisma, evidenceKey);
   await seedProfiles(prisma, images.avatarUrl);
+}
+
+async function listingPhotosFor(isLocalDatabase: boolean): Promise<string[]> {
+  return isLocalDatabase ? uploadListingPhotos(createStorageProvider()) : [];
 }
 
 async function seed(): Promise<void> {
@@ -41,7 +45,7 @@ async function seed(): Promise<void> {
   await seedCollection(prisma);
   await seedCommunity(prisma);
   await seedSellerVerifications(prisma);
-  await seedMarketplace(prisma);
+  await seedMarketplace(prisma, await listingPhotosFor(options.isLocalDatabase));
   await seedChat(prisma);
   await seedWithSampleImages(options.isLocalDatabase);
 

@@ -12,6 +12,10 @@ import {
 import { authModule, authService } from '@/domains/auth/auth.module';
 import { cardsModule } from '@/domains/catalog/cards/cards.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
+import {
+  cardConditionsModule,
+  cardOptionsModule,
+} from '@/domains/catalog/card-options/card-options.module';
 import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
 import { catalogRequestsModule } from '@/domains/catalog/requests/catalog-requests.module';
 import { collectionModule } from '@/domains/collection/collection.module';
@@ -20,6 +24,7 @@ import { financeModule } from '@/domains/admin/finance/finance.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/settings.module';
 import { communityAdminModule } from '@/domains/community/community.module';
+import { sellerListingsModule } from '@/domains/marketplace/listings/seller-listings.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { globalNotificationsModule } from '@/domains/notifications/notifications.module';
 import {
@@ -38,6 +43,8 @@ const sharedModules: DomainModule[] = [
   financeModule,
   catalogModule,
   cardsModule,
+  cardOptionsModule,
+  cardConditionsModule,
   catalogRequestsModule,
   catalogRequestVotesModule,
   collectionModule,
@@ -52,6 +59,7 @@ const sharedModules: DomainModule[] = [
   contactBlocksModule,
   connectedAccountsModule,
   paymentsWebhookModule,
+  sellerListingsModule,
 ];
 
 export interface RoutesOptions {

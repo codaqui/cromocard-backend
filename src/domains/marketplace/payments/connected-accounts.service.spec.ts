@@ -265,3 +265,17 @@ describe('assertReady', () => {
     await expect(service.assertReady(SELLER)).rejects.toBeInstanceOf(StripeAccountNotReadyError);
   });
 });
+
+describe('isReady', () => {
+  it('diz se o vendedor pode anunciar pela conta READY', async () => {
+    givenSeller({ stripeAccountId: 'acct_1', stripeAccountStatus: 'READY' });
+    await expect(service.isReady(SELLER)).resolves.toBe(true);
+
+    givenSeller({ stripeAccountId: 'acct_1', stripeAccountStatus: 'VERIFYING' });
+    await expect(service.isReady(SELLER)).resolves.toBe(false);
+  });
+
+  it('responde que não para quem não existe ou foi excluído', async () => {
+    await expect(service.isReady('outro-vendedor')).resolves.toBe(false);
+  });
+});
