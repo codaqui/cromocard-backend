@@ -7,10 +7,7 @@ import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { env } from '@/config/env';
-import {
-  globalNotificationsService,
-  notificationsService,
-} from '@/domains/notifications/notifications.module';
+import { notificationsService } from '@/domains/notifications/notifications.module';
 import { signAccessToken } from '@/lib/jwt';
 import { prisma } from '@/lib/prisma';
 import { runInTransaction } from '@/lib/transaction';
@@ -139,24 +136,32 @@ describe('notification:new pelo adapter do PostgreSQL', () => {
     await prisma.notificationPreference.deleteMany({ where: { userId: ana.id } });
   });
 
-  it('CA21: o disparo global chega na hora a quem está conectado', async () => {
+  it('CA21: as notificações gravadas de um disparo global chegam na hora a quem está conectado', async () => {
     const admin = await prisma.user.create({
       data: { name: 'Admin', email: `admin-${crypto.randomUUID()}@cromocard.dev`, role: 'ADMIN' },
     });
     createdUserIds.push(admin.id);
     const ana = await createUser('ana-disparo');
     const anaSocket = await connectAs(ana);
+    const dispatch = await prisma.globalNotification.create({
+      data: {
+        adminId: admin.id,
+        title: 'Manutenção no sábado',
+        content: 'Fora do ar das 2h às 4h.',
+      },
+    });
+    await prisma.notification.create({
+      data: {
+        userId: ana.id,
+        globalNotificationId: dispatch.id,
+        title: dispatch.title,
+        message: dispatch.content,
+        type: 'GLOBAL',
+      },
+    });
 
     const arriving = nextNotification(anaSocket);
-    const dispatch = await globalNotificationsService.dispatch(admin.id, {
-      title: 'Manutenção no sábado',
-      content: 'O site fica fora do ar das 2h às 4h.',
-      audience: 'ALL',
-      channels: ['IN_APP'],
-    });
-    await prisma.notification.deleteMany({
-      where: { globalNotificationId: dispatch.id, userId: { notIn: createdUserIds } },
-    });
+    await notificationsService.publishDispatch(dispatch.id);
 
     await expect(arriving).resolves.toMatchObject({
       title: 'Manutenção no sábado',
