@@ -102,5 +102,50 @@
     "name": "Dragão Branco de Olhos Azuis",
     "rarity": "epica",
     "language": "ja"
+  },
+  {
+    "key": "messi",
+    "album": "copa-2026",
+    "category": "copa-do-mundo",
+    "number": "20",
+    "name": "Lionel Messi",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "charizard-vmax-sv107",
+    "album": "destinos-brilhantes",
+    "category": "pokemon",
+    "number": "SV107",
+    "name": "Charizard VMAX #SV107",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "charizard-vmax-shiny",
+    "album": "destinos-brilhantes",
+    "category": "pokemon",
+    "number": "SV106",
+    "name": "Charizard VMAX Shiny",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "mox-diamond",
+    "album": "magic-vintage",
+    "category": "magic",
+    "number": "138",
+    "name": "Mox Diamond",
+    "rarity": "comum",
+    "language": "pt-BR"
+  },
+  {
+    "key": "mago-negro",
+    "album": "yugioh-classico",
+    "category": "yugioh",
+    "number": "LOB-005",
+    "name": "Mago Negro 1ª Edição",
+    "rarity": "comum",
+    "language": "pt-BR"
   }
 ]
