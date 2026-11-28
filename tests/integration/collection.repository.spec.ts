@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { PrismaCollectionCardsRepository } from '@/domains/collection/collection-cards.repository';
+import {
+  type CollectionCardsFilter,
+  PrismaCollectionCardsRepository,
+} from '@/domains/collection/collection-cards.repository';
 import { PrismaCollectionRepository } from '@/domains/collection/collection.repository';
 import type { CollectionCardStatus } from '@/generated/prisma/enums';
 import { prisma } from '@/lib/prisma';
@@ -10,6 +13,18 @@ const removed = { deletedAt: new Date() };
 
 const collections = new PrismaCollectionRepository(prisma);
 const collectionCards = new PrismaCollectionCardsRepository(prisma);
+const PRICE_WINDOW = {
+  from: new Date('2026-10-01T00:00:00Z'),
+  to: new Date('2026-10-31T00:00:00Z'),
+};
+
+const pageOf = (filter: CollectionCardsFilter = {}, skip = 0, take = 8) =>
+  collectionCards.findPage(collectionId, filter, { skip, take, priceWindow: PRICE_WINDOW });
+
+async function namesOf(filter: CollectionCardsFilter = {}) {
+  const { rows } = await pageOf(filter);
+  return rows.map(({ name }) => name.replace(`${MARKER} `, ''));
+}
 
 let userId: string;
 let collectionId: string;
@@ -93,13 +108,45 @@ describe('PrismaCollectionRepository', () => {
     expect((await prisma.collection.findUniqueOrThrow({ where: { userId } })).isPublic).toBe(false);
   });
 
-  it('ADR-015: a coleção excluída volta restaurada, na mesma linha', async () => {
+  it('L2: ler a coleção que já existe não grava nada', async () => {
+    const { updatedAt } = await prisma.collection.findUniqueOrThrow({ where: { userId } });
+
+    await collections.findOrCreateByUserId(userId);
+
+    const after = await prisma.collection.findUniqueOrThrow({ where: { userId } });
+    expect(after.updatedAt).toEqual(updatedAt);
+  });
+
+  it('L2: duas leituras ao mesmo tempo criam uma coleção só', async () => {
+    const { id } = await prisma.user.create({
+      data: { name: `${MARKER} Bia`, email: `${MARKER}-bia@teste.dev`, role: 'CUSTOMER' },
+    });
+
+    const [first, second] = await Promise.all([
+      collections.findOrCreateByUserId(id),
+      collections.findOrCreateByUserId(id),
+    ]);
+
+    expect(first.id).toBe(second.id);
+    await prisma.collection.deleteMany({ where: { userId: id } });
+    await prisma.user.delete({ where: { id } });
+  });
+
+  it('L2: erro do banco que não é de unicidade sobe sem virar leitura', async () => {
+    const read = collections.findOrCreateByUserId(crypto.randomUUID());
+
+    await expect(read).rejects.toMatchObject({ code: 'P2003' });
+  });
+
+  it('ADR-015: a coleção excluída não volta ao ser lida e responde COLLECTION_NOT_FOUND', async () => {
     await prisma.collection.update({ where: { userId }, data: removed });
 
-    const restored = await collections.findOrCreateByUserId(userId);
+    const read = collections.findOrCreateByUserId(userId);
 
-    expect(restored.id).toBe(collectionId);
-    expect((await prisma.collection.findUniqueOrThrow({ where: { userId } })).deletedAt).toBeNull();
+    await expect(read).rejects.toMatchObject({ statusCode: 404, code: 'COLLECTION_NOT_FOUND' });
+    const { deletedAt } = await prisma.collection.findUniqueOrThrow({ where: { userId } });
+    await prisma.collection.update({ where: { userId }, data: { deletedAt: null } });
+    expect(deletedAt).not.toBeNull();
   });
 
   it('R3: só o álbum ativo da coleção, de álbum não excluído', async () => {
@@ -113,7 +160,7 @@ describe('PrismaCollectionRepository', () => {
     const [marks, ...others] = await collections.countMarksByAlbum(collectionId);
 
     expect(others).toEqual([]);
-    expect(marks).toMatchObject({ albumId: activeAlbumId, owned: 2, duplicates: 2 });
+    expect(marks).toMatchObject({ albumId: activeAlbumId, owned: 2, extraCopies: 2 });
     expect(marks!.lastMarkedAt).toBeInstanceOf(Date);
   });
 
@@ -125,76 +172,71 @@ describe('PrismaCollectionRepository', () => {
 });
 
 describe('PrismaCollectionCardsRepository', () => {
-  it('R8: conta por status, com a carta sem marcação ativa como faltante', async () => {
+  it('L13: as abas contam as cartas que listam, com a sem marcação ativa como faltante', async () => {
     expect(await collectionCards.countByStatus(collectionId)).toEqual({
       all: 4,
       owned: 2,
       missing: 2,
-      duplicates: 1,
+      duplicateCards: 1,
     });
   });
 
-  it('R8: ordena todas as cartas ativas pelo nome, com o status de cada uma', async () => {
-    expect(await collectionCards.rank(collectionId, {})).toEqual([
-      { cardId: cards.Charizard, status: 'DUPLICATE' },
-      { cardId: cards.Eevee, status: 'MISSING' },
-      { cardId: cards.Mewtwo, status: 'MISSING' },
-      { cardId: cards.Pikachu, status: 'OWNED' },
-    ]);
+  it('R8: sem preço, lista as cartas ativas pelo nome, com o status de cada uma', async () => {
+    expect(await namesOf()).toEqual(['Charizard', 'Eevee', 'Mewtwo', 'Pikachu']);
   });
 
   it('R8: a aba Faltantes traz a marcação MISSING e a carta sem marcação', async () => {
-    const ranked = await collectionCards.rank(collectionId, { status: 'MISSING' });
-
-    expect(ranked.map(({ cardId }) => cardId)).toEqual([cards.Eevee, cards.Mewtwo]);
+    expect(await namesOf({ status: 'MISSING' })).toEqual(['Eevee', 'Mewtwo']);
   });
 
   it('R8: a aba Possuo traz OWNED e DUPLICATE, e a aba Repetidas só DUPLICATE', async () => {
-    const owned = await collectionCards.rank(collectionId, { status: 'OWNED' });
-    const duplicates = await collectionCards.rank(collectionId, { status: 'DUPLICATE' });
-
-    expect(owned.map(({ cardId }) => cardId)).toEqual([cards.Charizard, cards.Pikachu]);
-    expect(duplicates.map(({ cardId }) => cardId)).toEqual([cards.Charizard]);
+    expect(await namesOf({ status: 'OWNED' })).toEqual(['Charizard', 'Pikachu']);
+    expect(await namesOf({ status: 'DUPLICATE' })).toEqual(['Charizard']);
   });
 
   it('R8: busca pelo nome sem diferenciar maiúsculas e filtra pela categoria', async () => {
-    const byName = await collectionCards.rank(collectionId, { q: 'CHARI' });
-    const byCategory = await collectionCards.rank(collectionId, { categoryId });
-    const otherCategory = await collectionCards.rank(collectionId, {
-      categoryId: crypto.randomUUID(),
+    expect(await namesOf({ q: 'CHARI' })).toEqual(['Charizard']);
+    expect(await namesOf({ categoryId })).toHaveLength(4);
+    expect(await namesOf({ categoryId: crypto.randomUUID() })).toEqual([]);
+  });
+
+  it('R8: % e _ na busca valem como texto, não como curinga', async () => {
+    expect(await namesOf({ q: '%' })).toEqual([]);
+    expect(await namesOf({ q: '_' })).toEqual([]);
+  });
+
+  it('R8: pagina no banco e devolve o total da aba', async () => {
+    const { rows, total } = await pageOf({}, 1, 2);
+
+    expect(total).toBe(4);
+    expect(rows.map(({ cardId }) => cardId)).toEqual([cards.Eevee, cards.Mewtwo]);
+  });
+
+  it('R8: traz os dados da carta com álbum, categoria, quantidade e preços', async () => {
+    const { rows } = await pageOf();
+
+    expect(rows[0]).toEqual({
+      cardId: cards.Charizard,
+      name: `${MARKER} Charizard`,
+      frontImageUrl: null,
+      album: { id: activeAlbumId, title: `${MARKER} Destinos` },
+      category: { id: categoryId, name: `${MARKER} Pokémon` },
+      status: 'DUPLICATE',
+      quantity: 3,
+      averageCents: null,
+      lowestListingCents: null,
     });
-
-    expect(byName.map(({ cardId }) => cardId)).toEqual([cards.Charizard]);
-    expect([byCategory.length, otherCategory.length]).toEqual([4, 0]);
+    expect(rows[1]).toMatchObject({ cardId: cards.Eevee, status: 'MISSING', quantity: 0 });
+    expect(rows[2]).toMatchObject({ cardId: cards.Mewtwo, status: 'MISSING', quantity: 0 });
   });
 
-  it('R8: traz os dados da página com álbum, categoria e quantidade', async () => {
-    const rows = await collectionCards.findRows(collectionId, [
-      cards.Charizard!,
-      cards.Eevee!,
-      cards.Mewtwo!,
-    ]);
+  it('R8: deixa de fora a carta excluída e a de álbum fora da coleção', async () => {
+    const { rows } = await pageOf();
 
-    expect(rows.sort((first, second) => first.name.localeCompare(second.name))).toEqual([
-      {
-        cardId: cards.Charizard,
-        name: `${MARKER} Charizard`,
-        frontImageUrl: null,
-        album: { id: activeAlbumId, title: `${MARKER} Destinos` },
-        category: { id: categoryId, name: `${MARKER} Pokémon` },
-        status: 'DUPLICATE',
-        quantity: 3,
-      },
-      expect.objectContaining({ cardId: cards.Eevee, status: 'MISSING', quantity: 0 }),
-      expect.objectContaining({ cardId: cards.Mewtwo, status: 'MISSING', quantity: 0 }),
-    ]);
-  });
-
-  it('R8: os dados da página ignoram carta excluída ou de álbum fora da coleção', async () => {
-    const rows = await collectionCards.findRows(collectionId, [cards.Snorlax!, cards.Messi!]);
-
-    expect(rows).toEqual([]);
-    expect(await collectionCards.findRows(collectionId, [])).toEqual([]);
+    const ids = rows.map(({ cardId }) => cardId);
+    expect(ids).not.toContain(cards.Snorlax);
+    expect(ids).not.toContain(cards.Messi);
+    expect(ids).not.toContain(cards.Pele);
   });
 
   it('CCD061: as cartas em coleções são as de marcação ativa, de qualquer status', async () => {

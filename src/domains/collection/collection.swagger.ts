@@ -12,6 +12,8 @@ const accessErrors = {
   403: { description: 'Só clientes e vendedores têm coleção; o administrador vai ao BackOffice' },
 };
 
+const notFound = { description: 'COLLECTION_NOT_FOUND: a coleção do cliente foi excluída' };
+
 const count = z.number().int().min(0);
 const positive = z.number().int().min(1);
 const money = z
@@ -20,7 +22,12 @@ const money = z
 const percent = z.number().openapi({ example: 70.58 });
 const json = (schema: z.ZodType) => ({ content: { 'application/json': { schema } } });
 
-const cardTotals = z.object({ total: count, owned: count, missing: count, duplicates: count });
+const cardTotals = z.object({
+  total: count.openapi({ description: 'Soma do total de cartas dos álbuns ativos (L3)' }),
+  owned: count,
+  missing: count,
+  extraCopies: count.openapi({ description: 'Cópias além da primeira das repetidas (L3)' }),
+});
 
 const summary = z.object({
   collector: z.object({
@@ -73,7 +80,10 @@ const cardsMeta = z.object({
   pageSize: positive,
   total: count,
   totalPages: count,
-  counts: z.object({ all: count, owned: count, missing: count, duplicates: count }),
+  counts: z.object({ all: count, owned: count, missing: count, duplicateCards: count }).openapi({
+    description:
+      'Cartas que cada aba lista (L13). Podem diferir dos cards do resumo, que somam o total dos álbuns e as cópias extras',
+  }),
   categories: z.array(reference).openapi({ description: 'Categorias dos álbuns ativos' }),
 });
 
@@ -88,6 +98,7 @@ const paths: RouteConfig[] = [
     responses: {
       200: { description: 'Resumo da coleção', ...json(z.object({ data: summary })) },
       ...accessErrors,
+      404: notFound,
     },
   },
   {
@@ -96,14 +107,17 @@ const paths: RouteConfig[] = [
     tags,
     security,
     summary: 'Principais itens da coleção, pelo maior valor (CCD007)',
+    description:
+      'Ordena pelo maior valor (preço médio de 30 dias; na faltante, o menor anúncio ativo) e pagina no banco.',
     request: { query: listCollectionCardsQuerySchema },
     responses: {
       200: {
         description: 'Cartas da aba, 8 por página',
         ...json(z.object({ data: z.array(card), meta: cardsMeta })),
       },
-      400: { description: 'VALIDATION_ERROR: aba, busca, categoria, ordem ou paginação inválida' },
+      400: { description: 'VALIDATION_ERROR: aba, busca, categoria ou paginação inválida' },
       ...accessErrors,
+      404: notFound,
     },
   },
 ];

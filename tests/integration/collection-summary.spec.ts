@@ -38,6 +38,7 @@ let collector: TestUser;
 let removedAlbumCollector: TestUser;
 let newcomer: TestUser;
 let admin: TestUser;
+const extraUsers: TestUser[] = [];
 let categoryId: string;
 let favoriteAlbumId: string;
 const albumIds: string[] = [];
@@ -189,7 +190,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const userIds = [collector, removedAlbumCollector, newcomer, admin].map(({ id }) => id);
+  const userIds = [collector, removedAlbumCollector, newcomer, admin, ...extraUsers].map(
+    ({ id }) => id,
+  );
   const ofUsers = { collection: { userId: { in: userIds } } };
   await prisma.collectionCard.deleteMany({ where: ofUsers });
   await prisma.userAlbum.deleteMany({ where: ofUsers });
@@ -211,7 +214,7 @@ describe('GET /api/v1/collections/me/summary', () => {
       collector: { firstName: 'Daniel', memberSince: '2026-10-01' },
       activeAlbums: 4,
       averageProgress: 35,
-      cards: { total: 264, owned: 7, missing: 257, duplicates: 2 },
+      cards: { total: 264, owned: 7, missing: 257, extraCopies: 2 },
     });
   });
 
@@ -228,13 +231,40 @@ describe('GET /api/v1/collections/me/summary', () => {
     });
   });
 
+  it('CA9: sem favorito, o destaque é o último álbum em que o cliente marcou carta', async () => {
+    const user = await createUser('Lucca Rocha', 'CUSTOMER');
+    extraUsers.push(user);
+    const { id: collectionId } = await prisma.collection.create({ data: { userId: user.id } });
+    const extra = await prisma.album.create({ data: { title: `${MARKER} Extra`, totalCards: 1 } });
+    const extraCard = await prisma.card.create({
+      data: { name: `${MARKER} Extra 01`, number: '1', albumId: extra.id },
+    });
+    await prisma.userAlbum.createMany({
+      data: [extra.id, favoriteAlbumId].map((albumId) => ({ collectionId, albumId })),
+    });
+    await prisma.collectionCard.createMany({
+      data: [
+        { collectionId, cardId: cardIds['Carta 01']!, status: 'OWNED', updatedAt: daysAgo(2) },
+        { collectionId, cardId: extraCard.id, status: 'OWNED', updatedAt: daysAgo(1) },
+      ],
+    });
+
+    const { summary } = await summaryOf(user);
+
+    expect(summary.featuredAlbum).toMatchObject({
+      albumId: extra.id,
+      title: `${MARKER} Extra`,
+      ownedCards: 1,
+    });
+  });
+
   it('CA2: o álbum removido sai da contagem', async () => {
     const { summary } = await summaryOf(removedAlbumCollector);
 
     expect(summary).toMatchObject({
       activeAlbums: 3,
       averageProgress: 40,
-      cards: { total: 187, owned: 2, missing: 185, duplicates: 1 },
+      cards: { total: 187, owned: 2, missing: 185, extraCopies: 1 },
     });
   });
 
@@ -258,7 +288,7 @@ describe('GET /api/v1/collections/me/summary', () => {
     expect(summary).toMatchObject({
       activeAlbums: 0,
       averageProgress: 0,
-      cards: { total: 0, owned: 0, missing: 0, duplicates: 0 },
+      cards: { total: 0, owned: 0, missing: 0, extraCopies: 0 },
       estimatedValue: { amount: '0.00', variationPercent: null },
       featuredAlbum: null,
     });
@@ -280,7 +310,7 @@ describe('GET /api/v1/collections/me/cards', () => {
       pageSize: 8,
       total: 10,
       totalPages: 2,
-      counts: { all: 10, owned: 7, missing: 3, duplicates: 1 },
+      counts: { all: 10, owned: 7, missing: 3, duplicateCards: 1 },
       categories: [{ id: categoryId, name: `${MARKER} Pokémon` }],
     });
   });
@@ -336,6 +366,14 @@ describe('GET /api/v1/collections/me/cards', () => {
     expect([mine.meta.total, none.meta.total]).toEqual([10, 0]);
   });
 
+  it('L13: a aba Repetidas conta cartas, e o card Repetidas do resumo, as cópias extras', async () => {
+    const { meta } = await cardsOf(collector);
+    const { summary } = await summaryOf(collector);
+
+    expect(meta.counts).toMatchObject({ duplicateCards: 1 });
+    expect(summary.cards).toMatchObject({ extraCopies: 2 });
+  });
+
   it('VALIDATION_ERROR: aba inválida responde 400', async () => {
     expect(await errorOf(`${CARDS}?status=VENDIDA`, collector)).toEqual({
       status: 400,
@@ -351,6 +389,15 @@ describe('acesso à coleção (CA6)', () => {
 
   it.each([SUMMARY, CARDS])('o ADMIN recebe 403 em %s (L1)', async (path) => {
     expect(await errorOf(path, admin)).toEqual({ status: 403, error: 'FORBIDDEN' });
+  });
+
+  it('cada cliente vê só o próprio resumo', async () => {
+    const mine = await summaryOf(collector);
+    const theirs = await summaryOf(removedAlbumCollector);
+
+    expect(mine.summary.cards).toMatchObject({ owned: 7, extraCopies: 2 });
+    expect(theirs.summary.cards).toMatchObject({ owned: 2, extraCopies: 1 });
+    expect(mine.summary.featuredAlbum).toMatchObject({ ownedCards: 7 });
   });
 
   it('cada cliente vê só a própria coleção', async () => {

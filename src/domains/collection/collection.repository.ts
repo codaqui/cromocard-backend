@@ -1,5 +1,7 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import type { CollectionCardStatus } from '@/generated/prisma/enums';
+import { NotFoundError } from '@/shared/errors/http-errors';
+import { isUniqueConstraintError } from '@/shared/errors/unique-constraint';
 import { notDeleted } from '@/shared/utils/soft-delete';
 
 export const OWNED_STATUSES: CollectionCardStatus[] = ['OWNED', 'DUPLICATE'];
@@ -12,6 +14,20 @@ export interface CollectionOwner {
 export interface OwnedCollection {
   id: string;
   owner: CollectionOwner;
+}
+
+const collectionSelect = {
+  id: true,
+  deletedAt: true,
+  user: { select: { name: true, createdAt: true } },
+} satisfies Prisma.CollectionSelect;
+
+type CollectionWithOwner = Prisma.CollectionGetPayload<{ select: typeof collectionSelect }>;
+
+/** A coleção excluída não volta ao ser lida: o ADR-015 restaura ao re-adicionar, não ao ler. */
+function activeOrThrow({ id, deletedAt, user }: CollectionWithOwner): OwnedCollection {
+  if (deletedAt) throw new NotFoundError('Coleção não encontrada', 'COLLECTION_NOT_FOUND');
+  return { id, owner: user };
 }
 
 const activeAlbumSelect = {
@@ -27,7 +43,7 @@ export type ActiveAlbum = Prisma.UserAlbumGetPayload<{ select: typeof activeAlbu
 export interface AlbumMarks {
   albumId: string;
   owned: number;
-  duplicates: number;
+  extraCopies: number;
   lastMarkedAt: Date;
 }
 
@@ -52,14 +68,30 @@ export function activeCardsOf(collectionId: string) {
 export class PrismaCollectionRepository implements CollectionRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  /** Lê a coleção e só grava quando ela ainda não existe (L2): o GET continua seguro e idempotente. */
   async findOrCreateByUserId(userId: string): Promise<OwnedCollection> {
-    const { id, user } = await this.prisma.collection.upsert({
+    const existing = await this.findByUserId(userId);
+    return existing ? activeOrThrow(existing) : this.create(userId);
+  }
+
+  private findByUserId(userId: string) {
+    return this.prisma.collection.findUnique({ where: { userId }, select: collectionSelect });
+  }
+
+  /** Duas leituras ao mesmo tempo podem tentar criar: quem perde a corrida lê a coleção da outra. */
+  private create(userId: string): Promise<OwnedCollection> {
+    return this.prisma.collection
+      .create({ data: { userId, isPublic: false }, select: collectionSelect })
+      .catch((error: unknown) => this.readAfterConflict(userId, error))
+      .then(activeOrThrow);
+  }
+
+  private readAfterConflict(userId: string, error: unknown): Promise<CollectionWithOwner> {
+    if (!isUniqueConstraintError(error)) throw error;
+    return this.prisma.collection.findUniqueOrThrow({
       where: { userId },
-      update: notDeleted,
-      create: { userId, isPublic: false },
-      select: { id: true, user: { select: { name: true, createdAt: true } } },
+      select: collectionSelect,
     });
-    return { id, owner: user };
   }
 
   findActiveAlbums(collectionId: string): Promise<ActiveAlbum[]> {
@@ -73,9 +105,10 @@ export class PrismaCollectionRepository implements CollectionRepository {
   countMarksByAlbum(collectionId: string): Promise<AlbumMarks[]> {
     return this.prisma.$queryRaw<AlbumMarks[]>`
       SELECT c.album_id AS "albumId",
-             count(*) FILTER (WHERE cc.status IN ('OWNED', 'DUPLICATE'))::int AS owned,
+             count(*) FILTER (WHERE cc.status = ANY(${OWNED_STATUSES}::collection_card_status[]))::int
+               AS owned,
              coalesce(sum(cc.quantity - 1) FILTER (WHERE cc.status = 'DUPLICATE'), 0)::int
-               AS duplicates,
+               AS "extraCopies",
              max(cc.updated_at) AS "lastMarkedAt"
         FROM collection_cards cc
         JOIN cards c ON c.id = cc.card_id AND c.deleted_at IS NULL

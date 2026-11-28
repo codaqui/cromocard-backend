@@ -5,8 +5,8 @@ import { listCollectionCardsQuerySchema } from './collection.validator';
 const parse = (query: Record<string, string>) => listCollectionCardsQuerySchema.safeParse(query);
 
 describe('listCollectionCardsQuerySchema', () => {
-  it('L6: sem filtros, todas as abas, 8 por página e o maior valor primeiro', () => {
-    expect(parse({}).data).toEqual({ page: 1, pageSize: 8, sort: 'value_desc' });
+  it('L6: sem filtros, todas as abas e 8 por página', () => {
+    expect(parse({}).data).toEqual({ page: 1, pageSize: 8 });
   });
 
   it('R8: aceita a aba, a busca sem espaços nas pontas e a categoria', () => {
@@ -15,7 +15,6 @@ describe('listCollectionCardsQuerySchema', () => {
     expect(parse({ status: 'DUPLICATE', q: '  pika ', categoryId, page: '2' }).data).toEqual({
       page: 2,
       pageSize: 8,
-      sort: 'value_desc',
       status: 'DUPLICATE',
       q: 'pika',
       categoryId,
@@ -29,7 +28,6 @@ describe('listCollectionCardsQuerySchema', () => {
   it.each([
     [{ status: 'VENDIDA' }, 'Escolha possuo, faltante ou repetida.'],
     [{ categoryId: 'pokemon' }, 'Informe uma categoria válida.'],
-    [{ sort: 'name' }, 'Ordene pelo maior valor.'],
     [{ q: 'x'.repeat(161) }, 'Busque com até 160 caracteres.'],
   ])('VALIDATION_ERROR: rejeita %o', (query, message) => {
     expect(parse(query).error?.issues[0]?.message).toBe(message);

@@ -2,12 +2,7 @@ import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import { Prisma } from '@/generated/prisma/client';
 
-import type {
-  CollectionCardRow,
-  CollectionCardsRepository,
-  RankedCard,
-} from './collection-cards.repository';
-import type { ListingPrices } from './collection-listing-prices';
+import type { CollectionCardsRepository, PricedCardRow } from './collection-cards.repository';
 import type { CollectionPrices } from './collection-prices';
 import type { ActiveAlbum, AlbumMarks, CollectionRepository } from './collection.repository';
 import { CollectionService } from './collection.service';
@@ -27,8 +22,17 @@ function activeAlbum(albumId: string, totalCards: number, extra: Partial<ActiveA
   } satisfies ActiveAlbum;
 }
 
-function marks(albumId: string, [owned, duplicates]: [number, number], minutesAgo = 0): AlbumMarks {
-  return { albumId, owned, duplicates, lastMarkedAt: new Date(NOW.getTime() - minutesAgo * 60000) };
+function marks(
+  albumId: string,
+  [owned, extraCopies]: [number, number],
+  minutesAgo = 0,
+): AlbumMarks {
+  return {
+    albumId,
+    owned,
+    extraCopies,
+    lastMarkedAt: new Date(NOW.getTime() - minutesAgo * 60000),
+  };
 }
 
 const progress = (value: number) => ({ progressPercentage: new Prisma.Decimal(value) });
@@ -46,7 +50,7 @@ const FRAME_MARKS = [
   marks('classico', [48, 7], 40),
 ];
 
-const COUNTS = { all: 10, owned: 8, missing: 2, duplicates: 1 };
+const COUNTS = { all: 10, owned: 8, missing: 2, duplicateCards: 1 };
 
 let collections: {
   findOrCreateByUserId: Mock<CollectionRepository['findOrCreateByUserId']>;
@@ -56,13 +60,11 @@ let collections: {
 };
 let prices: { averagePrices: Mock<CollectionPrices['averagePrices']> };
 let cards: {
-  rank: Mock<CollectionCardsRepository['rank']>;
-  findRows: Mock<CollectionCardsRepository['findRows']>;
+  findPage: Mock<CollectionCardsRepository['findPage']>;
   countByStatus: Mock<CollectionCardsRepository['countByStatus']>;
   listCategories: Mock<CollectionCardsRepository['listCategories']>;
   findCardIdsInCollections: Mock<CollectionCardsRepository['findCardIdsInCollections']>;
 };
-let listings: { lowestActivePrice: Mock<ListingPrices['lowestActivePrice']> };
 let service: CollectionService;
 
 function pricesBy(current: Record<string, number>, previous: Record<string, number>) {
@@ -89,8 +91,9 @@ beforeEach(() => {
     averagePrices: vi.fn<CollectionPrices['averagePrices']>().mockResolvedValue(new Map()),
   };
   cards = {
-    rank: vi.fn<CollectionCardsRepository['rank']>().mockResolvedValue([]),
-    findRows: vi.fn<CollectionCardsRepository['findRows']>().mockResolvedValue([]),
+    findPage: vi
+      .fn<CollectionCardsRepository['findPage']>()
+      .mockResolvedValue({ rows: [], total: 0 }),
     countByStatus: vi.fn<CollectionCardsRepository['countByStatus']>().mockResolvedValue(COUNTS),
     listCategories: vi
       .fn<CollectionCardsRepository['listCategories']>()
@@ -99,10 +102,7 @@ beforeEach(() => {
       .fn<CollectionCardsRepository['findCardIdsInCollections']>()
       .mockResolvedValue(['c1']),
   };
-  listings = {
-    lowestActivePrice: vi.fn<ListingPrices['lowestActivePrice']>().mockResolvedValue(new Map()),
-  };
-  service = new CollectionService({ collections, cards, prices, listings, now: () => NOW });
+  service = new CollectionService({ collections, cards, prices, now: () => NOW });
 });
 
 describe('CollectionService.getSummary', () => {
@@ -114,7 +114,7 @@ describe('CollectionService.getSummary', () => {
     expect(summary).toMatchObject({
       activeAlbums: 4,
       averageProgress: 70.58,
-      cards: { total: 264, owned: 184, missing: 80, duplicates: 28 },
+      cards: { total: 264, owned: 184, missing: 80, extraCopies: 28 },
     });
   });
 
@@ -131,7 +131,7 @@ describe('CollectionService.getSummary', () => {
     const summary = await service.getSummary('usuario-1');
 
     expect(summary.activeAlbums).toBe(3);
-    expect(summary.cards).toEqual({ total: 210, owned: 140, missing: 70, duplicates: 21 });
+    expect(summary.cards).toEqual({ total: 210, owned: 140, missing: 70, extraCopies: 21 });
   });
 
   it('R4: faltantes nunca ficam negativas', async () => {
@@ -183,7 +183,7 @@ describe('CollectionService.getSummary', () => {
     expect(summary).toMatchObject({
       activeAlbums: 0,
       averageProgress: 0,
-      cards: { total: 0, owned: 0, missing: 0, duplicates: 0 },
+      cards: { total: 0, owned: 0, missing: 0, extraCopies: 0 },
       estimatedValue: { amount: '0.00', variationPercent: null },
       featuredAlbum: null,
     });
@@ -239,17 +239,11 @@ describe('CollectionService.getSummary — valor estimado', () => {
   });
 });
 
-const RANKED: RankedCard[] = [
-  ...['c1', 'c2', 'c3', 'c4', 'c5', 'c6'].map((cardId) => ({ cardId, status: 'OWNED' as const })),
-  { cardId: 'c7', status: 'DUPLICATE' },
-  { cardId: 'c8', status: 'MISSING' },
-  { cardId: 'c9', status: 'MISSING' },
-  { cardId: 'c10', status: 'OWNED' },
-];
-
-const AVERAGES = { c1: 1000, c2: 2000, c3: 3000, c4: 4000, c5: 500, c6: 6000, c7: 18000, c8: 9999 };
-
-function row({ cardId, status }: RankedCard): CollectionCardRow {
+function pricedRow(
+  cardId: string,
+  status: PricedCardRow['status'],
+  [averageCents, lowestListingCents]: [number | null, number | null],
+): PricedCardRow {
   return {
     cardId,
     name: `Carta ${cardId}`,
@@ -257,69 +251,67 @@ function row({ cardId, status }: RankedCard): CollectionCardRow {
     album: { id: 'destinos', title: 'Destinos Brilhantes' },
     category: { id: 'pokemon', name: 'Pokémon' },
     status,
-    quantity: status === 'MISSING' ? 0 : 1,
+    quantity: status === 'MISSING' ? 0 : 2,
+    averageCents,
+    lowestListingCents,
   };
 }
+
+const PAGE = [
+  pricedRow('c7', 'DUPLICATE', [18000, null]),
+  pricedRow('c8', 'MISSING', [9999, 5000]),
+  pricedRow('c10', 'OWNED', [null, null]),
+];
 
 const query = (page = 1) => listCollectionCardsQuerySchema.parse({ page: String(page) });
 
 describe('CollectionService.listCards', () => {
   beforeEach(() => {
-    cards.rank.mockResolvedValue(RANKED);
-    cards.findRows.mockImplementation((_id, ids) =>
-      Promise.resolve(
-        RANKED.filter(({ cardId }) => ids.includes(cardId))
-          .map(row)
-          .reverse(),
-      ),
-    );
-    prices.averagePrices.mockResolvedValue(new Map(Object.entries(AVERAGES)));
-    listings.lowestActivePrice.mockResolvedValue(new Map([['c8', 5000]]));
+    cards.findPage.mockResolvedValue({ rows: PAGE, total: 10 });
   });
 
-  it('CA4: traz as 8 cartas de maior valor, com a faltante pelo menor anúncio', async () => {
+  it('CA4: devolve a página na ordem do repository, com os preços em reais', async () => {
     const { items } = await service.listCards('usuario-1', query());
 
-    expect(items.map(({ cardId }) => cardId)).toEqual([
-      'c7',
-      'c6',
-      'c8',
-      'c4',
-      'c3',
-      'c2',
-      'c1',
-      'c5',
-    ]);
-    expect(cards.findRows).toHaveBeenCalledWith('colecao-1', [
-      'c7',
-      'c6',
-      'c8',
-      'c4',
-      'c3',
-      'c2',
-      'c1',
-      'c5',
-    ]);
-  });
-
-  it('CA4: preço médio na possuída e menor anúncio só na faltante', async () => {
-    const { items } = await service.listCards('usuario-1', query());
-
-    expect(items[0]).toMatchObject({
+    expect(items.map(({ cardId }) => cardId)).toEqual(['c7', 'c8', 'c10']);
+    expect(items[0]).toEqual({
+      cardId: 'c7',
+      name: 'Carta c7',
+      frontImageUrl: null,
+      album: { id: 'destinos', title: 'Destinos Brilhantes' },
+      category: { id: 'pokemon', name: 'Pokémon' },
       status: 'DUPLICATE',
+      quantity: 2,
       averagePrice: '180.00',
       lowestListingPrice: null,
     });
-    expect(items[2]).toMatchObject({ status: 'MISSING', lowestListingPrice: '50.00' });
   });
 
-  it('CA4: sem preço nem anúncio, a carta vai para o fim com os valores null', async () => {
-    const { items, meta } = await service.listCards('usuario-1', query(2));
+  it('CA4: a faltante traz o menor anúncio; sem preço nem anúncio, os dois vêm null', async () => {
+    const { items } = await service.listCards('usuario-1', query());
 
-    expect(items).toEqual([
-      { ...row(RANKED[8]!), averagePrice: null, lowestListingPrice: null },
-      { ...row(RANKED[9]!), averagePrice: null, lowestListingPrice: null },
-    ]);
+    expect(items[1]).toMatchObject({ averagePrice: '99.99', lowestListingPrice: '50.00' });
+    expect(items[2]).toMatchObject({ averagePrice: null, lowestListingPrice: null });
+  });
+
+  it('L6: pede ao banco a página, a aba e o preço dos últimos 30 dias', async () => {
+    await service.listCards('usuario-1', {
+      ...query(2),
+      status: 'MISSING',
+      q: 'pika',
+      categoryId: 'pokemon',
+    });
+
+    expect(cards.findPage).toHaveBeenCalledWith(
+      'colecao-1',
+      { status: 'MISSING', q: 'pika', categoryId: 'pokemon' },
+      { skip: 8, take: 8, priceWindow: { from: new Date(NOW.getTime() - 30 * DAY), to: NOW } },
+    );
+  });
+
+  it('R8: a paginação usa o total do banco, com as abas e as categorias', async () => {
+    const { meta } = await service.listCards('usuario-1', query(2));
+
     expect(meta).toEqual({
       page: 2,
       pageSize: 8,
@@ -330,48 +322,13 @@ describe('CollectionService.listCards', () => {
     });
   });
 
-  it('L6: consulta o menor anúncio só das faltantes e o preço dos últimos 30 dias', async () => {
-    await service.listCards('usuario-1', query());
-
-    expect(listings.lowestActivePrice).toHaveBeenCalledWith(['c8', 'c9']);
-    expect(prices.averagePrices).toHaveBeenCalledWith(
-      RANKED.map(({ cardId }) => cardId),
-      { from: new Date(NOW.getTime() - 30 * DAY), to: NOW },
-    );
-  });
-
-  it('R8: repassa a aba, a busca e a categoria ao repository', async () => {
-    await service.listCards('usuario-1', {
-      ...query(),
-      status: 'MISSING',
-      q: 'pika',
-      categoryId: 'pokemon',
-    });
-
-    expect(cards.rank).toHaveBeenCalledWith('colecao-1', {
-      status: 'MISSING',
-      q: 'pika',
-      categoryId: 'pokemon',
-    });
-  });
-
-  it('CA5: coleção vazia não consulta preços nem anúncios', async () => {
-    cards.rank.mockResolvedValue([]);
+  it('CA5: coleção vazia vem sem cartas e não consulta o preço médio à parte', async () => {
+    cards.findPage.mockResolvedValue({ rows: [], total: 0 });
 
     const { items, meta } = await service.listCards('usuario-1', query());
 
     expect([items, meta.total]).toEqual([[], 0]);
     expect(prices.averagePrices).not.toHaveBeenCalled();
-    expect(listings.lowestActivePrice).not.toHaveBeenCalled();
-    expect(cards.findRows).toHaveBeenCalledWith('colecao-1', []);
-  });
-
-  it('R8: ignora a carta que sumiu entre a ordenação e a busca dos dados', async () => {
-    cards.findRows.mockResolvedValue([row(RANKED[6]!)]);
-
-    const { items } = await service.listCards('usuario-1', query());
-
-    expect(items.map(({ cardId }) => cardId)).toEqual(['c7']);
   });
 });
 

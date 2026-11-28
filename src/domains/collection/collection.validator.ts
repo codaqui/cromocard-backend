@@ -23,7 +23,6 @@ export const listCollectionCardsQuerySchema = paginationQuerySchema.extend({
     .optional()
     .transform((value) => value || undefined),
   categoryId: z.uuid({ error: 'Informe uma categoria válida.' }).optional(),
-  sort: z.enum(['value_desc'], { error: 'Ordene pelo maior valor.' }).default('value_desc'),
 });
 
 export type ListCollectionCardsQuery = z.infer<typeof listCollectionCardsQuerySchema>;
