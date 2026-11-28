@@ -78,6 +78,7 @@ model User {
   sentGlobalNotifications         GlobalNotification[]
   reportExports                   ReportExport[]
   notifications                   Notification[]
+  notificationPreferences         NotificationPreference[]
   refreshTokens                   RefreshToken[]
   passwordResetTokens             PasswordResetToken[]
   sellerVerification              SellerVerification?       @relation("SellerVerificationSeller")
@@ -606,6 +607,34 @@ model Notification {
   @@map("notifications")
 }
 
+enum NotificationEvent {
+  ALL
+  ORDER_UPDATES
+  PAYOUT_RELEASED
+  GROUP_INVITES
+  DIRECT_MESSAGES
+  CATALOG_RELEASES
+  CATALOG_REQUESTS
+
+  @@map("notification_event")
+}
+
+model NotificationPreference {
+  id        String            @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  event     NotificationEvent
+  inApp     Boolean           @default(true) @map("in_app")
+  email     Boolean           @default(true)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime?         @map("deleted_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notification_preferences_user_id")
+
+  @@unique([userId, event], map: "notification_preferences_user_id_event_key")
+  @@map("notification_preferences")
+}
+
 enum SellerVerificationStatus {
   UNDER_REVIEW
   PENDING
@@ -933,6 +962,15 @@ model CollectionCard {
 
   @@unique([collectionId, cardId])
   @@map("collection_cards")
+}
+
+model SocketIoAttachment {
+  id        BigInt   @id @default(autoincrement())
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  payload   Bytes
+
+  @@map("socket_io_attachments")
+  @@ignore
 }
 
 model Conversation {

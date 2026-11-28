@@ -17,7 +17,11 @@ import { reportsModule } from '@/domains/admin/reports/reports.module';
 import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/settings.module';
 import { communityAdminModule } from '@/domains/community/community.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
-import { globalNotificationsModule } from '@/domains/notifications/notifications.module';
+import {
+  globalNotificationsModule,
+  notificationPreferencesModule,
+  notificationsModule,
+} from '@/domains/notifications/notifications.module';
 import {
   connectedAccountsModule,
   paymentsWebhookModule,
@@ -43,6 +47,8 @@ const sharedModules: DomainModule[] = [
   auditLogsModule,
   communityAdminModule,
   globalNotificationsModule,
+  notificationsModule,
+  notificationPreferencesModule,
   sellerVerificationsModule,
   chatModule,
   connectedAccountsModule,

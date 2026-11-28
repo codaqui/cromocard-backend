@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from 'node:http';
 
-import { Server } from 'socket.io';
+import { Server, type ServerOptions } from 'socket.io';
 
 import { env } from '@/config/env';
 
@@ -11,14 +11,16 @@ import type { AppSocketServer, SocketHandlers } from './socket.types';
 
 export interface SocketServerOptions {
   handlers?: readonly SocketHandlers[];
+  adapter?: ServerOptions['adapter'];
 }
 
 export function createSocketServer(
   httpServer: HttpServer,
-  { handlers = [] }: SocketServerOptions = {},
+  { handlers = [], adapter }: SocketServerOptions = {},
 ): AppSocketServer {
   const io: AppSocketServer = new Server(httpServer, {
     cors: { origin: env.CORS_ORIGIN },
+    ...(adapter && { adapter }),
   });
 
   io.use(authenticateSocket);

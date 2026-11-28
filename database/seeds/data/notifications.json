@@ -1,0 +1,62 @@
+[
+  {
+    "key": "ana-mensagem-fabio",
+    "user": "ana",
+    "type": "NEW_MESSAGE",
+    "title": "@fabio.tcg",
+    "message": "Oi! A carta chegou certinho, obrigado pelo envio rápido.",
+    "link": "/mensagens",
+    "read": false,
+    "minutesAgo": 15
+  },
+  {
+    "key": "ana-sugestao-aprovada",
+    "user": "ana",
+    "type": "CATALOG_REQUEST",
+    "title": "Sua sugestão foi aprovada",
+    "message": "O álbum Panini Brasileirão 2026 entrou no catálogo.",
+    "link": "/albuns",
+    "read": false,
+    "minutesAgo": 120
+  },
+  {
+    "key": "ana-album-removido",
+    "user": "ana",
+    "type": "CATALOG_REQUEST",
+    "title": "Sua sugestão foi aprovada",
+    "message": "O álbum Pokémon Base Set 2 entrou no catálogo.",
+    "link": "/albuns/pokemon-base-set-2",
+    "read": false,
+    "minutesAgo": 1500
+  },
+  {
+    "key": "ana-manutencao",
+    "user": "ana",
+    "type": "GLOBAL",
+    "dispatch": "manutencao-sabado",
+    "title": "Manutenção programada no sábado",
+    "message": "No sábado, das 2h às 4h, o CromoCard fica fora do ar para manutenção.",
+    "read": true,
+    "minutesAgo": 8640
+  },
+  {
+    "key": "elisa-pendencia",
+    "user": "elisa",
+    "type": "SELLER_PENDING",
+    "title": "Pendência no seu cadastro de vendedor",
+    "message": "Envie de novo o comprovante de endereço para concluir o cadastro.",
+    "link": "/vendedor",
+    "read": false,
+    "minutesAgo": 40
+  },
+  {
+    "key": "elisa-regras",
+    "user": "elisa",
+    "type": "GLOBAL",
+    "dispatch": "regras-vendedores",
+    "title": "Novas regras para vendedores",
+    "message": "Atualizamos as regras de anúncios do marketplace.",
+    "read": true,
+    "minutesAgo": 20160
+  }
+]

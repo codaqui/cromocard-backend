@@ -22,7 +22,7 @@ const notificationFor = (userId: string) => ({
   userId,
   title: 'Aviso',
   message: 'Mensagem de teste',
-  type: 'SYSTEM',
+  type: 'GLOBAL' as const,
 });
 
 afterAll(async () => {

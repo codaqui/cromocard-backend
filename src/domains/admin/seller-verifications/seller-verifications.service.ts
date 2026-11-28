@@ -20,8 +20,9 @@ import type {
   StatusCounts,
 } from './seller-verifications.repository';
 import type { ListSellerVerificationsQuery } from './seller-verifications.validator';
+import type { NotificationType } from '@/domains/notifications/notification-types';
 
-const SELLER_REVIEW_NOTIFICATION_TYPE = 'SELLER_REVIEW';
+const SELLER_REVIEW_NOTIFICATION_TYPE: NotificationType = 'SELLER_REVIEW';
 
 export interface SellerVerificationsServiceDeps {
   repository: SellerVerificationsRepository;
