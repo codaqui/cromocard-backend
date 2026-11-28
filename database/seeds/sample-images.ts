@@ -1,6 +1,6 @@
 import type { StorageProvider } from '@/providers/storage/storage.provider';
 
-import { solidColorPng } from './sample-image';
+import { solidColorPng } from './solid-color-png';
 
 const sampleBanner = {
   key: 'banners/seed-home-banner.png',

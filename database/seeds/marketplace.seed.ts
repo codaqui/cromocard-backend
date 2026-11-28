@@ -176,7 +176,19 @@ async function seedOrders(prisma: PrismaClient): Promise<void> {
   for (const order of marketplace.orders) await seedOrder(prisma, order);
 }
 
+const legacyAddressIds = ['ana-studio-campinas'].map((key) =>
+  seedId(SeedNamespace.legacyProfileAddresses, key),
+);
+
+async function retireLegacyAddresses(prisma: PrismaClient): Promise<void> {
+  await prisma.address.updateMany({
+    where: { id: { in: legacyAddressIds }, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+}
+
 export async function seedMarketplace(prisma: PrismaClient): Promise<void> {
+  await retireLegacyAddresses(prisma);
   for (const data of marketplace.addresses.map(toAddressData)) {
     await prisma.address.upsert({ where: { id: data.id }, create: data, update: data });
   }
