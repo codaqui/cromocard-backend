@@ -55,35 +55,34 @@ function registerMessages(io: AppSocketServer, socket: AppSocket, service: ChatS
   );
 }
 
-type PresenceChange = { userId: string; online: boolean };
-
-async function emitPresence(
-  io: AppSocketServer,
-  service: ChatSocketService,
-  change: PresenceChange,
-) {
-  const partners = await service.listPartnerIds(change.userId);
+async function emitPresence(io: AppSocketServer, deps: ChatSocketDeps, userId: string) {
+  const partners = await deps.service.listPartnerIds(userId);
+  const change = { userId, online: deps.presence.isOnline(userId) };
   if (partners.length > 0) io.to(partners.map(userRoom)).emit('presence:changed', change);
 }
 
-function announce(io: AppSocketServer, service: ChatSocketService, change: PresenceChange) {
-  return emitPresence(io, service, change).catch((error: unknown) => {
-    logger.warn({ err: error, userId: change.userId }, 'Não foi possível avisar a presença');
+function announce(io: AppSocketServer, deps: ChatSocketDeps, userId: string) {
+  return emitPresence(io, deps, userId).catch((error: unknown) => {
+    logger.warn({ err: error, userId }, 'Não foi possível avisar a presença');
   });
+}
+
+async function onlinePartnersAmong(deps: ChatSocketDeps, userId: string, userIds: string[]) {
+  const partners = new Set(await deps.service.listPartnerIds(userId));
+  return deps.presence.onlineAmong(userIds.filter((id) => partners.has(id)));
 }
 
 function registerPresence(io: AppSocketServer, socket: AppSocket, deps: ChatSocketDeps) {
   const userId = socket.data.user.id;
-  if (deps.presence.connect(userId)) void announce(io, deps.service, { userId, online: true });
+  if (deps.presence.connect(userId)) void announce(io, deps, userId);
   socket.on('disconnect', () => {
-    if (deps.presence.disconnect(userId))
-      void announce(io, deps.service, { userId, online: false });
+    if (deps.presence.disconnect(userId)) void announce(io, deps, userId);
   });
   socket.on(
     'presence:list',
     withAck(async (payload: unknown) => {
       const { userIds } = presenceListSchema.parse(payload);
-      return Promise.resolve({ online: deps.presence.onlineAmong(userIds) });
+      return { online: await onlinePartnersAmong(deps, userId, userIds) };
     }),
   );
 }
