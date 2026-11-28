@@ -108,10 +108,10 @@ export async function uploadListingPhotos(storage: StorageProvider): Promise<str
 }
 
 const toListingPhotosData = (photoUrls: string[]) => (listing: SeedListing) =>
-  Array.from({ length: photoUrls.length === 0 ? 0 : listing.photos }, (_, sortOrder) => ({
+  photoUrls.slice(0, listing.photos).map((url, sortOrder) => ({
     id: seedId(SeedNamespace.listingPhotos, `${listing.key}-${sortOrder}`),
     listingId: listingIdOf(listing.key),
-    url: photoUrls[sortOrder % photoUrls.length] ?? '',
+    url,
     sortOrder,
   }));
 
