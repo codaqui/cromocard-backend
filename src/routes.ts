@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import swaggerUi from 'swagger-ui-express';
 
+import { API_PREFIX } from '@/config/api';
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
 import { authModule, authService } from '@/domains/auth/auth.module';
@@ -15,12 +16,14 @@ import { publicSettingsModule, settingsModule } from '@/domains/admin/settings/s
 import { communityAdminModule } from '@/domains/community/community.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import { globalNotificationsModule } from '@/domains/notifications/notifications.module';
+import {
+  connectedAccountsModule,
+  paymentsWebhookModule,
+} from '@/domains/marketplace/payments/payments.module';
 import { createUsersModule } from '@/domains/users/users.module';
 import type { DomainModule } from '@/shared/types/domain-module';
 import { auditLogsModule } from '@/domains/admin/audit-logs/audit-logs.module';
 import { sellerVerificationsModule } from '@/domains/admin/seller-verifications/seller-verifications.module';
-
-const API_PREFIX = '/api/v1';
 
 const sharedModules: DomainModule[] = [
   authModule,
@@ -38,6 +41,8 @@ const sharedModules: DomainModule[] = [
   communityAdminModule,
   globalNotificationsModule,
   sellerVerificationsModule,
+  connectedAccountsModule,
+  paymentsWebhookModule,
 ];
 
 export interface RoutesOptions {
