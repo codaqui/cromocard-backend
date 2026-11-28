@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { FileToStore, StorageProvider } from '@/providers/storage/storage.provider';
 
-import { uploadSampleImages } from './sample-images';
+import { uploadSampleEvidence, uploadSampleImages } from './sample-images';
 import { solidColorPng } from './solid-color-png';
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -51,5 +51,16 @@ describe('uploadSampleImages', () => {
       categoryLogoUrl: 'http://storage.test/catalog-requests/seed-category-logo.png',
       avatarUrl: 'http://storage.test/avatars/seed-profile-avatar.png',
     });
+  });
+});
+
+describe('uploadSampleEvidence', () => {
+  it('grava o print da denúncia em report-evidences e devolve a chave, não a URL', async () => {
+    const { storage, files } = memoryStorage();
+
+    const key = await uploadSampleEvidence(storage);
+
+    expect(key).toBe('report-evidences/seed-chat-print.png');
+    expect(files.map((file) => file.contentType)).toEqual(['image/png']);
   });
 });

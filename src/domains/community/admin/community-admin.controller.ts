@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 
 import { getAuthenticatedUser } from '@/shared/middlewares/authenticate';
-import { noContent, ok, paginated } from '@/shared/utils/http-response';
+import { inline, noContent, ok, paginated } from '@/shared/utils/http-response';
 
 import type { CommunityAdminService } from './community-admin.service';
 import {
@@ -10,6 +10,7 @@ import {
   listGroupsQuerySchema,
   type ModerationReasonInput,
   moderationReasonSchema,
+  reportEvidenceParamSchema,
   warningModerationReasonSchema,
 } from './community-admin.validator';
 
@@ -68,6 +69,11 @@ export class CommunityAdminController {
 
   removeAndWarn = async (req: Request, res: Response): Promise<void> => {
     ok(res, await this.service.removeAndWarn(...moderationOf(req, warningModerationReasonSchema)));
+  };
+
+  getReportEvidence = async (req: Request, res: Response): Promise<void> => {
+    const { id, evidenceId } = reportEvidenceParamSchema.parse(req.params);
+    inline(res, await this.service.getReportEvidence(id, evidenceId));
   };
 
   dismissReport = async (req: Request, res: Response): Promise<void> => {

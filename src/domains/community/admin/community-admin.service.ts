@@ -2,6 +2,7 @@ import type {
   AuditAction,
   RecordAuditLogInput,
 } from '@/domains/admin/audit-logs/audit-logs.validator';
+import { detectImageType } from '@/domains/uploads/uploads.module';
 import { GroupStatus, ReportStatus } from '@/generated/prisma/enums';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import type { AppError } from '@/shared/errors/app-error';
@@ -9,6 +10,7 @@ import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 import { daysBefore } from '@/shared/utils/time-zone';
 
 import {
+  EvidenceNotFoundError,
   GroupAlreadySuspendedError,
   GroupAlreadyWarnedError,
   GroupNotFoundError,
@@ -44,8 +46,19 @@ export interface AuthorWarner {
   ): Promise<void>;
 }
 
+/** O storage privado (ADR-068) dos prints das denúncias do chat (ADR-073). */
+export interface EvidenceReader {
+  read(key: string): Promise<Buffer | null>;
+}
+
+export interface EvidenceFile {
+  contentType: string;
+  content: Buffer;
+}
+
 export interface CommunityAdminServiceDeps {
   repository: CommunityAdminRepository;
+  evidences: EvidenceReader;
   auditLog: CommunityAuditLog;
   warner: AuthorWarner;
   runInTransaction: TransactionRunner;
@@ -109,6 +122,15 @@ export class CommunityAdminService {
   async listGroups(query: ListGroupsQuery): Promise<Paginated<AdminGroupSummary>> {
     const { items, total } = await this.deps.repository.findGroupsPage(query);
     return { items, meta: buildPaginationMeta(query, total) };
+  }
+
+  /** O print sai só por aqui, para o ADMIN; o tipo vem da assinatura do arquivo gravado. */
+  async getReportEvidence(reportId: string, evidenceId: string): Promise<EvidenceFile> {
+    const key = await this.deps.repository.findEvidenceKey(reportId, evidenceId);
+    const content = key ? await this.deps.evidences.read(key) : null;
+    const imageType = content && detectImageType(content);
+    if (!content || !imageType) throw new EvidenceNotFoundError();
+    return { contentType: imageType.mimeType, content };
   }
 
   getSummary(): Promise<CommunitySummary> {

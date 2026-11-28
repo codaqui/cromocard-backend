@@ -3,6 +3,7 @@ import { authService } from '@/domains/auth/auth.module';
 import { createSanctionsService } from '@/domains/users/users.module';
 import { prisma } from '@/lib/prisma';
 import { runInTransaction } from '@/lib/transaction';
+import { createStorageProvider } from '@/providers/storage/storage.factory';
 import type { DomainModule } from '@/shared/types/domain-module';
 
 import { CommunityAdminController } from './admin/community-admin.controller';
@@ -13,6 +14,7 @@ import { registerCommunityAdminDocs } from './admin/community-admin.swagger';
 
 const communityAdminService = new CommunityAdminService({
   repository: new PrismaCommunityAdminRepository(prisma),
+  evidences: createStorageProvider('private'),
   auditLog: auditLogService,
   warner: createSanctionsService(authService),
   runInTransaction,

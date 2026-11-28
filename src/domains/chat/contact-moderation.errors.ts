@@ -36,3 +36,21 @@ export class EvidenceCountError extends ValidationError {
     super([{ field: 'evidences', message: `Envie de 1 a ${MAX_EVIDENCES} prints da conversa.` }]);
   }
 }
+
+export class InvalidEvidenceTypeError extends ValidationError {
+  constructor() {
+    super([{ field: 'evidences', message: 'Envie os prints em PNG, JPG ou WEBP.' }]);
+  }
+}
+
+export class ContactReportNotFoundError extends NotFoundError {
+  constructor() {
+    super('Denúncia não encontrada', 'REPORT_NOT_FOUND');
+  }
+}
+
+export class ContactReportAlreadyResolvedError extends ConflictError {
+  constructor() {
+    super('A denúncia já foi resolvida', 'REPORT_ALREADY_RESOLVED');
+  }
+}

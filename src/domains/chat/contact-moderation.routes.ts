@@ -7,13 +7,21 @@ import { authorize } from '@/shared/middlewares/authorize';
 import type { ContactModerationController } from './contact-moderation.controller';
 import { MAX_EVIDENCES } from './contact-moderation.validator';
 
-export function createContactModerationRoutes(controller: ContactModerationController): Router {
+const chatUser = [authenticate, authorize('CUSTOMER', 'SELLER')];
+
+export function createContactBlocksRoutes(controller: ContactModerationController): Router {
   const router = Router();
-  const chatUser = [authenticate, authorize('CUSTOMER', 'SELLER')];
 
   router.get('/blocks', ...chatUser, controller.listBlocks);
   router.post('/blocks', ...chatUser, controller.block);
   router.delete('/blocks/:userId', ...chatUser, controller.unblock);
+
+  return router;
+}
+
+export function createContactReportsRoutes(controller: ContactModerationController): Router {
+  const router = Router();
+
   router.post(
     '/contact-reports',
     ...chatUser,

@@ -104,10 +104,6 @@ class InMemoryUsersRepository implements UsersRepository {
     return Promise.resolve();
   }
 
-  resolveContactReport(): Promise<void> {
-    return Promise.resolve();
-  }
-
   countWarningsByUserId(): Promise<number> {
     return Promise.resolve(0);
   }

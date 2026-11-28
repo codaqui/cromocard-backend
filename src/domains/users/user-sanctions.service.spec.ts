@@ -12,7 +12,6 @@ import {
 } from './users.errors';
 import type {
   Address,
-  ContactReportResolution,
   MembersByRole,
   MonthlySignups,
   NewOauthAccount,
@@ -34,6 +33,7 @@ import type {
 import {
   type SanctionAuditLog,
   type SanctionAuthService,
+  type ContactReportResolverPort,
   type SanctionNotifier,
   UserSanctionsService,
 } from './user-sanctions.service';
@@ -110,13 +110,6 @@ class InMemoryUsersRepository implements UsersRepository {
 
   softDelete(): Promise<void> {
     return Promise.reject(new Error('não usado neste teste'));
-  }
-
-  resolvedReports: { resolution: ContactReportResolution; tx: Transaction }[] = [];
-
-  resolveContactReport(resolution: ContactReportResolution, tx: Transaction): Promise<void> {
-    this.resolvedReports = [...this.resolvedReports, { resolution, tx }];
-    return Promise.resolve();
   }
 
   createWarning(warning: NewUserWarning): Promise<void> {
@@ -227,21 +220,35 @@ class FakeNotifier implements SanctionNotifier {
 
 const NOW = new Date('2026-11-15T12:00:00Z');
 
+type Resolution = Parameters<ContactReportResolverPort['resolveForSanction']>[0];
+
+class FakeContactReports implements ContactReportResolverPort {
+  resolved: { resolution: Resolution; tx: Transaction }[] = [];
+
+  resolveForSanction(resolution: Resolution, tx: Transaction): Promise<void> {
+    this.resolved = [...this.resolved, { resolution, tx }];
+    return Promise.resolve();
+  }
+}
+
 describe('UserSanctionsService', () => {
   let repository: InMemoryUsersRepository;
   let authService: FakeAuthService;
   let auditLog: FakeAuditLog;
   let notifier: FakeNotifier;
   let service: UserSanctionsService;
+  let contactReports: FakeContactReports;
   const adminId = crypto.randomUUID();
 
   beforeEach(() => {
     repository = new InMemoryUsersRepository();
+    contactReports = new FakeContactReports();
     authService = new FakeAuthService();
     auditLog = new FakeAuditLog();
     notifier = new FakeNotifier();
     service = new UserSanctionsService({
       usersRepository: repository,
+      contactReports,
       authService,
       auditLogService: auditLog,
       notifier,
@@ -435,7 +442,7 @@ describe('UserSanctionsService', () => {
 
       await apply(user.id);
 
-      expect(repository.resolvedReports).toEqual([
+      expect(contactReports.resolved).toEqual([
         { resolution: { reportId, userId: user.id, adminId }, tx: TRANSACTION },
       ]);
     });
@@ -446,7 +453,7 @@ describe('UserSanctionsService', () => {
 
       await service.block(user.id, { reason: 'Golpe confirmado' }, adminId);
 
-      expect(repository.resolvedReports).toEqual([]);
+      expect(contactReports.resolved).toEqual([]);
     });
   });
 

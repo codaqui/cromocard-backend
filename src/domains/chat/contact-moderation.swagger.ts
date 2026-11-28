@@ -33,7 +33,7 @@ const blockedContact = z.object({
   blockedAt: z.iso.datetime(),
 });
 
-const paths: RouteConfig[] = [
+const blockPaths: RouteConfig[] = [
   {
     method: 'get',
     path: '/me/blocks',
@@ -83,6 +83,9 @@ const paths: RouteConfig[] = [
       404: { description: 'BLOCK_NOT_FOUND: o contato não está bloqueado' },
     },
   },
+];
+
+const reportPaths: RouteConfig[] = [
   {
     method: 'post',
     path: '/me/contact-reports',
@@ -100,12 +103,20 @@ const paths: RouteConfig[] = [
         ),
       },
       ...contactErrors,
+      400: {
+        description:
+          'CANNOT_MODERATE_SELF ou VALIDATION_ERROR (sem motivo, sem print, mais de 3 prints ou fora de PNG, JPG e WEBP)',
+      },
       409: { description: 'REPORT_ALREADY_PENDING: já há denúncia pendente contra o contato' },
       413: { description: 'FILE_TOO_LARGE: print acima de 4 MB' },
     },
   },
 ];
 
-export function registerContactModerationDocs(registry: OpenAPIRegistry): void {
-  paths.forEach((path) => registry.registerPath(path));
+export function registerContactBlocksDocs(registry: OpenAPIRegistry): void {
+  blockPaths.forEach((path) => registry.registerPath(path));
+}
+
+export function registerContactReportsDocs(registry: OpenAPIRegistry): void {
+  reportPaths.forEach((path) => registry.registerPath(path));
 }

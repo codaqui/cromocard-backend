@@ -48,8 +48,17 @@ export interface Warning {
   reportId?: string;
 }
 
+/** Resolve a denúncia do chat junto com a sanção; quem implementa é o domínio dono da denúncia (chat). */
+export interface ContactReportResolverPort {
+  resolveForSanction(
+    resolution: { reportId: string; userId: string; adminId: string },
+    tx: Transaction,
+  ): Promise<void>;
+}
+
 export interface UserSanctionsServiceDeps {
   usersRepository: UsersRepository;
+  contactReports: ContactReportResolverPort;
   authService: SanctionAuthService;
   auditLogService: SanctionAuditLog;
   notifier: SanctionNotifier;
@@ -183,7 +192,7 @@ export class UserSanctionsService {
     tx: Transaction,
   ): Promise<void> {
     if (!reportId) return;
-    await this.deps.usersRepository.resolveContactReport({ reportId, userId, adminId }, tx);
+    await this.deps.contactReports.resolveForSanction({ reportId, userId, adminId }, tx);
   }
 
   private async findByIdOrThrow(id: string): Promise<UserProfile> {

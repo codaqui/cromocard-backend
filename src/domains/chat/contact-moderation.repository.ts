@@ -17,7 +17,13 @@ export interface NewContactReport {
   targetUserId: string;
   reason: ContactReportReason;
   description?: string;
-  evidenceUrls: string[];
+  evidenceKeys: string[];
+}
+
+export interface ReportForResolution {
+  targetType: ReportTargetType;
+  targetUserId: string | null;
+  status: ReportStatus;
 }
 
 export interface Page {
@@ -95,8 +101,18 @@ export class ContactModerationRepository {
     return { items: rows.map(toBlockedContact), total };
   }
 
-  async hasPendingReport(reporterId: string, targetUserId: string): Promise<boolean> {
-    const found = await this.prisma.report.findFirst({
+  /** Trava, até o fim da transação, as denúncias deste denunciante contra este contato. */
+  async lockReportPair(reporterId: string, targetUserId: string, tx: Transaction): Promise<void> {
+    const pair = `contact-report:${reporterId}:${targetUserId}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${pair}))`;
+  }
+
+  async hasPendingReport(
+    reporterId: string,
+    targetUserId: string,
+    tx: Transaction = this.prisma,
+  ): Promise<boolean> {
+    const found = await tx.report.findFirst({
       where: {
         reporterId,
         targetUserId,
@@ -110,15 +126,29 @@ export class ContactModerationRepository {
   }
 
   async createReport(report: NewContactReport, tx: Transaction = this.prisma): Promise<string> {
-    const { evidenceUrls, ...data } = report;
+    const { evidenceKeys, ...data } = report;
     const created = await tx.report.create({
       data: {
         ...data,
         targetType: ReportTargetType.USER,
-        evidences: { create: evidenceUrls.map((url, sortOrder) => ({ url, sortOrder })) },
+        evidences: { create: evidenceKeys.map((url, sortOrder) => ({ url, sortOrder })) },
       },
       select: { id: true },
     });
     return created.id;
+  }
+
+  findReportForResolution(reportId: string, tx: Transaction): Promise<ReportForResolution | null> {
+    return tx.report.findFirst({
+      where: { id: reportId, ...notDeleted },
+      select: { targetType: true, targetUserId: true, status: true },
+    });
+  }
+
+  async resolveReport(reportId: string, moderatorId: string, tx: Transaction): Promise<void> {
+    await tx.report.update({
+      where: { id: reportId },
+      data: { status: ReportStatus.RESOLVED, moderatorId, resolvedAt: new Date() },
+    });
   }
 }

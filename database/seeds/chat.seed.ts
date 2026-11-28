@@ -91,8 +91,8 @@ export async function seedChat(prisma: PrismaClient): Promise<void> {
   }
 }
 
-export async function seedChatReports(prisma: PrismaClient, evidenceUrl?: string): Promise<void> {
-  if (!evidenceUrl) return;
+export async function seedChatReports(prisma: PrismaClient, evidenceKey?: string): Promise<void> {
+  if (!evidenceKey) return;
   for (const { key, reporter, target, reason, description } of chat.reports) {
     const id = seedId(SeedNamespace.contactReports, key);
     const data = {
@@ -107,7 +107,7 @@ export async function seedChatReports(prisma: PrismaClient, evidenceUrl?: string
     const evidence = {
       id: seedId(SeedNamespace.reportEvidences, key),
       reportId: id,
-      url: evidenceUrl,
+      url: evidenceKey,
     };
     await prisma.reportEvidence.upsert({
       where: { id: evidence.id },

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '@/app';
 import { prisma } from '@/lib/prisma';
+import { createStorageProvider } from '@/providers/storage/storage.factory';
 
 import { ChatFixtures, type TestUser } from './chat-fixtures';
 
@@ -91,7 +92,10 @@ describe('POST /me/contact-reports', () => {
     const [report] = await reportsAgainst(marcos);
     expect(report).toMatchObject({ targetType: 'USER', reason: 'Assédio', status: 'PENDING' });
     expect(report?.evidences.map(({ sortOrder }) => sortOrder)).toEqual([0, 1]);
-    expect(report?.evidences[0]?.url).toMatch(/report-evidences\/.+\.png$/);
+    const key = report?.evidences[0]?.url ?? '';
+    expect(key).toMatch(/^report-evidences\/[0-9a-f-]{36}\.png$/);
+    await expect(createStorageProvider('private').read(key)).resolves.not.toBeNull();
+    await expect(createStorageProvider('public').read(key)).resolves.toBeNull();
     expect(await isBlocked(gabriel, marcos)).toBe(true);
   });
 

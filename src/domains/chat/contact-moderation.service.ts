@@ -1,11 +1,11 @@
-import type { StoredFile } from '@/providers/storage/storage.provider';
-import type { TransactionRunner } from '@/lib/transaction';
+import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import { buildPaginationMeta, toSkipTake } from '@/shared/utils/pagination';
 
 import {
   BlockNotFoundError,
   CannotModerateSelfError,
   EvidenceCountError,
+  InvalidEvidenceTypeError,
   ModerationContactNotFoundError,
   ReportAlreadyPendingError,
 } from './contact-moderation.errors';
@@ -18,12 +18,19 @@ import {
 
 export type ModerationStore = Pick<
   ContactModerationRepository,
-  'hasConversationWith' | 'block' | 'unblock' | 'listBlocks' | 'hasPendingReport' | 'createReport'
+  | 'hasConversationWith'
+  | 'block'
+  | 'unblock'
+  | 'listBlocks'
+  | 'lockReportPair'
+  | 'hasPendingReport'
+  | 'createReport'
 >;
 
 export interface EvidenceStorage {
   isImage(content: Buffer): boolean;
-  upload(content: Buffer): Promise<StoredFile>;
+  /** Grava o print e devolve a chave dele no storage privado. */
+  upload(content: Buffer): Promise<string>;
   remove(key: string): Promise<void>;
 }
 
@@ -64,33 +71,53 @@ export class ContactModerationService {
   ): Promise<CreatedContactReport> {
     this.assertEvidences(files);
     await this.assertContact(userId, input.userId);
-    if (await this.deps.repository.hasPendingReport(userId, input.userId)) {
-      throw new ReportAlreadyPendingError();
-    }
-    const stored = await Promise.all(files.map((file) => this.deps.evidences.upload(file)));
-    const id = await this.saveReport(userId, input, stored);
+    await this.assertNoPendingReport(userId, input.userId);
+    const keys = await this.uploadAll(files);
+    const id = await this.saveReport(userId, input, keys);
     return { id, status: 'PENDING', blocked: input.block };
   }
 
-  private async saveReport(userId: string, input: ContactReportInput, stored: StoredFile[]) {
+  private async saveReport(userId: string, input: ContactReportInput, evidenceKeys: string[]) {
     const { userId: targetUserId, reason, description, block } = input;
-    const report = { reporterId: userId, targetUserId, reason, description };
+    const report = { reporterId: userId, targetUserId, reason, description, evidenceKeys };
     try {
       return await this.deps.runInTransaction(async (tx) => {
+        // Dois envios ao mesmo tempo (duplo clique) esperam aqui, e o segundo encontra a denúncia do primeiro.
+        await this.deps.repository.lockReportPair(userId, targetUserId, tx);
+        await this.assertNoPendingReport(userId, targetUserId, tx);
         if (block) await this.deps.repository.block(userId, targetUserId, tx);
-        const evidenceUrls = stored.map((file) => file.url);
-        return this.deps.repository.createReport({ ...report, evidenceUrls }, tx);
+        return this.deps.repository.createReport(report, tx);
       });
     } catch (error) {
-      await Promise.allSettled(stored.map((file) => this.deps.evidences.remove(file.key)));
+      await this.removeAll(evidenceKeys);
       throw error;
     }
   }
 
+  /** Se um print falha no meio do envio, os que já subiram são apagados: nenhum fica sem denúncia. */
+  private async uploadAll(files: Buffer[]): Promise<string[]> {
+    const results = await Promise.allSettled(files.map((file) => this.deps.evidences.upload(file)));
+    const keys = results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+    const failure = results.find((result) => result.status === 'rejected');
+    if (!failure) return keys;
+    await this.removeAll(keys);
+    throw failure.reason;
+  }
+
+  private async removeAll(keys: string[]): Promise<void> {
+    await Promise.allSettled(keys.map((key) => this.deps.evidences.remove(key)));
+  }
+
+  private async assertNoPendingReport(userId: string, contactId: string, tx?: Transaction) {
+    if (await this.deps.repository.hasPendingReport(userId, contactId, tx)) {
+      throw new ReportAlreadyPendingError();
+    }
+  }
+
   private assertEvidences(files: Buffer[]): void {
-    const countOk = files.length >= 1 && files.length <= MAX_EVIDENCES;
-    if (!countOk || !files.every((file) => this.deps.evidences.isImage(file))) {
-      throw new EvidenceCountError();
+    if (files.length < 1 || files.length > MAX_EVIDENCES) throw new EvidenceCountError();
+    if (!files.every((file) => this.deps.evidences.isImage(file))) {
+      throw new InvalidEvidenceTypeError();
     }
   }
 

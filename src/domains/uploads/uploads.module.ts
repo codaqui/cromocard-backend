@@ -6,7 +6,7 @@ import { createUploadsRoutes } from './uploads.routes';
 import { UploadsService } from './uploads.service';
 import { registerUploadsDocs } from './uploads.swagger';
 
-export const uploadsService = new UploadsService(createStorageProvider());
+const uploadsService = new UploadsService(createStorageProvider());
 const uploadsController = new UploadsController(uploadsService);
 
 export const uploadsModule: DomainModule = {
@@ -18,5 +18,4 @@ export const uploadsModule: DomainModule = {
 export { MissingFileError } from './uploads.errors';
 export { detectImageType } from './image-type';
 export { parseImageFiles, parseSingleFile } from './uploads.middleware';
-export type { UploadsService } from './uploads.service';
 export { MAX_UPLOAD_SIZE_IN_MEGABYTES } from './uploads.validator';

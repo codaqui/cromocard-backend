@@ -166,12 +166,6 @@ export interface NewUserWarning {
   reason: string;
 }
 
-export interface ContactReportResolution {
-  reportId: string;
-  userId: string;
-  adminId: string;
-}
-
 export interface UsersRepository {
   findPage(query: ListUsersQuery): Promise<UsersPage>;
   findById(id: string): Promise<UserProfile | null>;
@@ -182,7 +176,6 @@ export interface UsersRepository {
   updateStatus(id: string, update: StatusUpdate, tx?: Transaction): Promise<UserSummary>;
   softDelete(id: string, tx?: Transaction): Promise<void>;
   createWarning(warning: NewUserWarning, tx?: Transaction): Promise<void>;
-  resolveContactReport(resolution: ContactReportResolution, tx: Transaction): Promise<void>;
   countWarningsByUserId(userId: string): Promise<number>;
   reactivateExpiredSuspensions(now: Date): Promise<number>;
   countMembers(): Promise<number>;
@@ -348,22 +341,6 @@ export class PrismaUsersRepository implements UsersRepository {
     tx: Transaction = this.prisma,
   ): Promise<void> {
     await tx.userWarning.create({ data: { ...warning, reportId: reportId ?? null } });
-  }
-
-  async resolveContactReport(
-    { reportId, userId, adminId }: ContactReportResolution,
-    tx: Transaction,
-  ): Promise<void> {
-    await tx.report.updateMany({
-      where: {
-        id: reportId,
-        targetType: 'USER',
-        targetUserId: userId,
-        status: { in: ['PENDING', 'UNDER_REVIEW'] },
-        ...notDeleted,
-      },
-      data: { status: 'RESOLVED', moderatorId: adminId, resolvedAt: new Date() },
-    });
   }
 
   countWarningsByUserId(userId: string): Promise<number> {

@@ -35,7 +35,7 @@ const groupMessageReportSelect = {
   description: true,
   reporter: { select: { name: true, username: true } },
   targetUser: { select: { id: true, name: true, username: true, createdAt: true } },
-  evidences: { where: notDeleted, select: { url: true }, orderBy: { sortOrder: 'asc' } },
+  evidences: { where: notDeleted, select: { id: true }, orderBy: { sortOrder: 'asc' } },
   groupMessage: {
     select: {
       id: true,
@@ -117,7 +117,7 @@ function toGroupMessageReport(
     reporterUsername: reporter.username,
     message: groupMessage && toReportedMessage(groupMessage, now, stats),
     reportedUser: fromChat && targetUser ? toReportedUser(targetUser, now, stats) : null,
-    evidences: evidences.map(({ url }) => url),
+    evidences,
   };
 }
 
@@ -161,6 +161,7 @@ export interface CommunityAdminRepository {
   ): Promise<Page<GroupMessageReport>>;
   findGroupMessageReportState(id: string): Promise<ReportState | null>;
   findQueueReportStatus(id: string): Promise<ReportStatus | null>;
+  findEvidenceKey(reportId: string, evidenceId: string): Promise<string | null>;
   removeReportedMessage(removal: MessageRemoval, tx: Transaction): Promise<string[]>;
   dismissReport(reportId: string, moderatorId: string): Promise<boolean>;
 }
@@ -362,6 +363,14 @@ export class PrismaCommunityAdminRepository implements CommunityAdminRepository 
       select: { status: true },
     });
     return report?.status ?? null;
+  }
+
+  async findEvidenceKey(reportId: string, evidenceId: string): Promise<string | null> {
+    const evidence = await this.prisma.reportEvidence.findFirst({
+      where: { id: evidenceId, reportId, ...notDeleted, report: notDeleted },
+      select: { url: true },
+    });
+    return evidence?.url ?? null;
   }
 
   findGroupMessageReportState(id: string): Promise<ReportState | null> {

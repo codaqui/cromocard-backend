@@ -6,6 +6,7 @@ import {
   BlockNotFoundError,
   CannotModerateSelfError,
   EvidenceCountError,
+  InvalidEvidenceTypeError,
   ModerationContactNotFoundError,
   ReportAlreadyPendingError,
 } from './contact-moderation.errors';
@@ -41,6 +42,7 @@ beforeEach(() => {
     block: vi.fn().mockResolvedValue(BLOCKED_AT),
     unblock: vi.fn().mockResolvedValue(true),
     listBlocks: vi.fn().mockResolvedValue({ items: [], total: 1 }),
+    lockReportPair: vi.fn().mockResolvedValue(undefined),
     hasPendingReport: vi.fn().mockResolvedValue(false),
     createReport: vi.fn().mockResolvedValue('report-1'),
   };
@@ -49,10 +51,7 @@ beforeEach(() => {
     isImage: vi.fn((content: Buffer) => content !== NOT_IMAGE),
     upload: vi.fn(() => {
       uploaded += 1;
-      return Promise.resolve({
-        key: `report-evidences/${uploaded}.png`,
-        url: `/files/${uploaded}.png`,
-      });
+      return Promise.resolve(`report-evidences/${uploaded}.png`);
     }),
     remove: vi.fn().mockResolvedValue(undefined),
   };
@@ -121,7 +120,7 @@ describe('report', () => {
         targetUserId: MARCOS,
         reason: 'Golpe / pagamento externo',
         description: 'Pediu Pix fora da plataforma.',
-        evidenceUrls: ['/files/1.png', '/files/2.png'],
+        evidenceKeys: ['report-evidences/1.png', 'report-evidences/2.png'],
       },
       TX,
     );
@@ -136,13 +135,11 @@ describe('report', () => {
   });
 
   it.each([
-    ['sem print', []],
-    ['com 4 prints', [PRINT, PRINT, PRINT, PRINT]],
-    ['com um arquivo que não é PNG, JPG ou WEBP', [PRINT, NOT_IMAGE]],
-  ])('CA4/CA15: recusa a denúncia %s sem subir nada', async (_case, files) => {
-    await expect(service.report(GABRIEL, reportInput(), files)).rejects.toBeInstanceOf(
-      EvidenceCountError,
-    );
+    ['sem print', [], EvidenceCountError],
+    ['com 4 prints', [PRINT, PRINT, PRINT, PRINT], EvidenceCountError],
+    ['com um arquivo que não é PNG, JPG ou WEBP', [PRINT, NOT_IMAGE], InvalidEvidenceTypeError],
+  ])('CA4/CA15: recusa a denúncia %s sem subir nada', async (_case, files, error) => {
+    await expect(service.report(GABRIEL, reportInput(), files)).rejects.toBeInstanceOf(error);
     expect(evidences.upload).not.toHaveBeenCalled();
     expect(store.createReport).not.toHaveBeenCalled();
   });
@@ -153,8 +150,29 @@ describe('report', () => {
     await expect(service.report(GABRIEL, reportInput(), [PRINT])).rejects.toBeInstanceOf(
       ReportAlreadyPendingError,
     );
-    expect(store.hasPendingReport).toHaveBeenCalledWith(GABRIEL, MARCOS);
+    expect(store.hasPendingReport).toHaveBeenCalledWith(GABRIEL, MARCOS, undefined);
     expect(evidences.upload).not.toHaveBeenCalled();
+  });
+
+  it('CA17: com duplo clique, a segunda denúncia espera a primeira e é recusada, sem sobrar print', async () => {
+    store.hasPendingReport.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await expect(service.report(GABRIEL, reportInput(), [PRINT])).rejects.toBeInstanceOf(
+      ReportAlreadyPendingError,
+    );
+    expect(store.lockReportPair).toHaveBeenCalledWith(GABRIEL, MARCOS, TX);
+    expect(store.hasPendingReport).toHaveBeenLastCalledWith(GABRIEL, MARCOS, TX);
+    expect(store.createReport).not.toHaveBeenCalled();
+    expect(evidences.remove).toHaveBeenCalledWith('report-evidences/1.png');
+  });
+
+  it('trava o par antes de conferir a denúncia pendente dentro da transação', async () => {
+    await service.report(GABRIEL, reportInput(), [PRINT]);
+
+    const lockOrder = store.lockReportPair.mock.invocationCallOrder[0] ?? 0;
+    const checkOrder = store.hasPendingReport.mock.invocationCallOrder[1] ?? 0;
+    expect(lockOrder).toBeGreaterThan(0);
+    expect(lockOrder).toBeLessThan(checkOrder);
   });
 
   it('CA10: recusa denunciar quem não tem conversa com o usuário', async () => {
@@ -172,5 +190,20 @@ describe('report', () => {
     await expect(service.report(GABRIEL, reportInput(), [PRINT, PRINT])).rejects.toBe(failure);
     expect(evidences.remove).toHaveBeenCalledWith('report-evidences/1.png');
     expect(evidences.remove).toHaveBeenCalledWith('report-evidences/2.png');
+  });
+
+  it('apaga os prints que já subiram quando outro falha no envio', async () => {
+    const failure = new Error('storage fora do ar');
+    evidences.upload
+      .mockResolvedValueOnce('report-evidences/1.png')
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce('report-evidences/3.png');
+
+    await expect(service.report(GABRIEL, reportInput(), [PRINT, PRINT, PRINT])).rejects.toBe(
+      failure,
+    );
+    expect(evidences.remove).toHaveBeenCalledWith('report-evidences/1.png');
+    expect(evidences.remove).toHaveBeenCalledWith('report-evidences/3.png');
+    expect(store.createReport).not.toHaveBeenCalled();
   });
 });

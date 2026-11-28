@@ -5,6 +5,7 @@ import { GroupAccessType, GroupStatus, ReportStatus } from '@/generated/prisma/e
 import type { Transaction } from '@/lib/transaction';
 
 import {
+  EvidenceNotFoundError,
   GroupAlreadySuspendedError,
   GroupAlreadyWarnedError,
   GroupNotFoundError,
@@ -116,6 +117,12 @@ class FakeCommunityAdminRepository implements CommunityAdminRepository {
     return Promise.resolve(this.reports.get(id)?.status ?? null);
   }
 
+  evidenceKeys = new Map<string, string>();
+
+  findEvidenceKey(reportId: string, evidenceId: string): Promise<string | null> {
+    return Promise.resolve(this.evidenceKeys.get(`${reportId}/${evidenceId}`) ?? null);
+  }
+
   removeReportedMessage({ reportId, messageId, moderatorId }: MessageRemoval): Promise<string[]> {
     if (!this.resolve(reportId, ReportStatus.RESOLVED, moderatorId)) return Promise.resolve([]);
     const others = this.openReportsOf(messageId).filter((id) => id !== reportId);
@@ -169,6 +176,7 @@ class FakeWarner implements AuthorWarner {
 
 describe('CommunityAdminService', () => {
   let repository: FakeCommunityAdminRepository;
+  let evidenceFiles: Map<string, Buffer>;
   let auditLog: FakeAuditLog;
   let warner: FakeWarner;
   let service: CommunityAdminService;
@@ -177,8 +185,10 @@ describe('CommunityAdminService', () => {
     repository = new FakeCommunityAdminRepository();
     auditLog = new FakeAuditLog();
     warner = new FakeWarner();
+    evidenceFiles = new Map();
     service = new CommunityAdminService({
       repository,
+      evidences: { read: (key) => Promise.resolve(evidenceFiles.get(key) ?? null) },
       auditLog,
       warner,
       runInTransaction: (work) => work(TRANSACTION),
@@ -460,6 +470,7 @@ describe('CommunityAdminService', () => {
       const transactions: string[] = [];
       service = new CommunityAdminService({
         repository,
+        evidences: { read: () => Promise.resolve(null) },
         auditLog,
         warner,
         runInTransaction: async (work) => {
@@ -538,6 +549,43 @@ describe('CommunityAdminService', () => {
     it('responde 404 para denúncia inexistente', async () => {
       await expect(service.dismissReport(UNKNOWN_ID, REASON, ADMIN_ID)).rejects.toThrow(
         ReportNotFoundError,
+      );
+    });
+  });
+
+  describe('prints da denúncia do chat (CCD047, L13)', () => {
+    const EVIDENCE_ID = '0190a000-0000-7000-8000-0000000000e1';
+    const KEY = 'report-evidences/print.png';
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+
+    it('CA18: lê o print do storage privado pela chave e devolve com o tipo da imagem', async () => {
+      repository.evidenceKeys.set(`${REPORT_ID}/${EVIDENCE_ID}`, KEY);
+      evidenceFiles.set(KEY, PNG);
+
+      await expect(service.getReportEvidence(REPORT_ID, EVIDENCE_ID)).resolves.toEqual({
+        contentType: 'image/png',
+        content: PNG,
+      });
+    });
+
+    it('responde 404 para o print que não é desta denúncia', async () => {
+      repository.evidenceKeys.set(`outra-denuncia/${EVIDENCE_ID}`, KEY);
+      evidenceFiles.set(KEY, PNG);
+
+      await expect(service.getReportEvidence(REPORT_ID, EVIDENCE_ID)).rejects.toBeInstanceOf(
+        EvidenceNotFoundError,
+      );
+    });
+
+    it.each([
+      ['sumiu do storage', undefined],
+      ['não é mais uma imagem', Buffer.from('%PDF')],
+    ])('responde 404 quando o arquivo %s', async (_case, content) => {
+      repository.evidenceKeys.set(`${REPORT_ID}/${EVIDENCE_ID}`, KEY);
+      if (content) evidenceFiles.set(KEY, content);
+
+      await expect(service.getReportEvidence(REPORT_ID, EVIDENCE_ID)).rejects.toBeInstanceOf(
+        EvidenceNotFoundError,
       );
     });
   });
