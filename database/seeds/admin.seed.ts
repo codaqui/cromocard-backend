@@ -21,12 +21,11 @@ import {
   RequestStatus,
 } from '@/generated/prisma/enums';
 import { z } from '@/lib/zod';
-import type { StorageProvider } from '@/providers/storage/storage.provider';
 
 import { albumIdOf, categoryIdOf, languageIdOf, rarityIdOf } from './catalog.seed';
 import { reportIdOf } from './community.seed';
 import { loadSeedData, seedKey } from './load-seed-data';
-import { solidColorPng } from './sample-image';
+import type { SampleImages } from './sample-images';
 import { type KeyResolver, keyResolver, optional, SeedNamespace, seedId } from './seed-id';
 import { userIdOf } from './users.seed';
 
@@ -119,31 +118,6 @@ const HTTPS_FALLBACK_FRONTEND_URL = 'https://cromocard.com.br';
 const httpsOnlyFrontendUrl = env.FRONTEND_URL.startsWith('https://')
   ? env.FRONTEND_URL
   : HTTPS_FALLBACK_FRONTEND_URL;
-
-const sampleBanner = {
-  key: 'banners/seed-home-banner.png',
-  content: solidColorPng({ width: 1200, height: 400, rgb: [50, 145, 255] }),
-  contentType: 'image/png',
-};
-
-const sampleCategoryLogo = {
-  key: 'catalog-requests/seed-category-logo.png',
-  content: solidColorPng({ width: 400, height: 240, rgb: [72, 52, 160] }),
-  contentType: 'image/png',
-};
-
-const sampleAvatar = {
-  key: 'avatars/seed-profile-avatar.png',
-  content: solidColorPng({ width: 500, height: 500, rgb: [255, 170, 60] }),
-  contentType: 'image/png',
-};
-
-/** Imagens de exemplo enviadas ao storage local (o banco compartilhado fica sem elas). */
-export interface SampleImages {
-  bannerImageUrl?: string;
-  categoryLogoUrl?: string;
-  avatarUrl?: string;
-}
 
 type RequestData = (typeof catalogRequests)[number]['data'];
 
@@ -270,15 +244,6 @@ function toGlobalNotificationData({
     sentAt: dispatch.status === 'SENT' ? date : null,
     createdAt: isScheduled ? new Date() : date,
   };
-}
-
-export async function uploadSampleImages(storage: StorageProvider): Promise<SampleImages> {
-  const [banner, categoryLogo, avatar] = await Promise.all([
-    storage.upload(sampleBanner),
-    storage.upload(sampleCategoryLogo),
-    storage.upload(sampleAvatar),
-  ]);
-  return { bannerImageUrl: banner.url, categoryLogoUrl: categoryLogo.url, avatarUrl: avatar.url };
 }
 
 export async function seedAdmin(prisma: PrismaClient, images: SampleImages = {}): Promise<void> {

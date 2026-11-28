@@ -3,15 +3,15 @@ import { logger } from '@/config/logger';
 import { prisma } from '@/lib/prisma';
 import { createStorageProvider } from '@/providers/storage/storage.factory';
 
-import { seedAdmin, uploadSampleImages } from './admin.seed';
+import { seedAdmin } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
 import { seedCollection } from './collection.seed';
 import { seedCommunity } from './community.seed';
 import { seedMarketplace } from './marketplace.seed';
-import { seedProfiles } from './profiles.seed';
+import { uploadSampleImages } from './sample-images';
 import { seedOptionsFrom } from './seed-options';
 import { seedSellerVerifications } from './seller-verifications.seed';
-import { assertSeedEmailsAvailable, seedUsers } from './users.seed';
+import { assertSeedEmailsAvailable, seedProfiles, seedUsers } from './users.seed';
 
 async function seed(): Promise<void> {
   if (env.NODE_ENV === 'production') {

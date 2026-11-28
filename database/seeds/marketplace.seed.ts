@@ -23,9 +23,12 @@ const marketplaceSchema = z.object({
     z.object({
       key: seedKey,
       user: seedKey,
+      label: z.string().max(60).default('Casa'),
+      isPrimary: z.boolean().default(true),
       zipCode: z.string().max(9),
       street: z.string().max(160),
       number: z.string().max(15),
+      complement: z.string().max(60).optional(),
       neighborhood: z.string().max(90),
       city: z.string().max(90),
       state: z.string().length(2),
@@ -93,8 +96,6 @@ const toAddressData = ({ key, user, ...address }: (typeof marketplace.addresses)
   ...address,
   id: addressIdOf(key),
   userId: userIdOf(user),
-  label: 'Casa',
-  isPrimary: true,
 });
 
 const toListingData = ({ key, seller, card, condition, price, quantity, status }: SeedListing) => ({
@@ -175,7 +176,19 @@ async function seedOrders(prisma: PrismaClient): Promise<void> {
   for (const order of marketplace.orders) await seedOrder(prisma, order);
 }
 
+const legacyAddressIds = ['ana-studio-campinas'].map((key) =>
+  seedId(SeedNamespace.legacyProfileAddresses, key),
+);
+
+async function retireLegacyAddresses(prisma: PrismaClient): Promise<void> {
+  await prisma.address.updateMany({
+    where: { id: { in: legacyAddressIds }, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+}
+
 export async function seedMarketplace(prisma: PrismaClient): Promise<void> {
+  await retireLegacyAddresses(prisma);
   for (const data of marketplace.addresses.map(toAddressData)) {
     await prisma.address.upsert({ where: { id: data.id }, create: data, update: data });
   }

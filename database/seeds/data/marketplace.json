@@ -39,6 +39,19 @@
       "neighborhood": "Centro",
       "city": "Curitiba",
       "state": "PR"
+    },
+    {
+      "key": "ana-studio-campinas",
+      "user": "ana",
+      "label": "Studio Campinas",
+      "zipCode": "13015-904",
+      "street": "Rua Barão de Jaguara",
+      "number": "1481",
+      "complement": "Sala 12",
+      "neighborhood": "Centro",
+      "city": "Campinas",
+      "state": "SP",
+      "isPrimary": false
     }
   ],
   "listings": [
