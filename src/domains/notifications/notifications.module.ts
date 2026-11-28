@@ -15,8 +15,11 @@ import { NotificationPublisher } from './notification.publisher';
 import { NotificationsController } from './notifications.controller';
 import { createNotificationsRoutes } from './notifications.routes';
 import { registerNotificationsDocs } from './notifications.swagger';
+import { NotificationPreferencesController } from './notification-preferences.controller';
 import { PrismaNotificationPreferencesRepository } from './notification-preferences.repository';
+import { createNotificationPreferencesRoutes } from './notification-preferences.routes';
 import { NotificationPreferencesService } from './notification-preferences.service';
+import { registerNotificationPreferencesDocs } from './notification-preferences.swagger';
 import { PrismaNotificationsRepository } from './notifications.repository';
 import { NotificationsService } from './notifications.service';
 
@@ -51,4 +54,12 @@ export const notificationsModule: DomainModule = {
   basePath: '/notifications',
   router: createNotificationsRoutes(new NotificationsController(notificationsService)),
   registerDocs: registerNotificationsDocs,
+};
+
+export const notificationPreferencesModule: DomainModule = {
+  basePath: '/me/notification-preferences',
+  router: createNotificationPreferencesRoutes(
+    new NotificationPreferencesController(notificationPreferencesService),
+  ),
+  registerDocs: registerNotificationPreferencesDocs,
 };

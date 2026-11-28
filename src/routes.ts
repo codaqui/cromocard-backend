@@ -17,6 +17,7 @@ import { communityAdminModule } from '@/domains/community/community.module';
 import { uploadsModule } from '@/domains/uploads/uploads.module';
 import {
   globalNotificationsModule,
+  notificationPreferencesModule,
   notificationsModule,
 } from '@/domains/notifications/notifications.module';
 import {
@@ -44,6 +45,7 @@ const sharedModules: DomainModule[] = [
   communityAdminModule,
   globalNotificationsModule,
   notificationsModule,
+  notificationPreferencesModule,
   sellerVerificationsModule,
   connectedAccountsModule,
   paymentsWebhookModule,
