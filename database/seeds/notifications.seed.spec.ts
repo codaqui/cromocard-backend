@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { categoryOf } from '@/domains/notifications/notification-types';
+import type { PrismaClient } from '@/generated/prisma/client';
 
-import { notificationsSeed } from './notifications.seed';
+import { notificationsSeed, seedNotifications } from './notifications.seed';
 import { userIdOf } from './users.seed';
 
 describe('seed de notificações', () => {
@@ -28,5 +29,16 @@ describe('seed de notificações', () => {
     expect(new Set(notificationsSeed.map(({ type }) => categoryOf(type)))).toEqual(
       new Set(['MESSAGES', 'PLATFORM']),
     );
+  });
+
+  it('grava cada notificação por upsert do id fixo, e rodar de novo não duplica', async () => {
+    const upsert = vi.fn().mockResolvedValue(undefined);
+    const prisma = { notification: { upsert } } as unknown as PrismaClient;
+
+    await seedNotifications(prisma);
+
+    expect(upsert).toHaveBeenCalledTimes(notificationsSeed.length);
+    const [first] = notificationsSeed;
+    expect(upsert).toHaveBeenCalledWith({ where: { id: first?.id }, create: first, update: first });
   });
 });
