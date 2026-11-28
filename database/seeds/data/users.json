@@ -56,7 +56,9 @@
     "profile": {
       "bio": "Vendo cartas raras com envio rápido e embalagem com sleeve e toploader.",
       "city": "Rio de Janeiro"
-    }
+    },
+    "stripeAccountId": "acct_seed_elisa",
+    "stripeAccountStatus": "READY"
   },
   {
     "key": "fabio",
@@ -65,7 +67,9 @@
     "role": "SELLER",
     "username": "fabio.tcg",
     "phone": "31976543210",
-    "createdDaysAgo": 10
+    "createdDaysAgo": 10,
+    "stripeAccountId": "acct_seed_fabio",
+    "stripeAccountStatus": "READY"
   },
   {
     "key": "helena",
@@ -74,14 +78,27 @@
     "role": "SELLER",
     "username": "helena.cardshop",
     "phone": "41998765432",
-    "createdDaysAgo": 20
+    "createdDaysAgo": 20,
+    "stripeAccountId": "acct_seed_helena",
+    "stripeAccountStatus": "VERIFYING"
   },
   {
     "key": "igor",
     "name": "Igor Colecionáveis",
     "email": "igor@cromocard.dev",
     "role": "SELLER",
-    "createdDaysAgo": 45
+    "createdDaysAgo": 45,
+    "stripeAccountId": "acct_seed_igor",
+    "stripeAccountStatus": "PENDING"
+  },
+  {
+    "key": "rodrigo",
+    "name": "Rodrigo Silva",
+    "email": "rodrigo@cromocard.dev",
+    "role": "SELLER",
+    "username": "rodrigo.silva",
+    "phone": "11965432109",
+    "createdDaysAgo": 1
   },
   {
     "key": "gabriela",

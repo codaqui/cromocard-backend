@@ -1,13 +1,16 @@
+import { env } from '@/config/env';
 import type { PrismaClient } from '@/generated/prisma/client';
-import { Privacy, UserRole, UserStatus } from '@/generated/prisma/enums';
+import { Privacy, StripeAccountStatus, UserRole, UserStatus } from '@/generated/prisma/enums';
 import { hashPassword } from '@/lib/password';
 import { z } from '@/lib/zod';
 
 import { daysAgo, loadSeedData, seedKey } from './load-seed-data';
 import { keyResolver, SeedNamespace, seedId } from './seed-id';
 
+const BIO_MAX_LENGTH = 300;
+
 const profileSchema = z.object({
-  bio: z.string().optional(),
+  bio: z.string().max(BIO_MAX_LENGTH).optional(),
   city: z.string().max(120).optional(),
   portfolioPrivacy: z.enum(Privacy).default(Privacy.PUBLIC),
   withAvatar: z.boolean().default(false),
@@ -28,21 +31,27 @@ const usersSchema = z.array(
       username: z.string().optional(),
       cpf: z.string().optional(),
       phone: z.string().optional(),
+      stripeAccountId: z.string().startsWith('acct_').optional(),
+      stripeAccountStatus: z.enum(StripeAccountStatus).optional(),
       profile: profileSchema.optional(),
     })
     .transform(({ profile, ...account }) => ({ account, profile })),
 );
 
-const entries = loadSeedData('users.json', usersSchema);
-const users = entries.map(({ account }) => account);
+const seedUsersData = loadSeedData('users.json', usersSchema);
+const accounts = seedUsersData.map(({ account }) => account);
 
-export const userIdOf = keyResolver(SeedNamespace.users, users, 'users.json');
+export const userIdOf = keyResolver(SeedNamespace.users, accounts, 'users.json');
+
+export const seedProfilesData = seedUsersData.flatMap(({ account, profile }) =>
+  profile ? [{ key: account.key, profile }] : [],
+);
 
 export async function assertSeedEmailsAvailable(prisma: PrismaClient): Promise<void> {
   const conflicts = await prisma.user.findMany({
     where: {
-      email: { in: users.map(({ email }) => email) },
-      id: { notIn: users.map(({ key }) => userIdOf(key)) },
+      email: { in: accounts.map(({ email }) => email) },
+      id: { notIn: accounts.map(({ key }) => userIdOf(key)) },
     },
     select: { email: true },
   });
@@ -52,6 +61,23 @@ export async function assertSeedEmailsAvailable(prisma: PrismaClient): Promise<v
     throw new Error(
       `Seed: e-mails do seed já usados por outras contas (nada foi gravado): ${emails}`,
     );
+  }
+}
+
+export async function seedUsers(prisma: PrismaClient, password: string): Promise<void> {
+  const passwordHash = await hashPassword(password);
+
+  for (const { key, createdDaysAgo, stripeAccountId, stripeAccountStatus, ...user } of accounts) {
+    const id = userIdOf(key);
+    const data = {
+      ...user,
+      ...(env.PAYMENT_DRIVER === 'fake' && { stripeAccountId, stripeAccountStatus }),
+      id,
+      passwordHash,
+      termsAccepted: true,
+      createdAt: daysAgo(createdDaysAgo),
+    };
+    await prisma.user.upsert({ where: { id }, create: data, update: data });
   }
 }
 
@@ -68,29 +94,8 @@ const toProfileUpsert =
     };
   };
 
-const usersWithProfile = entries.flatMap(({ account, profile }) =>
-  profile ? [{ key: account.key, profile }] : [],
-);
-
-export async function seedUsers(
-  prisma: PrismaClient,
-  password: string,
-  avatarUrl?: string,
-): Promise<void> {
-  const passwordHash = await hashPassword(password);
-
-  for (const { key, createdDaysAgo, ...user } of users) {
-    const id = userIdOf(key);
-    const data = {
-      ...user,
-      id,
-      passwordHash,
-      termsAccepted: true,
-      createdAt: daysAgo(createdDaysAgo),
-    };
-    await prisma.user.upsert({ where: { id }, create: data, update: data });
-  }
-  for (const args of usersWithProfile.map(toProfileUpsert(avatarUrl))) {
+export async function seedProfiles(prisma: PrismaClient, avatarUrl?: string): Promise<void> {
+  for (const args of seedProfilesData.map(toProfileUpsert(avatarUrl))) {
     await prisma.profile.upsert(args);
   }
 }

@@ -90,6 +90,7 @@ model User {
   listings                        Listing[]
   purchases                       Order[]                  @relation("OrderBuyer")
   sales                           Order[]                  @relation("OrderSeller")
+  collection                      Collection?
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -239,6 +240,7 @@ model Album {
   category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_albums_category_id")
   cards           Card[]
   catalogRequests CatalogRequest[]
+  userAlbums      UserAlbum[]
 
   @@map("albums")
 }
@@ -269,6 +271,7 @@ model Card {
   catalogRequests CatalogRequest[]
   listings        Listing[]
   priceHistory    PriceHistory[]
+  collectionCards CollectionCard[]
 
   @@unique([albumId, number])
   @@unique([code], map: "cards_code_key", where: raw("deleted_at IS NULL"))
@@ -856,4 +859,63 @@ model PriceHistory {
   card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_price_history_card_id")
 
   @@map("price_history")
+}
+
+model Collection {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  isPublic  Boolean   @default(false) @map("is_public")
+  shareLink String?   @unique @map("share_link") @db.VarChar(120)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user   User             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_collections_user_id")
+  albums UserAlbum[]
+  cards  CollectionCard[]
+
+  @@map("collections")
+}
+
+model UserAlbum {
+  id                 String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  collectionId       String    @map("collection_id") @db.Uuid
+  albumId            String    @map("album_id") @db.Uuid
+  isFavorite         Boolean   @default(false) @map("is_favorite")
+  progressPercentage Decimal   @default(0) @map("progress_percentage") @db.Decimal(5, 2)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_albums_collection_id")
+  album      Album      @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_albums_album_id")
+
+  @@unique([collectionId, albumId])
+  @@map("user_albums")
+}
+
+enum CollectionCardStatus {
+  OWNED
+  MISSING
+  DUPLICATE
+
+  @@map("collection_card_status")
+}
+
+model CollectionCard {
+  id           String               @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  collectionId String               @map("collection_id") @db.Uuid
+  cardId       String               @map("card_id") @db.Uuid
+  status       CollectionCardStatus
+  quantity     Int                  @default(1)
+  marketValue  Decimal?             @map("market_value") @db.Decimal(10, 2)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_collection_cards_collection_id")
+  card       Card       @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_collection_cards_card_id")
+
+  @@unique([collectionId, cardId])
+  @@map("collection_cards")
 }

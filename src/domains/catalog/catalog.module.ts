@@ -1,4 +1,5 @@
 import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
+import { collectionService } from '@/domains/collection/collection.module';
 import { prisma } from '@/lib/prisma';
 import { runInTransaction } from '@/lib/transaction';
 import type { DomainModule } from '@/shared/types/domain-module';
@@ -18,7 +19,6 @@ import { DefaultCategoriesService } from './catalog-default-categories.service';
 import { PrismaReferencesRepository } from './catalog-references.repository';
 import { CardsBulkDeleteService } from './catalog-bulk-delete.service';
 import { PrismaCatalogSummaryRepository } from './catalog-summary.repository';
-import { noCollectionsYet } from './catalog.ports';
 
 const cardCounts = new PrismaCategoryCardCounts(prisma);
 const cards = new PrismaCardsRepository(prisma);
@@ -31,13 +31,13 @@ const catalogService = new CatalogService({
   references: new PrismaReferencesRepository(prisma),
   auditLog: auditLogService,
   summary: new PrismaCatalogSummaryRepository(prisma),
-  cardUsage: noCollectionsYet,
+  cardUsage: collectionService,
 });
 
 const bulkDeleteService = new CardsBulkDeleteService({
   cards,
   auditLog: auditLogService,
-  cardUsage: noCollectionsYet,
+  cardUsage: collectionService,
   runInTransaction,
 });
 
