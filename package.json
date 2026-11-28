@@ -21,7 +21,7 @@
     "test": "vitest run --exclude 'tests/integration/**'",
     "test:integration": "vitest run tests/integration --no-file-parallelism",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
+    "test:cov": "vitest run --coverage --no-file-parallelism",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
