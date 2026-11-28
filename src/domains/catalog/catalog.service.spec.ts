@@ -32,7 +32,7 @@ import {
   SlugTakenError,
 } from './catalog.errors';
 import type { CatalogSummary, CatalogSummaryRepository } from './catalog-summary.repository';
-import { type CardUsage, noCollectionsYet } from './catalog.ports';
+import type { CardUsage } from './catalog.ports';
 import { CatalogService } from './catalog.service';
 import type {
   CreateAlbumInput,
@@ -700,24 +700,6 @@ describe('CatalogService', () => {
 
       await expect(service.findCard(card.id)).rejects.toThrow(CardNotFoundError);
       expect(auditLog.actions()).toContain('CARD_DELETED');
-    });
-
-    it('L14: antes da CCD014, sem coleções, a carta é excluída', async () => {
-      const withoutUsage = new CatalogService({
-        albums,
-        cards,
-        categories,
-        cardCounts,
-        references,
-        auditLog,
-        summary: new FixedCatalogSummary(SUMMARY),
-        cardUsage: noCollectionsYet,
-      });
-      const card = await newCard();
-
-      await withoutUsage.deleteCard(ADMIN_ID, card.id);
-
-      await expect(service.findCard(card.id)).rejects.toThrow(CardNotFoundError);
     });
   });
 

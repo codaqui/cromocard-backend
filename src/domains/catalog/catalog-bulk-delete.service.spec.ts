@@ -5,7 +5,7 @@ import type { Transaction } from '@/lib/transaction';
 
 import { type BulkDeletableCards, CardsBulkDeleteService } from './catalog-bulk-delete.service';
 import type { CardIdentity } from './catalog-cards.repository';
-import { type CardUsage, noCollectionsYet } from './catalog.ports';
+import type { CardUsage } from './catalog.ports';
 
 const ADMIN_ID = crypto.randomUUID();
 const REASON = 'Rascunhos criados em duplicidade na importação';
@@ -158,19 +158,5 @@ describe('CardsBulkDeleteService', () => {
 
     expect(result).toEqual({ deleted: [], skipped: [] });
     expect(auditLog.entries).toEqual([]);
-  });
-
-  it('L14: antes da CCD014, sem coleções, exclui todas as selecionadas', async () => {
-    const withoutUsage = new CardsBulkDeleteService({
-      cards,
-      auditLog,
-      cardUsage: noCollectionsYet,
-      runInTransaction: (work) => work(TRANSACTION),
-    });
-    const card = cards.add('Pikachu');
-
-    const result = await withoutUsage.deleteCards(ADMIN_ID, { ids: [card.id], reason: REASON });
-
-    expect(result.deleted).toEqual([card.id]);
   });
 });

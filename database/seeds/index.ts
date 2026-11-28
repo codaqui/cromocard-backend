@@ -5,6 +5,7 @@ import { createStorageProvider } from '@/providers/storage/storage.factory';
 
 import { seedAdmin, uploadSampleImages } from './admin.seed';
 import { seedCatalog } from './catalog.seed';
+import { seedCollection } from './collection.seed';
 import { seedCommunity } from './community.seed';
 import { seedMarketplace } from './marketplace.seed';
 import { seedProfiles } from './profiles.seed';
@@ -25,6 +26,7 @@ async function seed(): Promise<void> {
   await assertSeedEmailsAvailable(prisma);
   await seedUsers(prisma, options.userPassword);
   await seedCatalog(prisma);
+  await seedCollection(prisma);
   await seedCommunity(prisma);
   await seedSellerVerifications(prisma);
   await seedMarketplace(prisma);

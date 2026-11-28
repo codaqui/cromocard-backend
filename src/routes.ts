@@ -9,6 +9,7 @@ import { cardsModule } from '@/domains/catalog/cards/cards.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
 import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
 import { catalogRequestsModule } from '@/domains/catalog/requests/catalog-requests.module';
+import { collectionModule } from '@/domains/collection/collection.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { financeModule } from '@/domains/admin/finance/finance.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
@@ -34,6 +35,7 @@ const sharedModules: DomainModule[] = [
   cardsModule,
   catalogRequestsModule,
   catalogRequestVotesModule,
+  collectionModule,
   reportsModule,
   settingsModule,
   publicSettingsModule,

@@ -6,7 +6,7 @@
     "publisher": "Panini",
     "year": 2026,
     "description": "Álbum oficial da Copa do Mundo de 2026.",
-    "totalCards": 5
+    "totalCards": 54
   },
   {
     "key": "brasileirao-2026",
@@ -24,5 +24,29 @@
     "year": 1999,
     "totalCards": 3,
     "status": "INACTIVE"
+  },
+  {
+    "key": "destinos-brilhantes",
+    "category": "pokemon",
+    "title": "Destinos Brilhantes",
+    "publisher": "Copag",
+    "year": 2021,
+    "totalCards": 73
+  },
+  {
+    "key": "magic-vintage",
+    "category": "magic",
+    "title": "Vintage",
+    "publisher": "Wizards of the Coast",
+    "year": 1998,
+    "totalCards": 60
+  },
+  {
+    "key": "yugioh-classico",
+    "category": "yugioh",
+    "title": "Clássico",
+    "publisher": "Konami",
+    "year": 2002,
+    "totalCards": 77
   }
 ]
