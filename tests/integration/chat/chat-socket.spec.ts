@@ -117,6 +117,19 @@ describe('conversa em tempo real (R8, R18)', () => {
     expect(await quiet).toBe(true);
   });
 
+  it('L18: com bloqueio entre os dois, o envio volta CONVERSATION_BLOCKED e nada é gravado', async () => {
+    const block = await prisma.userBlock.create({
+      data: { blockerId: elisa.id, blockedId: ana.id },
+    });
+    const anaSocket = await online(ana);
+
+    const ack = await emit(anaSocket, 'message:send', { conversationId, content: 'Ainda aí?' });
+
+    await prisma.userBlock.delete({ where: { id: block.id } });
+    expect(ack).toMatchObject({ error: 'CONVERSATION_BLOCKED' });
+    expect(await prisma.message.count({ where: { conversationId, content: 'Ainda aí?' } })).toBe(0);
+  });
+
   it('CA16: mensagem vazia volta como VALIDATION_ERROR, sem gravar', async () => {
     const anaSocket = await online(ana);
     const before = await prisma.message.count({ where: { conversationId } });
@@ -170,6 +183,15 @@ describe('presença (R15)', () => {
     const offline = next<{ online: boolean }>(anaSocket, 'presence:changed');
     elisaTab2.disconnect();
     expect(await offline).toEqual({ userId: elisa.id, online: false });
+  });
+
+  it('CA15: a lista não revela a presença de quem não conversa com ele', async () => {
+    const carlaSocket = await online(carla);
+    await online(elisa);
+
+    await expect(
+      emit(carlaSocket, 'presence:list', { userIds: [elisa.id, ana.id] }),
+    ).resolves.toEqual({ data: { online: [] } });
   });
 
   it('quem não tem conversa com ele não é avisado', async () => {

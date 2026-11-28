@@ -84,6 +84,7 @@ export class ChatFixtures {
     await prisma.userBlock.deleteMany({
       where: { OR: [{ blockerId: userIds }, { blockedId: userIds }] },
     });
+    await prisma.profile.deleteMany({ where: { userId: userIds } });
     await prisma.user.deleteMany({ where: { id: userIds } });
   }
 }

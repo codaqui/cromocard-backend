@@ -17,6 +17,7 @@ interface SummaryRow {
   contact_id: string;
   contact_name: string;
   contact_username: string | null;
+  contact_avatar_url: string | null;
   verified: boolean;
   last_content: string | null;
   last_author_id: string | null;
@@ -35,19 +36,22 @@ const messageSelect = {
   author: { select: authorSelect },
 } as const;
 
+const verifiedSeller = Prisma.sql`EXISTS (SELECT 1 FROM seller_verifications sv WHERE sv.user_id = u.id
+  AND sv.status = 'APPROVED' AND sv.deleted_at IS NULL)`;
+
 function myConversations(userId: string, conversationId?: string) {
   const onlyOne = conversationId ? Prisma.sql`AND c.id = ${conversationId}::uuid` : Prisma.empty;
   return Prisma.sql`
     WITH mine AS (
       SELECT c.id, c.created_at, u.id AS contact_id, u.name AS contact_name, u.username AS contact_username,
-        EXISTS (SELECT 1 FROM seller_verifications sv WHERE sv.user_id = u.id AND sv.status = 'APPROVED'
-          AND sv.deleted_at IS NULL) AS verified
+        p.avatar_url AS contact_avatar_url, ${verifiedSeller} AS verified
       FROM conversations c
       JOIN conversation_participants me ON me.conversation_id = c.id AND me.user_id = ${userId}::uuid
         AND me.deleted_at IS NULL
       JOIN conversation_participants other ON other.conversation_id = c.id AND other.user_id <> ${userId}::uuid
         AND other.deleted_at IS NULL
       JOIN users u ON u.id = other.user_id AND u.deleted_at IS NULL
+      LEFT JOIN profiles p ON p.user_id = u.id AND p.deleted_at IS NULL
       WHERE c.deleted_at IS NULL ${onlyOne}
     ),
     stats AS (
@@ -75,7 +79,7 @@ function toSummary(row: SummaryRow, userId: string): ConversationSummary {
       id: row.contact_id,
       name: row.contact_name,
       username: row.contact_username,
-      avatarUrl: null,
+      avatarUrl: row.contact_avatar_url,
       verified: row.verified,
     },
     lastMessage: row.last_at
@@ -88,6 +92,38 @@ function toSummary(row: SummaryRow, userId: string): ConversationSummary {
     unreadCount: row.unread,
     createdAt: row.created_at,
   };
+}
+
+export interface DirectConversation {
+  id: string;
+  created: boolean;
+}
+
+async function findDirectConversationId(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  contactId: string,
+): Promise<string | null> {
+  const both = [userId, contactId].map((id) => ({
+    participants: { some: { userId: id, ...notDeleted } },
+  }));
+  const conversation = await tx.conversation.findFirst({
+    where: { listingId: null, ...notDeleted, AND: both },
+    select: { id: true },
+  });
+  return conversation?.id ?? null;
+}
+
+async function createDirectConversation(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  contactId: string,
+): Promise<string> {
+  const conversation = await tx.conversation.create({
+    data: { participants: { create: [{ userId }, { userId: contactId }] } },
+    select: { id: true },
+  });
+  return conversation.id;
 }
 
 export class ChatRepository {
@@ -151,23 +187,14 @@ export class ChatRepository {
     return message as ChatMessage;
   }
 
-  async findDirectConversationId(userId: string, contactId: string): Promise<string | null> {
-    const both = [userId, contactId].map((id) => ({
-      participants: { some: { userId: id, ...notDeleted } },
-    }));
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { listingId: null, ...notDeleted, AND: both },
-      select: { id: true },
+  findOrCreateDirectConversation(userId: string, contactId: string): Promise<DirectConversation> {
+    const pairKey = [userId, contactId].sort().join(':');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${pairKey}))`;
+      const existingId = await findDirectConversationId(tx, userId, contactId);
+      if (existingId) return { id: existingId, created: false };
+      return { id: await createDirectConversation(tx, userId, contactId), created: true };
     });
-    return conversation?.id ?? null;
-  }
-
-  async createDirectConversation(userId: string, contactId: string): Promise<string> {
-    const conversation = await this.prisma.conversation.create({
-      data: { participants: { create: [{ userId }, { userId: contactId }] } },
-      select: { id: true },
-    });
-    return conversation.id;
   }
 
   async listPartnerIds(userId: string): Promise<string[]> {

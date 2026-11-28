@@ -47,6 +47,7 @@ const contactSelect = (userId: string) =>
     name: true,
     username: true,
     role: true,
+    profile: { select: { avatarUrl: true, deletedAt: true } },
     sellerVerification: { select: { status: true, deletedAt: true } },
     groupMemberships: { where: sharedGroup(userId), select: { group: { select: { name: true } } } },
   }) satisfies Prisma.UserSelect;
@@ -57,7 +58,7 @@ const toContact = (row: ContactRow): ContactResult => ({
   id: row.id,
   name: row.name,
   username: row.username,
-  avatarUrl: null,
+  avatarUrl: row.profile?.deletedAt === null ? row.profile.avatarUrl : null,
   verified:
     row.sellerVerification?.status === 'APPROVED' && row.sellerVerification.deletedAt === null,
   role: row.role,
@@ -80,6 +81,19 @@ export class ContactsRepository {
   async isReachable(userId: string, contactId: string): Promise<boolean> {
     const count = await this.prisma.user.count({
       where: { AND: [reachableBy(userId), { id: contactId }] },
+    });
+    return count > 0;
+  }
+
+  async isBlockedBetween(userId: string, contactId: string): Promise<boolean> {
+    const count = await this.prisma.userBlock.count({
+      where: {
+        ...notDeleted,
+        OR: [
+          { blockerId: userId, blockedId: contactId },
+          { blockerId: contactId, blockedId: userId },
+        ],
+      },
     });
     return count > 0;
   }

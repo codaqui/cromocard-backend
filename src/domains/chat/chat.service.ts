@@ -1,6 +1,10 @@
 import { buildPaginationMeta, toSkipTake } from '@/shared/utils/pagination';
 
-import { ContactNotFoundError, ConversationNotFoundError } from './chat.errors';
+import {
+  ContactNotFoundError,
+  ConversationBlockedError,
+  ConversationNotFoundError,
+} from './chat.errors';
 import type { ChatRepository } from './chat.repository';
 import type { ChatMessage, ConversationSummary } from './chat.types';
 import type {
@@ -19,12 +23,11 @@ export type ChatStore = Pick<
   | 'listMessages'
   | 'markAsRead'
   | 'createMessage'
-  | 'findDirectConversationId'
-  | 'createDirectConversation'
+  | 'findOrCreateDirectConversation'
   | 'listPartnerIds'
 >;
 
-export type ContactsStore = Pick<ContactsRepository, 'search' | 'isReachable'>;
+export type ContactsStore = Pick<ContactsRepository, 'search' | 'isReachable' | 'isBlockedBetween'>;
 
 export interface StartedConversation {
   conversation: ConversationSummary;
@@ -48,9 +51,8 @@ export class ChatService {
 
   async startConversation(userId: string, contactId: string): Promise<StartedConversation> {
     if (!(await this.contacts.isReachable(userId, contactId))) throw new ContactNotFoundError();
-    const existing = await this.repository.findDirectConversationId(userId, contactId);
-    const id = existing ?? (await this.repository.createDirectConversation(userId, contactId));
-    return { conversation: await this.conversationOf(userId, id), created: existing === null };
+    const { id, created } = await this.repository.findOrCreateDirectConversation(userId, contactId);
+    return { conversation: await this.conversationOf(userId, id), created };
   }
 
   async listConversations(userId: string, query: ListConversationsQuery) {
@@ -78,6 +80,9 @@ export class ChatService {
     { conversationId, content }: SendMessageInput,
   ): Promise<SentMessage> {
     const { contact } = await this.conversationOf(userId, conversationId);
+    if (await this.contacts.isBlockedBetween(userId, contact.id)) {
+      throw new ConversationBlockedError();
+    }
     const message = await this.repository.createMessage(conversationId, userId, content);
     return { message, recipientId: contact.id };
   }

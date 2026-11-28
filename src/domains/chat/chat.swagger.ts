@@ -27,7 +27,10 @@ const contact = z.object({
   id: z.uuid(),
   name: z.string(),
   username: z.string().nullable(),
-  avatarUrl: z.string().nullable().openapi({ description: 'Nulo até a CCD048 criar profiles' }),
+  avatarUrl: z
+    .string()
+    .nullable()
+    .openapi({ description: 'Foto do perfil; nulo quando a pessoa não tem foto' }),
   verified: z.boolean().openapi({ description: 'Vendedor com a verificação aprovada' }),
 });
 
