@@ -48,7 +48,6 @@ export interface Warning {
   reportId?: string;
 }
 
-/** Resolve a denúncia do chat junto com a sanção; quem implementa é o domínio dono da denúncia (chat). */
 export interface ContactReportResolverPort {
   resolveForSanction(
     resolution: { reportId: string; userId: string; adminId: string },

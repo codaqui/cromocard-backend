@@ -7,13 +7,16 @@ import {
   ContactReportAlreadyResolvedError,
   ContactReportNotFoundError,
 } from './contact-moderation.errors';
-import { ContactReportResolver, type ResolutionStore } from './contact-report-resolver';
+import {
+  ContactReportResolutionService,
+  type ResolutionStore,
+} from './contact-report-resolution.service';
 
 const TX = { tx: true } as unknown as Transaction;
 const resolution = { reportId: 'report-1', userId: 'marcos', adminId: 'admin' };
 
 let store: { [K in keyof ResolutionStore]: ReturnType<typeof vi.fn> };
-let resolver: ContactReportResolver;
+let resolver: ContactReportResolutionService;
 
 const reportOf = (changes: Record<string, unknown> = {}) => ({
   targetType: ReportTargetType.USER,
@@ -25,12 +28,12 @@ const reportOf = (changes: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   store = {
     findReportForResolution: vi.fn().mockResolvedValue(reportOf()),
-    resolveReport: vi.fn().mockResolvedValue(undefined),
+    resolveOpenReport: vi.fn().mockResolvedValue(true),
   };
-  resolver = new ContactReportResolver(store as unknown as ResolutionStore);
+  resolver = new ContactReportResolutionService(store as unknown as ResolutionStore);
 });
 
-describe('ContactReportResolver', () => {
+describe('ContactReportResolutionService', () => {
   it.each([ReportStatus.PENDING, ReportStatus.UNDER_REVIEW])(
     'CA18: resolve a denúncia %s do chat na transação da sanção, com o moderador',
     async (status) => {
@@ -39,7 +42,7 @@ describe('ContactReportResolver', () => {
       await resolver.resolveForSanction(resolution, TX);
 
       expect(store.findReportForResolution).toHaveBeenCalledWith('report-1', TX);
-      expect(store.resolveReport).toHaveBeenCalledWith('report-1', 'admin', TX);
+      expect(store.resolveOpenReport).toHaveBeenCalledWith('report-1', 'admin', TX);
     },
   );
 
@@ -49,7 +52,7 @@ describe('ContactReportResolver', () => {
     await expect(resolver.resolveForSanction(resolution, TX)).rejects.toBeInstanceOf(
       ContactReportNotFoundError,
     );
-    expect(store.resolveReport).not.toHaveBeenCalled();
+    expect(store.resolveOpenReport).not.toHaveBeenCalled();
   });
 
   it('recusa com 404 a denúncia contra outro usuário', async () => {
@@ -58,7 +61,7 @@ describe('ContactReportResolver', () => {
     await expect(resolver.resolveForSanction(resolution, TX)).rejects.toBeInstanceOf(
       ContactReportNotFoundError,
     );
-    expect(store.resolveReport).not.toHaveBeenCalled();
+    expect(store.resolveOpenReport).not.toHaveBeenCalled();
   });
 
   it.each([ReportStatus.RESOLVED, ReportStatus.DISMISSED])(
@@ -69,9 +72,17 @@ describe('ContactReportResolver', () => {
       await expect(resolver.resolveForSanction(resolution, TX)).rejects.toBeInstanceOf(
         ContactReportAlreadyResolvedError,
       );
-      expect(store.resolveReport).not.toHaveBeenCalled();
+      expect(store.resolveOpenReport).not.toHaveBeenCalled();
     },
   );
+
+  it('recusa com 409 quando outra sanção resolveu a denúncia antes da gravação', async () => {
+    store.resolveOpenReport.mockResolvedValue(false);
+
+    await expect(resolver.resolveForSanction(resolution, TX)).rejects.toBeInstanceOf(
+      ContactReportAlreadyResolvedError,
+    );
+  });
 
   it('deixa a denúncia de mensagem de grupo para a própria fila resolver', async () => {
     store.findReportForResolution.mockResolvedValue(
@@ -79,6 +90,6 @@ describe('ContactReportResolver', () => {
     );
 
     await expect(resolver.resolveForSanction(resolution, TX)).resolves.toBeUndefined();
-    expect(store.resolveReport).not.toHaveBeenCalled();
+    expect(store.resolveOpenReport).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,5 @@
+import { logger } from '@/config/logger';
+import type { ImageType } from '@/domains/uploads/uploads.module';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import { buildPaginationMeta, toSkipTake } from '@/shared/utils/pagination';
 
@@ -27,10 +29,14 @@ export type ModerationStore = Pick<
   | 'createReport'
 >;
 
+export interface EvidenceFile {
+  content: Buffer;
+  imageType: ImageType;
+}
+
 export interface EvidenceStorage {
-  isImage(content: Buffer): boolean;
-  /** Grava o print e devolve a chave dele no storage privado. */
-  upload(content: Buffer): Promise<string>;
+  identify(content: Buffer): EvidenceFile | undefined;
+  upload(file: EvidenceFile): Promise<string>;
   remove(key: string): Promise<void>;
 }
 
@@ -69,10 +75,10 @@ export class ContactModerationService {
     input: ContactReportInput,
     files: Buffer[],
   ): Promise<CreatedContactReport> {
-    this.assertEvidences(files);
+    const evidences = this.identifyEvidences(files);
     await this.assertContact(userId, input.userId);
     await this.assertNoPendingReport(userId, input.userId);
-    const keys = await this.uploadAll(files);
+    const keys = await this.uploadAllOrRollback(evidences);
     const id = await this.saveReport(userId, input, keys);
     return { id, status: 'PENDING', blocked: input.block };
   }
@@ -82,7 +88,6 @@ export class ContactModerationService {
     const report = { reporterId: userId, targetUserId, reason, description, evidenceKeys };
     try {
       return await this.deps.runInTransaction(async (tx) => {
-        // Dois envios ao mesmo tempo (duplo clique) esperam aqui, e o segundo encontra a denúncia do primeiro.
         await this.deps.repository.lockReportPair(userId, targetUserId, tx);
         await this.assertNoPendingReport(userId, targetUserId, tx);
         if (block) await this.deps.repository.block(userId, targetUserId, tx);
@@ -94,9 +99,9 @@ export class ContactModerationService {
     }
   }
 
-  /** Se um print falha no meio do envio, os que já subiram são apagados: nenhum fica sem denúncia. */
-  private async uploadAll(files: Buffer[]): Promise<string[]> {
-    const results = await Promise.allSettled(files.map((file) => this.deps.evidences.upload(file)));
+  private async uploadAllOrRollback(evidences: EvidenceFile[]): Promise<string[]> {
+    const uploads = evidences.map((evidence) => this.deps.evidences.upload(evidence));
+    const results = await Promise.allSettled(uploads);
     const keys = results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
     const failure = results.find((result) => result.status === 'rejected');
     if (!failure) return keys;
@@ -105,7 +110,10 @@ export class ContactModerationService {
   }
 
   private async removeAll(keys: string[]): Promise<void> {
-    await Promise.allSettled(keys.map((key) => this.deps.evidences.remove(key)));
+    const results = await Promise.allSettled(keys.map((key) => this.deps.evidences.remove(key)));
+    const orphanKeys = keys.filter((_, index) => results[index]?.status === 'rejected');
+    if (orphanKeys.length)
+      logger.error({ orphanKeys }, 'Não foi possível apagar os prints da denúncia');
   }
 
   private async assertNoPendingReport(userId: string, contactId: string, tx?: Transaction) {
@@ -114,11 +122,11 @@ export class ContactModerationService {
     }
   }
 
-  private assertEvidences(files: Buffer[]): void {
+  private identifyEvidences(files: Buffer[]): EvidenceFile[] {
     if (files.length < 1 || files.length > MAX_EVIDENCES) throw new EvidenceCountError();
-    if (!files.every((file) => this.deps.evidences.isImage(file))) {
-      throw new InvalidEvidenceTypeError();
-    }
+    const evidences = files.map((file) => this.deps.evidences.identify(file));
+    if (evidences.some((evidence) => !evidence)) throw new InvalidEvidenceTypeError();
+    return evidences as EvidenceFile[];
   }
 
   private async assertContact(userId: string, contactId: string): Promise<void> {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { logger } from '@/config/logger';
 import type { Transaction } from '@/lib/transaction';
 
 import {
@@ -23,6 +24,9 @@ const TX = { tx: true } as unknown as Transaction;
 const BLOCKED_AT = new Date('2026-11-26T12:00:00Z');
 const PRINT = Buffer.from('png');
 const NOT_IMAGE = Buffer.from('gif');
+const PNG_TYPE = { mimeType: 'image/png', extension: 'png' };
+
+vi.mock('@/config/logger', () => ({ logger: { error: vi.fn() } }));
 
 const reportInput = (changes: Partial<ContactReportInput> = {}): ContactReportInput => ({
   userId: MARCOS,
@@ -37,6 +41,7 @@ let evidences: { [K in keyof EvidenceStorage]: ReturnType<typeof vi.fn> };
 let service: ContactModerationService;
 
 beforeEach(() => {
+  vi.clearAllMocks();
   store = {
     hasConversationWith: vi.fn().mockResolvedValue(true),
     block: vi.fn().mockResolvedValue(BLOCKED_AT),
@@ -48,7 +53,9 @@ beforeEach(() => {
   };
   let uploaded = 0;
   evidences = {
-    isImage: vi.fn((content: Buffer) => content !== NOT_IMAGE),
+    identify: vi.fn((content: Buffer) =>
+      content === NOT_IMAGE ? undefined : { content, imageType: PNG_TYPE },
+    ),
     upload: vi.fn(() => {
       uploaded += 1;
       return Promise.resolve(`report-evidences/${uploaded}.png`);
@@ -190,6 +197,34 @@ describe('report', () => {
     await expect(service.report(GABRIEL, reportInput(), [PRINT, PRINT])).rejects.toBe(failure);
     expect(evidences.remove).toHaveBeenCalledWith('report-evidences/1.png');
     expect(evidences.remove).toHaveBeenCalledWith('report-evidences/2.png');
+  });
+
+  it('envia ao storage o print com o tipo já identificado, sem conferir de novo', async () => {
+    await service.report(GABRIEL, reportInput(), [PRINT]);
+
+    expect(evidences.identify).toHaveBeenCalledTimes(1);
+    expect(evidences.upload).toHaveBeenCalledWith({ content: PRINT, imageType: PNG_TYPE });
+  });
+
+  it('registra no log a chave do print que não pôde ser apagado, e devolve o erro original', async () => {
+    const failure = new Error('banco fora do ar');
+    store.createReport.mockRejectedValue(failure);
+    evidences.remove
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('storage fora do ar'));
+
+    await expect(service.report(GABRIEL, reportInput(), [PRINT, PRINT])).rejects.toBe(failure);
+    expect(logger.error).toHaveBeenCalledWith(
+      { orphanKeys: ['report-evidences/2.png'] },
+      expect.any(String),
+    );
+  });
+
+  it('não registra nada no log quando todos os prints são apagados', async () => {
+    store.createReport.mockRejectedValue(new Error('banco fora do ar'));
+
+    await expect(service.report(GABRIEL, reportInput(), [PRINT])).rejects.toThrow();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it('apaga os prints que já subiram quando outro falha no envio', async () => {

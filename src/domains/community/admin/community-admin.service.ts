@@ -46,7 +46,6 @@ export interface AuthorWarner {
   ): Promise<void>;
 }
 
-/** O storage privado (ADR-068) dos prints das denúncias do chat (ADR-073). */
 export interface EvidenceReader {
   read(key: string): Promise<Buffer | null>;
 }
@@ -124,7 +123,6 @@ export class CommunityAdminService {
     return { items, meta: buildPaginationMeta(query, total) };
   }
 
-  /** O print sai só por aqui, para o ADMIN; o tipo vem da assinatura do arquivo gravado. */
   async getReportEvidence(reportId: string, evidenceId: string): Promise<EvidenceFile> {
     const key = await this.deps.repository.findEvidenceKey(reportId, evidenceId);
     const content = key ? await this.deps.evidences.read(key) : null;

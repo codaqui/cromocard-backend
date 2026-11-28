@@ -32,8 +32,7 @@ export interface FileDownload {
   content: Buffer;
 }
 
-/** Arquivo privado mostrado na própria página (o print da denúncia), sem guardar em cache. */
-export function inline(
+export function sendPrivateFile(
   res: Response,
   { contentType, content }: Omit<FileDownload, 'fileName'>,
 ): void {

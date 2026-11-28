@@ -1,5 +1,5 @@
 import { auditLogService } from '@/domains/admin/audit-logs/audit-logs.module';
-import { contactReportResolver } from '@/domains/chat/contact-moderation.module';
+import { contactReportResolution } from '@/domains/chat/contact-report-resolution.module';
 import { notificationsService } from '@/domains/notifications/notifications.module';
 import { prisma } from '@/lib/prisma';
 import { runInTransaction } from '@/lib/transaction';
@@ -22,7 +22,7 @@ const usersService = new UsersService(usersRepository);
 export function createSanctionsService(authService: SanctionAuthService): UserSanctionsService {
   return new UserSanctionsService({
     usersRepository,
-    contactReports: contactReportResolver,
+    contactReports: contactReportResolution,
     authService,
     auditLogService,
     notifier: notificationsService,

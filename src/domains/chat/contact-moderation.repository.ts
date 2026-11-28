@@ -33,6 +33,11 @@ export interface Page {
 
 const notDeleted = { deletedAt: null };
 
+export const OPEN_REPORT_STATUSES: ReportStatus[] = [
+  ReportStatus.PENDING,
+  ReportStatus.UNDER_REVIEW,
+];
+
 const blockKey = (blockerId: string, blockedId: string) => ({
   blockerId_blockedId: { blockerId, blockedId },
 });
@@ -101,7 +106,6 @@ export class ContactModerationRepository {
     return { items: rows.map(toBlockedContact), total };
   }
 
-  /** Trava, até o fim da transação, as denúncias deste denunciante contra este contato. */
   async lockReportPair(reporterId: string, targetUserId: string, tx: Transaction): Promise<void> {
     const pair = `contact-report:${reporterId}:${targetUserId}`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${pair}))`;
@@ -145,10 +149,11 @@ export class ContactModerationRepository {
     });
   }
 
-  async resolveReport(reportId: string, moderatorId: string, tx: Transaction): Promise<void> {
-    await tx.report.update({
-      where: { id: reportId },
+  async resolveOpenReport(reportId: string, moderatorId: string, tx: Transaction) {
+    const { count } = await tx.report.updateMany({
+      where: { id: reportId, status: { in: OPEN_REPORT_STATUSES }, ...notDeleted },
       data: { status: ReportStatus.RESOLVED, moderatorId, resolvedAt: new Date() },
     });
+    return count > 0;
   }
 }

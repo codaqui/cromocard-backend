@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 
 import { getAuthenticatedUser } from '@/shared/middlewares/authenticate';
-import { inline, noContent, ok, paginated } from '@/shared/utils/http-response';
+import { noContent, ok, paginated, sendPrivateFile } from '@/shared/utils/http-response';
 
 import type { CommunityAdminService } from './community-admin.service';
 import {
@@ -73,7 +73,7 @@ export class CommunityAdminController {
 
   getReportEvidence = async (req: Request, res: Response): Promise<void> => {
     const { id, evidenceId } = reportEvidenceParamSchema.parse(req.params);
-    inline(res, await this.service.getReportEvidence(id, evidenceId));
+    sendPrivateFile(res, await this.service.getReportEvidence(id, evidenceId));
   };
 
   dismissReport = async (req: Request, res: Response): Promise<void> => {

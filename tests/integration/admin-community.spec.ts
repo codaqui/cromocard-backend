@@ -615,6 +615,23 @@ describe('denúncias do chat pessoal na fila (CCD047, PostgreSQL real)', () => {
     expect(target?.status).toBe('ACTIVE');
   });
 
+  it('CA18: duas advertências ao mesmo tempo pela mesma denúncia viram uma só, e a outra responde 409', async () => {
+    const { reportId, targetId } = await createChatReport();
+    const warn = () =>
+      request(createApp())
+        .post(`/api/v1/users/${targetId}/warn`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'Golpe confirmado no chat', reportId });
+
+    const statuses = (await Promise.all([warn(), warn()])).map((res) => res.status).sort();
+
+    expect(statuses[0]).toBeLessThan(300);
+    expect(statuses[1]).toBe(409);
+    await expect(prisma.userWarning.count({ where: { userId: targetId, reportId } })).resolves.toBe(
+      1,
+    );
+  });
+
   it('a sanção com uma denúncia já dispensada responde 409 e não bane', async () => {
     const { reportId, targetId } = await createChatReport();
     await asAdmin('post', `/reports/${reportId}/dismiss`).send(REASON);
