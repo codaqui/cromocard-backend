@@ -15,7 +15,12 @@
     "username": "ana.colecionadora",
     "cpf": "94670928244",
     "phone": "11912345678",
-    "createdDaysAgo": 150
+    "createdDaysAgo": 150,
+    "profile": {
+      "bio": "Colecionadora de Pokémon TCG desde 1999. Foco em cartas holográficas da primeira edição e álbuns completos da Copa.",
+      "city": "São Paulo",
+      "withAvatar": true
+    }
   },
   {
     "key": "bruno",
@@ -48,6 +53,10 @@
     "cpf": "37723614209",
     "phone": "21987654321",
     "createdDaysAgo": 35,
+    "profile": {
+      "bio": "Vendo cartas raras com envio rápido e embalagem com sleeve e toploader.",
+      "city": "Rio de Janeiro"
+    },
     "stripeAccountId": "acct_seed_elisa",
     "stripeAccountStatus": "READY"
   },
@@ -97,6 +106,11 @@
     "email": "gabriela@cromocard.dev",
     "role": "CUSTOMER",
     "emailVerified": false,
-    "createdDaysAgo": 2
+    "createdDaysAgo": 2,
+    "profile": {
+      "bio": "Monto álbuns de figurinhas com a família. Portfólio só para mim.",
+      "city": "Curitiba",
+      "portfolioPrivacy": "PRIVATE"
+    }
   }
 ]

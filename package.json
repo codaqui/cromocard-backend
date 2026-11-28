@@ -19,7 +19,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude 'tests/integration/**'",
-    "test:integration": "vitest run tests/integration",
+    "test:integration": "vitest run tests/integration --no-file-parallelism",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "db:generate": "prisma generate",

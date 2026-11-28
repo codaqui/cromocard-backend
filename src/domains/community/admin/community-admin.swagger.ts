@@ -8,6 +8,7 @@ import {
   listGroupMessageReportsQuerySchema,
   listGroupsQuerySchema,
   moderationReasonSchema,
+  reportEvidenceParamSchema,
   warningModerationReasonSchema,
 } from './community-admin.validator';
 
@@ -53,7 +54,25 @@ const groupMessageReport = z.object({
   id: z.uuid(),
   reason: z.string(),
   description: z.string().nullable(),
+  origin: z.enum(['GROUP', 'CHAT']).openapi({
+    description: 'GROUP: mensagem de grupo (CCD062); CHAT: contato do chat pessoal (CCD047)',
+  }),
   reporterName: z.string(),
+  reporterUsername: z.string().nullable(),
+  reportedUser: z
+    .object({
+      id: z.uuid(),
+      name: z.string(),
+      username: z.string().nullable(),
+      accountAgeDays: count,
+      warnings: count,
+    })
+    .nullable()
+    .openapi({ description: 'Contato denunciado; só na origem CHAT' }),
+  evidences: z.array(z.object({ id: z.uuid() })).openapi({
+    description:
+      'Prints da denúncia do chat, na ordem enviada; cada um sai pela rota /evidences/{evidenceId} (ADR-073)',
+  }),
   message: z
     .object({
       id: z.uuid(),
@@ -214,6 +233,23 @@ const moderationPaths: RouteConfig[] = [
     'Remove a mensagem, adverte o autor e resolve a denúncia (CCD099)',
     { params: communityAdminIdParamSchema, body: json(warningModerationReasonSchema) },
   ),
+  {
+    method: 'get',
+    path: '/admin/community/reports/{id}/evidences/{evidenceId}',
+    tags: moderationTags,
+    security,
+    summary: 'Print da denúncia do chat, lido do storage privado (CCD047, ADR-073)',
+    request: { params: reportEvidenceParamSchema },
+    responses: {
+      200: {
+        description: 'A imagem do print (PNG, JPG ou WEBP)',
+        content: { 'image/*': { schema: z.string().openapi({ format: 'binary' }) } },
+      },
+      ...validationError,
+      ...accessErrors,
+      404: { description: 'EVIDENCE_NOT_FOUND: o print não existe ou não é desta denúncia' },
+    },
+  },
   reportAction(
     '/admin/community/reports/{id}/dismiss',
     'Dispensa a denúncia sem remover a mensagem',

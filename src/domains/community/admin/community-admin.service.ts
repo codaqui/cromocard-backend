@@ -2,6 +2,7 @@ import type {
   AuditAction,
   RecordAuditLogInput,
 } from '@/domains/admin/audit-logs/audit-logs.validator';
+import { detectImageType } from '@/domains/uploads/uploads.module';
 import { GroupStatus, ReportStatus } from '@/generated/prisma/enums';
 import type { Transaction, TransactionRunner } from '@/lib/transaction';
 import type { AppError } from '@/shared/errors/app-error';
@@ -9,6 +10,7 @@ import { buildPaginationMeta, type Paginated } from '@/shared/utils/pagination';
 import { daysBefore } from '@/shared/utils/time-zone';
 
 import {
+  EvidenceNotFoundError,
   GroupAlreadySuspendedError,
   GroupAlreadyWarnedError,
   GroupNotFoundError,
@@ -44,8 +46,18 @@ export interface AuthorWarner {
   ): Promise<void>;
 }
 
+export interface EvidenceReader {
+  read(key: string): Promise<Buffer | null>;
+}
+
+export interface EvidenceFile {
+  contentType: string;
+  content: Buffer;
+}
+
 export interface CommunityAdminServiceDeps {
   repository: CommunityAdminRepository;
+  evidences: EvidenceReader;
   auditLog: CommunityAuditLog;
   warner: AuthorWarner;
   runInTransaction: TransactionRunner;
@@ -109,6 +121,14 @@ export class CommunityAdminService {
   async listGroups(query: ListGroupsQuery): Promise<Paginated<AdminGroupSummary>> {
     const { items, total } = await this.deps.repository.findGroupsPage(query);
     return { items, meta: buildPaginationMeta(query, total) };
+  }
+
+  async getReportEvidence(reportId: string, evidenceId: string): Promise<EvidenceFile> {
+    const key = await this.deps.repository.findEvidenceKey(reportId, evidenceId);
+    const content = key ? await this.deps.evidences.read(key) : null;
+    const imageType = content && detectImageType(content);
+    if (!content || !imageType) throw new EvidenceNotFoundError();
+    return { contentType: imageType.mimeType, content };
   }
 
   getSummary(): Promise<CommunitySummary> {
@@ -218,7 +238,7 @@ export class CommunityAdminService {
     { reason }: ModerationReasonInput,
     adminId: string,
   ): Promise<ReportResolution> {
-    const { status } = await this.findOpenReport(reportId);
+    const status = await this.findDismissableStatus(reportId);
     if (!(await this.deps.repository.dismissReport(reportId, adminId))) {
       throw new ReportAlreadyResolvedError();
     }
@@ -245,6 +265,13 @@ export class CommunityAdminService {
     const details = statusChange(group.status, to);
     await this.audit(moderation, { action, entityType: 'group', entityId: id, details });
     return { ...group, status: to };
+  }
+
+  private async findDismissableStatus(id: string): Promise<ReportStatus> {
+    const status = await this.deps.repository.findQueueReportStatus(id);
+    if (!status) throw new ReportNotFoundError();
+    if (!isOpenReportStatus(status)) throw new ReportAlreadyResolvedError();
+    return status;
   }
 
   private async findOpenReport(id: string): Promise<OpenReport> {

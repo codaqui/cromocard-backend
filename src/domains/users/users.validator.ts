@@ -68,15 +68,20 @@ export const adminUpdateUserSchema = z
 
 export const reasonSchema = reasonBodySchema;
 
+const reportIdSchema = z.uuid().optional();
+
 export const warnUserSchema = warningReasonBodySchema.extend({
-  reportId: z.uuid().optional(),
+  reportId: reportIdSchema,
 });
 
 export const suspendUserSchema = reasonBodySchema.extend({
   days: suspensionDaysSchema,
+  reportId: reportIdSchema,
 });
 
-export const blockUserSchema = reasonBodySchema;
+export const blockUserSchema = reasonBodySchema.extend({
+  reportId: reportIdSchema,
+});
 
 export const userIdParamSchema = z.object({
   id: z.uuid(),

@@ -28,6 +28,7 @@ function createModerationRoutes(controller: CommunityAdminController): Router {
   router.post('/:id/remove-message', controller.removeReportedMessage);
   router.post('/:id/remove-and-warn', controller.removeAndWarn);
   router.post('/:id/dismiss', controller.dismissReport);
+  router.get('/:id/evidences/:evidenceId', controller.getReportEvidence);
 
   return router;
 }

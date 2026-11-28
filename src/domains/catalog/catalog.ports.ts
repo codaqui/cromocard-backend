@@ -8,7 +8,3 @@ export interface CatalogAuditLog {
 export interface CardUsage {
   cardIdsInCollections(cardIds: string[]): Promise<string[]>;
 }
-
-export const noCollectionsYet: CardUsage = {
-  cardIdsInCollections: () => Promise.resolve([]),
-};

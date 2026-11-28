@@ -67,12 +67,12 @@ model User {
   createdGroups                   Group[]
   groupMemberships                GroupMember[]
   authoredGroupMessages           GroupMessage[]
-  reportsFiled                    Report[]                 @relation("ReportReporter")
-  reportsModerated                Report[]                 @relation("ReportModerator")
-  reportsReceived                 Report[]                 @relation("ReportTargetUser")
-  catalogRequests                 CatalogRequest[]         @relation("CatalogRequestRequester")
+  reportsFiled                    Report[]                  @relation("ReportReporter")
+  reportsModerated                Report[]                  @relation("ReportModerator")
+  reportsReceived                 Report[]                  @relation("ReportTargetUser")
+  catalogRequests                 CatalogRequest[]          @relation("CatalogRequestRequester")
   catalogRequestVotes             CatalogRequestVote[]
-  reviewedCatalogRequests         CatalogRequest[]         @relation("CatalogRequestReviewer")
+  reviewedCatalogRequests         CatalogRequest[]          @relation("CatalogRequestReviewer")
   performedAuditLogs              AuditLog[]
   updatedSettings                 GlobalSetting[]
   sentGlobalNotifications         GlobalNotification[]
@@ -80,16 +80,21 @@ model User {
   notifications                   Notification[]
   refreshTokens                   RefreshToken[]
   passwordResetTokens             PasswordResetToken[]
-  sellerVerification              SellerVerification?      @relation("SellerVerificationSeller")
-  reviewedVerifications           SellerVerification[]     @relation("SellerVerificationReviewer")
-  validatedSellerDocuments        SellerDocument[]         @relation("SellerDocumentValidator")
-  authoredSellerVerificationNotes SellerVerificationNote[] @relation("SellerVerificationNoteAuthor")
+  sellerVerification              SellerVerification?       @relation("SellerVerificationSeller")
+  reviewedVerifications           SellerVerification[]      @relation("SellerVerificationReviewer")
+  validatedSellerDocuments        SellerDocument[]          @relation("SellerDocumentValidator")
+  authoredSellerVerificationNotes SellerVerificationNote[]  @relation("SellerVerificationNoteAuthor")
   addresses                       Address[]
-  warningsReceived                UserWarning[]            @relation("UserWarningTarget")
-  warningsGiven                   UserWarning[]            @relation("UserWarningAdmin")
+  warningsReceived                UserWarning[]             @relation("UserWarningTarget")
+  warningsGiven                   UserWarning[]             @relation("UserWarningAdmin")
+  blocksReceived                  UserBlock[]               @relation("UserBlockBlocked")
+  blocksMade                      UserBlock[]               @relation("UserBlockBlocker")
+  authoredMessages                Message[]
+  conversationParticipations      ConversationParticipant[]
   listings                        Listing[]
-  purchases                       Order[]                  @relation("OrderBuyer")
-  sales                           Order[]                  @relation("OrderSeller")
+  purchases                       Order[]                   @relation("OrderBuyer")
+  sales                           Order[]                   @relation("OrderSeller")
+  collection                      Collection?
 
   @@unique([oauthProvider, oauthId], map: "users_oauth_provider_oauth_id_key")
   @@map("users")
@@ -239,26 +244,28 @@ model Album {
   category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_albums_category_id")
   cards           Card[]
   catalogRequests CatalogRequest[]
+  userAlbums      UserAlbum[]
 
   @@map("albums")
 }
 
 model Card {
-  id            String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  albumId       String?   @map("album_id") @db.Uuid
-  categoryId    String?   @map("category_id") @db.Uuid
-  rarityId      String?   @map("rarity_id") @db.Uuid
-  languageId    String?   @map("language_id") @db.Uuid
-  name          String    @db.VarChar(160)
-  number        String?   @db.VarChar(20)
+  id            String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  albumId       String?    @map("album_id") @db.Uuid
+  categoryId    String?    @map("category_id") @db.Uuid
+  rarityId      String?    @map("rarity_id") @db.Uuid
+  languageId    String?    @map("language_id") @db.Uuid
+  name          String     @db.VarChar(160)
+  number        String?    @db.VarChar(20)
   description   String?
-  frontImageUrl String?   @map("front_image_url") @db.VarChar(255)
-  backImageUrl  String?   @map("back_image_url") @db.VarChar(255)
-  code          String?   @db.VarChar(30)
-  variants      String?   @db.VarChar(120)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  frontImageUrl String?    @map("front_image_url") @db.VarChar(255)
+  backImageUrl  String?    @map("back_image_url") @db.VarChar(255)
+  code          String?    @db.VarChar(30)
+  variants      String?    @db.VarChar(120)
+  status        CardStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(6)
 
   album           Album?           @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_album_id")
   category        Category?        @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_cards_category_id")
@@ -269,6 +276,7 @@ model Card {
   catalogRequests CatalogRequest[]
   listings        Listing[]
   priceHistory    PriceHistory[]
+  collectionCards CollectionCard[]
 
   @@unique([albumId, number])
   @@unique([code], map: "cards_code_key", where: raw("deleted_at IS NULL"))
@@ -424,8 +432,23 @@ model Report {
   groupMessage GroupMessage? @relation(fields: [groupMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_group_message_id")
   listing      Listing?      @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_reports_listing_id")
   warnings     UserWarning[]
+  evidences    ReportEvidence[]
 
   @@map("reports")
+}
+
+model ReportEvidence {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  reportId  String    @map("report_id") @db.Uuid
+  url       String    @db.VarChar(255)
+  sortOrder Int       @default(0) @map("sort_order") @db.SmallInt
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_report_evidences_report_id")
+
+  @@map("report_evidences")
 }
 
 model UserWarning {
@@ -755,7 +778,9 @@ model Listing {
   orders        Order[]
   groupMessages GroupMessage[]
   reports       Report[]
+  conversations Conversation[]
 
+  @@index([cardId, status, price], map: "idx_listings_card_id_status_price")
   @@map("listings")
 }
 
@@ -855,5 +880,136 @@ model PriceHistory {
 
   card Card @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_price_history_card_id")
 
+  @@index([cardId, source, referenceDate], map: "idx_price_history_card_id_source_reference_date")
   @@map("price_history")
+}
+
+enum CardStatus {
+  DRAFT
+  ACTIVE
+
+  @@map("card_status")
+}
+
+model Collection {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  isPublic  Boolean   @default(false) @map("is_public")
+  shareLink String?   @unique @map("share_link") @db.VarChar(120)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user   User             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_collections_user_id")
+  albums UserAlbum[]
+  cards  CollectionCard[]
+
+  @@map("collections")
+}
+
+model UserAlbum {
+  id                 String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  collectionId       String    @map("collection_id") @db.Uuid
+  albumId            String    @map("album_id") @db.Uuid
+  isFavorite         Boolean   @default(false) @map("is_favorite")
+  progressPercentage Decimal   @default(0) @map("progress_percentage") @db.Decimal(5, 2)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_albums_collection_id")
+  album      Album      @relation(fields: [albumId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_albums_album_id")
+
+  @@unique([collectionId, albumId])
+  @@map("user_albums")
+}
+
+enum CollectionCardStatus {
+  OWNED
+  MISSING
+  DUPLICATE
+
+  @@map("collection_card_status")
+}
+
+model CollectionCard {
+  id           String               @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  collectionId String               @map("collection_id") @db.Uuid
+  cardId       String               @map("card_id") @db.Uuid
+  status       CollectionCardStatus
+  quantity     Int                  @default(1)
+  marketValue  Decimal?             @map("market_value") @db.Decimal(10, 2)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_collection_cards_collection_id")
+  card       Card       @relation(fields: [cardId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_collection_cards_card_id")
+
+  @@unique([collectionId, cardId])
+  @@map("collection_cards")
+}
+
+model Conversation {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  listingId String?   @map("listing_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  listing      Listing?                  @relation(fields: [listingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_conversations_listing_id")
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  conversationId String    @map("conversation_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_conversation_participants_conversation_id")
+  user         User         @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_conversation_participants_user_id")
+
+  @@id([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  authorId       String    @map("author_id") @db.Uuid
+  replyToId      String?   @map("reply_to_id") @db.Uuid
+  content        String?
+  attachmentUrl  String?   @map("attachment_url") @db.VarChar(255)
+  isRead         Boolean   @default(false) @map("is_read")
+  readAt         DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages_conversation_id")
+  author       User         @relation(fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages_author_id")
+  replyTo      Message?     @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_messages_reply_to_id")
+  replies      Message[]    @relation("MessageReplies")
+
+  @@map("messages")
+}
+
+model UserBlock {
+  id        String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  blockerId String    @map("blocker_id") @db.Uuid
+  blockedId String    @map("blocked_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  blocker User @relation("UserBlockBlocker", fields: [blockerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_blocks_blocker_id")
+  blocked User @relation("UserBlockBlocked", fields: [blockedId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_blocks_blocked_id")
+
+  @@unique([blockerId, blockedId])
+  @@map("user_blocks")
 }

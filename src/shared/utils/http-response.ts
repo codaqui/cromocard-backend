@@ -32,6 +32,13 @@ export interface FileDownload {
   content: Buffer;
 }
 
+export function sendPrivateFile(
+  res: Response,
+  { contentType, content }: Omit<FileDownload, 'fileName'>,
+): void {
+  res.status(200).type(contentType).set('Cache-Control', 'private, no-store').send(content);
+}
+
 export function download(res: Response, { fileName, contentType, content }: FileDownload): void {
   res.status(200).type(contentType).attachment(fileName).send(content);
 }

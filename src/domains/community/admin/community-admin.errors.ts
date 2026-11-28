@@ -30,6 +30,12 @@ export class ReportNotFoundError extends NotFoundError {
   }
 }
 
+export class EvidenceNotFoundError extends NotFoundError {
+  constructor() {
+    super('Print não encontrado', 'EVIDENCE_NOT_FOUND');
+  }
+}
+
 export class ReportAlreadyResolvedError extends ConflictError {
   constructor() {
     super('A denúncia já foi resolvida', 'REPORT_ALREADY_RESOLVED');

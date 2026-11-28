@@ -39,6 +39,19 @@
       "neighborhood": "Centro",
       "city": "Curitiba",
       "state": "PR"
+    },
+    {
+      "key": "ana-studio-campinas",
+      "user": "ana",
+      "label": "Studio Campinas",
+      "zipCode": "13015-904",
+      "street": "Rua Barão de Jaguara",
+      "number": "1481",
+      "complement": "Sala 12",
+      "neighborhood": "Centro",
+      "city": "Campinas",
+      "state": "SP",
+      "isPrimary": false
     }
   ],
   "listings": [
@@ -94,6 +107,22 @@
       "card": "mbappe",
       "condition": "regular",
       "price": "120.00",
+      "status": "ACTIVE"
+    },
+    {
+      "key": "helena-charizard-sv107",
+      "seller": "helena",
+      "card": "charizard-vmax-sv107",
+      "condition": "near-mint",
+      "price": "1790.00",
+      "status": "ACTIVE"
+    },
+    {
+      "key": "igor-charizard-sv107",
+      "seller": "igor",
+      "card": "charizard-vmax-sv107",
+      "condition": "mint",
+      "price": "2050.00",
       "status": "ACTIVE"
     }
   ],

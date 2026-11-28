@@ -48,8 +48,16 @@ export interface Warning {
   reportId?: string;
 }
 
+export interface ContactReportResolverPort {
+  resolveForSanction(
+    resolution: { reportId: string; userId: string; adminId: string },
+    tx: Transaction,
+  ): Promise<void>;
+}
+
 export interface UserSanctionsServiceDeps {
   usersRepository: UsersRepository;
+  contactReports: ContactReportResolverPort;
   authService: SanctionAuthService;
   auditLogService: SanctionAuditLog;
   notifier: SanctionNotifier;
@@ -80,6 +88,7 @@ export class UserSanctionsService {
     this.assertNotSelf(await this.findByIdOrThrow(userId), adminId);
 
     await usersRepository.createWarning(warning, tx);
+    await this.resolveReport(warning, tx);
     await auditLogService.record(
       { adminId, action: 'USER_WARNED', entityType: USER_ENTITY, entityId: userId, reason },
       tx,
@@ -97,7 +106,7 @@ export class UserSanctionsService {
 
   async suspend(
     id: string,
-    { reason, days }: SuspendUserInput,
+    { reason, days, reportId }: SuspendUserInput,
     adminId: string,
   ): Promise<UserSummary> {
     const { usersRepository, authService, runInTransaction, now } = this.deps;
@@ -114,6 +123,7 @@ export class UserSanctionsService {
         tx,
       );
       await this.recordSuspension({ adminId, id, reason, days }, tx);
+      await this.resolveReport({ userId: id, adminId, reportId }, tx);
       return user;
     });
     await authService.revokeAllSessions(id);
@@ -137,7 +147,11 @@ export class UserSanctionsService {
     );
   }
 
-  async block(id: string, { reason }: BlockUserInput, adminId: string): Promise<UserSummary> {
+  async block(
+    id: string,
+    { reason, reportId }: BlockUserInput,
+    adminId: string,
+  ): Promise<UserSummary> {
     const { usersRepository, authService, auditLogService, runInTransaction } = this.deps;
     const target = await this.findByIdOrThrow(id);
     this.assertNotSelf(target, adminId);
@@ -150,6 +164,7 @@ export class UserSanctionsService {
         { adminId, action: 'USER_BLOCKED', entityType: USER_ENTITY, entityId: id, reason },
         tx,
       );
+      await this.resolveReport({ userId: id, adminId, reportId }, tx);
       return user;
     });
     await authService.revokeAllSessions(id);
@@ -169,6 +184,14 @@ export class UserSanctionsService {
       );
       return user;
     });
+  }
+
+  private async resolveReport(
+    { userId, adminId, reportId }: Omit<Warning, 'reason'>,
+    tx: Transaction,
+  ): Promise<void> {
+    if (!reportId) return;
+    await this.deps.contactReports.resolveForSanction({ reportId, userId, adminId }, tx);
   }
 
   private async findByIdOrThrow(id: string): Promise<UserProfile> {

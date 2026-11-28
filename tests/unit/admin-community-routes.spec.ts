@@ -21,6 +21,7 @@ const communityAdminRoutes: [Method, string][] = [
   ['get', '/api/v1/admin/community/reports'],
   ['post', `/api/v1/admin/community/reports/${ID}/remove-message`],
   ['post', `/api/v1/admin/community/reports/${ID}/remove-and-warn`],
+  ['get', `/api/v1/admin/community/reports/${ID}/evidences/${ID}`],
   ['post', `/api/v1/admin/community/reports/${ID}/dismiss`],
 ];
 
@@ -69,6 +70,12 @@ describe('validação da administração da comunidade', () => {
     expect(res.status).toBe(400);
   });
 
+  it('recusa o print com id que não é UUID com 400', async () => {
+    const res = await asAdmin('get', `/api/v1/admin/community/reports/${ID}/evidences/123`);
+
+    expect(res.status).toBe(400);
+  });
+
   it('recusa status de grupo fora da lista com 400', async () => {
     const res = await asAdmin('get', '/api/v1/admin/community/groups?status=ARCHIVED');
 
@@ -90,6 +97,7 @@ describe('documentação da administração da comunidade', () => {
       '/admin/community/reports',
       '/admin/community/reports/{id}/remove-message',
       '/admin/community/reports/{id}/remove-and-warn',
+      '/admin/community/reports/{id}/evidences/{evidenceId}',
       '/admin/community/reports/{id}/dismiss',
     ]);
   });

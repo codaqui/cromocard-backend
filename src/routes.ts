@@ -4,11 +4,18 @@ import swaggerUi from 'swagger-ui-express';
 import { API_PREFIX } from '@/config/api';
 import { env } from '@/config/env';
 import { buildOpenApiDocument } from '@/config/swagger';
+import { chatModule } from '@/domains/chat/chat.module';
+import {
+  contactBlocksModule,
+  contactReportsModule,
+} from '@/domains/chat/contact-moderation.module';
 import { authModule, authService } from '@/domains/auth/auth.module';
+import { cardsModule } from '@/domains/catalog/cards/cards.module';
 import { catalogModule } from '@/domains/catalog/catalog.module';
 import { cardConditionsModule, publicCardsModule } from '@/domains/catalog/public-cards.module';
 import { catalogRequestVotesModule } from '@/domains/catalog/requests/catalog-request-votes.module';
 import { catalogRequestsModule } from '@/domains/catalog/requests/catalog-requests.module';
+import { collectionModule } from '@/domains/collection/collection.module';
 import { dashboardModule } from '@/domains/admin/dashboard/dashboard.module';
 import { financeModule } from '@/domains/admin/finance/finance.module';
 import { reportsModule } from '@/domains/admin/reports/reports.module';
@@ -32,10 +39,12 @@ const sharedModules: DomainModule[] = [
   dashboardModule,
   financeModule,
   catalogModule,
+  cardsModule,
   publicCardsModule,
   cardConditionsModule,
   catalogRequestsModule,
   catalogRequestVotesModule,
+  collectionModule,
   reportsModule,
   settingsModule,
   publicSettingsModule,
@@ -43,6 +52,8 @@ const sharedModules: DomainModule[] = [
   communityAdminModule,
   globalNotificationsModule,
   sellerVerificationsModule,
+  chatModule,
+  contactBlocksModule,
   connectedAccountsModule,
   paymentsWebhookModule,
   sellerListingsModule,
@@ -54,7 +65,8 @@ export interface RoutesOptions {
 }
 
 export function createRoutes({ withUploads }: RoutesOptions): Router {
-  const domainModules = withUploads ? [...sharedModules, uploadsModule] : sharedModules;
+  const uploadModules = [uploadsModule, contactReportsModule];
+  const domainModules = withUploads ? [...sharedModules, ...uploadModules] : sharedModules;
   const routes = Router();
 
   domainModules.forEach(({ basePath, router }) => routes.use(`${API_PREFIX}${basePath}`, router));

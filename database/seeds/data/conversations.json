@@ -1,0 +1,137 @@
+{
+  "conversations": [
+    {
+      "key": "ana-elisa",
+      "participants": ["ana", "elisa"],
+      "messages": [
+        {
+          "key": "ana-elisa-1",
+          "author": "elisa",
+          "minutesAgo": 95,
+          "content": "Olá Ana! Vi que você favoritou o meu Pikachu. Ele está à venda no marketplace, quer o link do anúncio?"
+        },
+        {
+          "key": "ana-elisa-2",
+          "author": "elisa",
+          "minutesAgo": 92,
+          "content": "Também tenho o Blastoise anunciado, se quiser dar uma olhada."
+        },
+        {
+          "key": "ana-elisa-3",
+          "author": "ana",
+          "minutesAgo": 85,
+          "content": "Opa Elisa! Quero sim. Consegue me mandar uma foto do verso? Quero ver as bordas antes de comprar."
+        },
+        {
+          "key": "ana-elisa-4",
+          "author": "elisa",
+          "minutesAgo": 80,
+          "content": "Mensagem que a Elisa apagou.",
+          "deleted": true
+        },
+        {
+          "key": "ana-elisa-5",
+          "author": "elisa",
+          "minutesAgo": 75,
+          "content": "Mandei as fotos do verso agora. Pode comprar pelo anúncio que o pagamento fica retido até chegar."
+        },
+        {
+          "key": "ana-elisa-6",
+          "author": "ana",
+          "minutesAgo": 70,
+          "content": "Combinado, compro pelo anúncio."
+        }
+      ]
+    },
+    {
+      "key": "ana-bruno",
+      "participants": ["ana", "bruno"],
+      "messages": [
+        {
+          "key": "ana-bruno-1",
+          "author": "ana",
+          "minutesAgo": 200,
+          "content": "Bruno, você ainda tem a figurinha do Neymar repetida?"
+        },
+        {
+          "key": "ana-bruno-2",
+          "author": "bruno",
+          "minutesAgo": 180,
+          "content": "Te mandei o link do anúncio",
+          "unread": true
+        }
+      ]
+    },
+    {
+      "key": "ana-carla",
+      "participants": ["ana", "carla"],
+      "messages": [
+        {
+          "key": "ana-carla-1",
+          "author": "ana",
+          "minutesAgo": 1500,
+          "content": "Carla, chegou a carta que você comprou?"
+        },
+        {
+          "key": "ana-carla-2",
+          "author": "carla",
+          "minutesAgo": 1440,
+          "content": "Viu as fotos da carta?",
+          "unread": true
+        }
+      ]
+    },
+    {
+      "key": "ana-fabio",
+      "participants": ["ana", "fabio"],
+      "messages": [
+        {
+          "key": "ana-fabio-1",
+          "author": "fabio",
+          "minutesAgo": 5760,
+          "content": "Seu pedido do Vinícius foi entregue. Obrigado pela compra!"
+        },
+        {
+          "key": "ana-fabio-2",
+          "author": "ana",
+          "minutesAgo": 5700,
+          "content": "Chegou certinho, obrigada!"
+        }
+      ]
+    },
+    {
+      "key": "ana-gabriela",
+      "participants": ["ana", "gabriela"],
+      "messages": [
+        {
+          "key": "ana-gabriela-1",
+          "author": "gabriela",
+          "minutesAgo": 2880,
+          "content": "Oi Ana! Tenho a figurinha que falta no seu álbum da Copa."
+        },
+        {
+          "key": "ana-gabriela-2",
+          "author": "gabriela",
+          "minutesAgo": 2870,
+          "content": "Me paga por Pix que eu mando hoje mesmo, sem passar pelo site."
+        }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "key": "ana-bloqueia-gabriela",
+      "blocker": "ana",
+      "blocked": "gabriela"
+    }
+  ],
+  "reports": [
+    {
+      "key": "ana-denuncia-carla",
+      "reporter": "ana",
+      "target": "carla",
+      "reason": "Spam",
+      "description": "Manda o mesmo link de grupo de vendas várias vezes por dia."
+    }
+  ]
+}
