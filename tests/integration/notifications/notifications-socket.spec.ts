@@ -148,11 +148,14 @@ describe('notification:new pelo adapter do PostgreSQL', () => {
     const anaSocket = await connectAs(ana);
 
     const arriving = nextNotification(anaSocket);
-    await globalNotificationsService.dispatch(admin.id, {
+    const dispatch = await globalNotificationsService.dispatch(admin.id, {
       title: 'Manutenção no sábado',
       content: 'O site fica fora do ar das 2h às 4h.',
       audience: 'ALL',
       channels: ['IN_APP'],
+    });
+    await prisma.notification.deleteMany({
+      where: { globalNotificationId: dispatch.id, userId: { notIn: createdUserIds } },
     });
 
     await expect(arriving).resolves.toMatchObject({

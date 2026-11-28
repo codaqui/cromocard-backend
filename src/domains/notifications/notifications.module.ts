@@ -12,6 +12,9 @@ import { createGlobalNotificationsRoutes } from './global-notifications.routes';
 import { GlobalNotificationsService } from './global-notifications.service';
 import { registerGlobalNotificationsDocs } from './global-notifications.swagger';
 import { NotificationPublisher } from './notification.publisher';
+import { NotificationsController } from './notifications.controller';
+import { createNotificationsRoutes } from './notifications.routes';
+import { registerNotificationsDocs } from './notifications.swagger';
 import { PrismaNotificationPreferencesRepository } from './notification-preferences.repository';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { PrismaNotificationsRepository } from './notifications.repository';
@@ -42,4 +45,10 @@ export const globalNotificationsModule: DomainModule = {
     new GlobalNotificationsController(globalNotificationsService),
   ),
   registerDocs: registerGlobalNotificationsDocs,
+};
+
+export const notificationsModule: DomainModule = {
+  basePath: '/notifications',
+  router: createNotificationsRoutes(new NotificationsController(notificationsService)),
+  registerDocs: registerNotificationsDocs,
 };
